@@ -27,8 +27,9 @@ export default function NewTradePage() {
   const [direction, setDirection] = useState<'BUY' | 'SELL'>('BUY');
   const [outcome, setOutcome] = useState<'WIN' | 'LOSS' | 'BREAKEVEN'>('WIN');
 
-  const [pnlAmount, setPnlAmount] = useState<number>(2000);
-  const [pnlPercent, setPnlPercent] = useState<number>(2);
+  // Store as strings so it takes "-" naturally
+  const [pnlAmount, setPnlAmount] = useState<string>('2000');
+  const [pnlPercent, setPnlPercent] = useState<string>('2');
 
   // Risk and R-multiple
   const [riskAmount, setRiskAmount] = useState<number>(1000);
@@ -39,8 +40,11 @@ export default function NewTradePage() {
 
   const rMultiple = useMemo(() => {
     if (!riskAmount || Number.isNaN(riskAmount)) return null;
-    if (Number.isNaN(pnlAmount)) return null;
-    return pnlAmount / riskAmount;
+
+    const amountNum = Number(pnlAmount);
+    if (Number.isNaN(amountNum)) return null;
+
+    return amountNum / riskAmount;
   }, [pnlAmount, riskAmount]);
 
   async function saveTrade(e: React.FormEvent) {
@@ -51,6 +55,32 @@ export default function NewTradePage() {
     const user = sessionData.session?.user;
     if (!user) return router.push('/auth');
 
+    const pnlAmountNum = Number(pnlAmount);
+    const pnlPercentNum = Number(pnlPercent);
+
+    if (Number.isNaN(pnlAmountNum) || Number.isNaN(pnlPercentNum)) {
+      setMsg('Please enter valid P&L values.');
+      return;
+    }
+
+    // Enforce sign at save time (no auto-fill, just correct sign if needed)
+    let finalPnlAmount = pnlAmountNum;
+    let finalPnlPercent = pnlPercentNum;
+
+    if (outcome === 'LOSS') {
+      finalPnlAmount = -Math.abs(pnlAmountNum);
+      finalPnlPercent = -Math.abs(pnlPercentNum);
+    } else if (outcome === 'WIN') {
+      finalPnlAmount = Math.abs(pnlAmountNum);
+      finalPnlPercent = Math.abs(pnlPercentNum);
+    }
+    // BREAKEVEN: keep as-is
+
+    const finalRMultiple =
+      riskAmount && !Number.isNaN(riskAmount)
+        ? finalPnlAmount / riskAmount
+        : null;
+
     const { error } = await supabase.from('trades').insert({
       user_id: user.id,
       // Store in DB as UTC ISO
@@ -59,10 +89,10 @@ export default function NewTradePage() {
       direction,
       setup: setup || null,
       outcome,
-      pnl_amount: pnlAmount,
-      pnl_percent: pnlPercent,
+      pnl_amount: finalPnlAmount,
+      pnl_percent: finalPnlPercent,
       risk_amount: riskAmount || null,
-      r_multiple: rMultiple,
+      r_multiple: finalRMultiple,
       notes: notes || null,
     });
 
@@ -133,7 +163,7 @@ export default function NewTradePage() {
               type='number'
               step='0.01'
               value={pnlAmount}
-              onChange={(e) => setPnlAmount(Number(e.target.value))}
+              onChange={(e) => setPnlAmount(e.target.value)}
               required
             />
           </Field>
@@ -144,7 +174,7 @@ export default function NewTradePage() {
               type='number'
               step='0.01'
               value={pnlPercent}
-              onChange={(e) => setPnlPercent(Number(e.target.value))}
+              onChange={(e) => setPnlPercent(e.target.value)}
               required
             />
           </Field>
