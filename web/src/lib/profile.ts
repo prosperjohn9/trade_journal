@@ -1,54 +1,77 @@
-import { supabase } from './supabaseClient';
+import { supabase } from '@/src/lib/supabaseClient';
 
 export type Profile = {
   id: string;
   display_name: string | null;
-  timezone: string;
+  starting_balance: number | null;
+  base_currency: string | null;
+  updated_at?: string;
 };
 
-export async function getOrCreateProfile() {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const user = sessionData.session?.user;
-  if (!user) return { profile: null, user: null };
+export async function getOrCreateProfile(): Promise<{
+  user: any | null;
+  profile: Profile | null;
+}> {
+  const { data: sessionData, error: sessionError } =
+    await supabase.auth.getSession();
 
-  // 1) Try fetch profile
-  const { data: profile } = await supabase
+  if (sessionError) throw sessionError;
+
+  const user = sessionData.session?.user ?? null;
+  if (!user) return { user: null, profile: null };
+
+  // Try to load profile
+  const { data: existing, error: selErr } = await supabase
     .from('profiles')
-    .select('id, display_name, timezone')
+    .select('id, display_name, starting_balance, base_currency')
     .eq('id', user.id)
     .single();
 
-  // 2) If profile exists, return it
-  if (profile) return { profile: profile as Profile, user };
+  // If row doesn't exist, create it
+  if (selErr && selErr.code === 'PGRST116') {
+    const { data: created, error: insErr } = await supabase
+      .from('profiles')
+      .insert({
+        id: user.id,
+        display_name: null,
+        starting_balance: null,
+        base_currency: 'USD',
+      })
+      .select('id, display_name, starting_balance, base_currency')
+      .single();
 
-  // 3) Create profile with detected timezone
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    if (insErr) throw insErr;
+    return { user, profile: created as Profile };
+  }
 
-  const { data: created, error } = await supabase
-    .from('profiles')
-    .insert({
-      id: user.id,
-      timezone: tz,
-      display_name: user.user_metadata?.name ?? null,
-    })
-    .select('id, display_name, timezone')
-    .single();
-
-  if (error) throw error;
-
-  return { profile: created as Profile, user };
+  if (selErr) throw selErr;
+  return { user, profile: existing as Profile };
 }
 
-export async function updateProfile(updates: Partial<Profile>) {
+export async function updateProfile(patch: {
+  display_name?: string | null;
+  starting_balance?: number | null;
+  base_currency?: string | null;
+}): Promise<Profile> {
   const { data: sessionData } = await supabase.auth.getSession();
   const user = sessionData.session?.user;
-  if (!user) throw new Error('Not logged in');
+  if (!user) throw new Error('Not authenticated');
 
   const { data, error } = await supabase
     .from('profiles')
-    .update(updates)
+    .update({
+      ...(patch.display_name !== undefined
+        ? { display_name: patch.display_name }
+        : {}),
+      ...(patch.starting_balance !== undefined
+        ? { starting_balance: patch.starting_balance }
+        : {}),
+      ...(patch.base_currency !== undefined
+        ? { base_currency: patch.base_currency }
+        : {}),
+    })
     .eq('id', user.id)
-    .select('id, display_name, timezone')
+    .select('id, display_name, starting_balance, base_currency')
     .single();
 
   if (error) throw error;

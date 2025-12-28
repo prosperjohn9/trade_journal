@@ -20,11 +20,40 @@ type Trade = {
   r_multiple: number | null;
 };
 
+function numOrNull(v: string) {
+  const t = v.trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toNumberSafe(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatMoney(amount: number, currency = 'USD') {
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+function formatNumber(amount: number) {
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
 export default function DashboardPage() {
   const router = useRouter();
 
   const [profile, setProfile] = useState<Profile | null>(null);
+
   const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [startingBalanceDraft, setStartingBalanceDraft] = useState('');
+
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState('');
   const [showProfile, setShowProfile] = useState(false);
@@ -44,6 +73,11 @@ export default function DashboardPage() {
 
         setProfile(profile);
         setDisplayNameDraft(profile?.display_name ?? '');
+
+        const sb = (profile as any)?.starting_balance;
+        setStartingBalanceDraft(
+          sb === null || sb === undefined ? '' : String(sb)
+        );
       } catch (e: any) {
         console.error(e);
         router.push('/auth');
@@ -86,6 +120,17 @@ export default function DashboardPage() {
     return { total, wins, losses, be, pnl$, pnlPct, winRate };
   }, [trades]);
 
+  // Currency from profile table 
+  const currency = (profile as any)?.base_currency || 'USD';
+
+  // Starting balance logic (treat <= 0 as not set)
+  const startingBalanceRaw = (profile as any)?.starting_balance;
+  const startingBalance = toNumberSafe(startingBalanceRaw);
+  const hasStartingBalance =
+    Number.isFinite(startingBalance) && startingBalance > 0;
+
+  const equity = hasStartingBalance ? startingBalance + stats.pnl$ : null;
+
   async function logout() {
     await supabase.auth.signOut();
     router.push('/auth');
@@ -96,12 +141,21 @@ export default function DashboardPage() {
     setProfileMsg('Saving...');
 
     try {
+      const starting_balance = numOrNull(startingBalanceDraft);
+
       const updated = await updateProfile({
         display_name: displayNameDraft.trim() || null,
-      });
+        starting_balance,
+      } as any);
 
       setProfile(updated);
       setDisplayNameDraft(updated.display_name ?? '');
+
+      const sb = (updated as any)?.starting_balance;
+      setStartingBalanceDraft(
+        sb === null || sb === undefined ? '' : String(sb)
+      );
+
       setProfileMsg('Saved');
       setShowProfile(false);
     } catch (e: any) {
@@ -123,7 +177,6 @@ export default function DashboardPage() {
       return;
     }
 
-    // Update UI immediately
     setTrades((prev) => prev.filter((t) => t.id !== id));
   }
 
@@ -138,9 +191,28 @@ export default function DashboardPage() {
           <div className='text-sm opacity-80'>
             Signed in as <span className='font-semibold'>{displayName}</span>
           </div>
+
+          {!hasStartingBalance && (
+            <div className='text-sm opacity-80'>
+              <span className='font-semibold'>Tip:</span> Set your{' '}
+              <span className='font-semibold'>Starting Balance</span> to make
+              your equity curve and drawdown meaningful.
+              <button
+                className='ml-2 underline'
+                onClick={() => setShowProfile(true)}>
+                Set now
+              </button>
+            </div>
+          )}
         </div>
 
         <div className='flex gap-2'>
+          <button
+            className='border rounded-lg px-4 py-2'
+            onClick={() => router.push('/reports/monthly')}>
+            Monthly Report
+          </button>
+
           <button
             className='border rounded-lg px-4 py-2'
             onClick={() => setShowProfile((v) => !v)}>
@@ -159,7 +231,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* Profile panel (hidden by default) */}
+      {/* Profile panel */}
       {profile && showProfile && (
         <section className='border rounded-xl p-4 max-w-3xl space-y-3'>
           <div className='flex items-center justify-between gap-3'>
@@ -169,15 +241,32 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <label className='space-y-1 block'>
-            <div className='text-sm opacity-70'>Username</div>
-            <input
-              className='w-full border rounded-lg p-3'
-              value={displayNameDraft}
-              onChange={(e) => setDisplayNameDraft(e.target.value)}
-              placeholder='e.g., Prosper'
-            />
-          </label>
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+            <label className='space-y-1 block'>
+              <div className='text-sm opacity-70'>Username</div>
+              <input
+                className='w-full border rounded-lg p-3'
+                value={displayNameDraft}
+                onChange={(e) => setDisplayNameDraft(e.target.value)}
+                placeholder='e.g., Prosper'
+              />
+            </label>
+
+            <label className='space-y-1 block'>
+              <div className='text-sm opacity-70'>Starting Balance</div>
+              <input
+                className='w-full border rounded-lg p-3'
+                type='number'
+                step='0.01'
+                value={startingBalanceDraft}
+                onChange={(e) => setStartingBalanceDraft(e.target.value)}
+                placeholder='e.g., 100000'
+              />
+              <div className='text-xs opacity-60'>
+                Used for equity curve & drawdown in Monthly Reports.
+              </div>
+            </label>
+          </div>
 
           <div className='flex flex-wrap gap-2'>
             <button
@@ -200,11 +289,25 @@ export default function DashboardPage() {
         />
       </section>
 
+      {/* Stats */}
       <section className='grid grid-cols-2 md:grid-cols-4 gap-3'>
+        {hasStartingBalance && (
+          <>
+            <Card
+              title='Starting Balance'
+              value={formatMoney(startingBalance, currency)}
+            />
+            <Card
+              title='Equity'
+              value={equity === null ? '—' : formatMoney(equity, currency)}
+            />
+          </>
+        )}
+
         <Card title='Trades' value={stats.total} />
-        <Card title='Win Rate' value={`${stats.winRate.toFixed(1)}%`} />
-        <Card title='P&L ($)' value={stats.pnl$.toFixed(2)} />
-        <Card title='P&L (%)' value={`${stats.pnlPct.toFixed(2)}%`} />
+        <Card title='Win Rate' value={`${formatNumber(stats.winRate)}%`} />
+        <Card title='P&L ($)' value={formatMoney(stats.pnl$, currency)} />
+        <Card title='P&L (%)' value={`${formatNumber(stats.pnlPct)}%`} />
         <Card title='Wins' value={stats.wins} />
         <Card title='Losses' value={stats.losses} />
         <Card title='Breakeven' value={stats.be} />
@@ -226,6 +329,7 @@ export default function DashboardPage() {
                 <th className='p-2'>Actions</th>
               </tr>
             </thead>
+
             <tbody>
               {trades.map((t) => (
                 <tr key={t.id} className='border-b'>
@@ -235,12 +339,16 @@ export default function DashboardPage() {
                   <td className='p-2'>{t.instrument}</td>
                   <td className='p-2'>{t.direction}</td>
                   <td className='p-2'>{t.outcome}</td>
-                  <td className='p-2'>{Number(t.pnl_amount).toFixed(2)}</td>
-                  <td className='p-2'>{Number(t.pnl_percent).toFixed(2)}%</td>
+                  <td className='p-2'>
+                    {formatMoney(Number(t.pnl_amount), currency)}
+                  </td>
+                  <td className='p-2'>{`${formatNumber(
+                    Number(t.pnl_percent)
+                  )}%`}</td>
                   <td className='p-2'>
                     {t.r_multiple === null || t.r_multiple === undefined
                       ? '—'
-                      : Number(t.r_multiple).toFixed(2)}
+                      : formatNumber(Number(t.r_multiple))}
                   </td>
 
                   <td className='p-2'>
