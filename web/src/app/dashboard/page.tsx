@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/src/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
+import {
+  getOrCreateProfile,
+  updateProfile,
+  type Profile,
+} from '@/src/lib/profile';
 
 type Trade = {
   id: string;
@@ -12,23 +17,41 @@ type Trade = {
   outcome: 'WIN' | 'LOSS' | 'BREAKEVEN';
   pnl_amount: number;
   pnl_percent: number;
+  r_multiple: number | null;
 };
 
 export default function DashboardPage() {
   const router = useRouter();
+
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMsg, setProfileMsg] = useState('');
+  const [showProfile, setShowProfile] = useState(false);
+
   const [trades, setTrades] = useState<Trade[]>([]);
   const [month, setMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
 
+  // Load session + profile
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) router.push('/auth');
+      try {
+        const { profile, user } = await getOrCreateProfile();
+        if (!user) return router.push('/auth');
+
+        setProfile(profile);
+        setDisplayNameDraft(profile?.display_name ?? '');
+      } catch (e: any) {
+        console.error(e);
+        router.push('/auth');
+      }
     })();
   }, [router]);
 
+  // Load trades for selected month
   useEffect(() => {
     (async () => {
       const start = new Date(`${month}-01T00:00:00`);
@@ -38,13 +61,14 @@ export default function DashboardPage() {
       const { data, error } = await supabase
         .from('trades')
         .select(
-          'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent'
+          'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, r_multiple'
         )
         .gte('opened_at', start.toISOString())
         .lt('opened_at', end.toISOString())
         .order('opened_at', { ascending: true });
 
       if (!error && data) setTrades(data as Trade[]);
+      if (error) console.error(error);
     })();
   }, [month]);
 
@@ -67,21 +91,90 @@ export default function DashboardPage() {
     router.push('/auth');
   }
 
+  async function saveProfile() {
+    setSavingProfile(true);
+    setProfileMsg('Saving...');
+
+    try {
+      const updated = await updateProfile({
+        display_name: displayNameDraft.trim() || null,
+      });
+
+      setProfile(updated);
+      setDisplayNameDraft(updated.display_name ?? '');
+      setProfileMsg('Saved');
+      setShowProfile(false); // hide profile panel after saving
+    } catch (e: any) {
+      console.error(e);
+      setProfileMsg(e?.message ?? 'Failed to save');
+    } finally {
+      setSavingProfile(false);
+      setTimeout(() => setProfileMsg(''), 2000);
+    }
+  }
+
+  const displayName =
+    profile?.display_name?.trim() || profile?.display_name || 'Trader';
+
   return (
     <main className='p-6 space-y-6'>
-      <header className='flex items-center justify-between'>
-        <h1 className='text-2xl font-semibold'>Dashboard</h1>
+      <header className='flex items-start justify-between gap-4'>
+        <div className='space-y-1'>
+          <h1 className='text-2xl font-semibold'>Dashboard</h1>
+          <div className='text-sm opacity-80'>
+            Signed in as <span className='font-semibold'>{displayName}</span>
+          </div>
+        </div>
+
         <div className='flex gap-2'>
+          <button
+            className='border rounded-lg px-4 py-2'
+            onClick={() => setShowProfile((v) => !v)}>
+            {showProfile ? 'Close' : 'Edit Profile'}
+          </button>
+
           <button
             className='border rounded-lg px-4 py-2'
             onClick={() => router.push('/trades/new')}>
             + Add Trade
           </button>
+
           <button className='border rounded-lg px-4 py-2' onClick={logout}>
             Logout
           </button>
         </div>
       </header>
+
+      {/* Profile panel (hidden by default) */}
+      {profile && showProfile && (
+        <section className='border rounded-xl p-4 max-w-3xl space-y-3'>
+          <div className='flex items-center justify-between gap-3'>
+            <h2 className='font-semibold'>Profile</h2>
+            {profileMsg && (
+              <span className='text-sm opacity-80'>{profileMsg}</span>
+            )}
+          </div>
+
+          <label className='space-y-1 block'>
+            <div className='text-sm opacity-70'>Username</div>
+            <input
+              className='w-full border rounded-lg p-3'
+              value={displayNameDraft}
+              onChange={(e) => setDisplayNameDraft(e.target.value)}
+              placeholder='e.g., Prosper'
+            />
+          </label>
+
+          <div className='flex flex-wrap gap-2'>
+            <button
+              className='border rounded-lg px-4 py-2 disabled:opacity-60'
+              onClick={saveProfile}
+              disabled={savingProfile}>
+              Save Profile
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className='flex items-center gap-3'>
         <label className='text-sm opacity-80'>Month:</label>
@@ -115,6 +208,7 @@ export default function DashboardPage() {
                 <th className='p-2'>Outcome</th>
                 <th className='p-2'>P&L ($)</th>
                 <th className='p-2'>P&L (%)</th>
+                <th className='p-2'>R</th>
               </tr>
             </thead>
             <tbody>
@@ -128,11 +222,16 @@ export default function DashboardPage() {
                   <td className='p-2'>{t.outcome}</td>
                   <td className='p-2'>{Number(t.pnl_amount).toFixed(2)}</td>
                   <td className='p-2'>{Number(t.pnl_percent).toFixed(2)}%</td>
+                  <td className='p-2'>
+                    {t.r_multiple === null || t.r_multiple === undefined
+                      ? '—'
+                      : Number(t.r_multiple).toFixed(2)}
+                  </td>
                 </tr>
               ))}
               {!trades.length && (
                 <tr>
-                  <td className='p-2 opacity-70' colSpan={6}>
+                  <td className='p-2 opacity-70' colSpan={7}>
                     No trades for this month yet.
                   </td>
                 </tr>

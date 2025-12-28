@@ -1,23 +1,47 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { supabase } from '@/src/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
+
+function nowLocalDatetimeValue() {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const min = pad(d.getMinutes());
+
+  // Format required by <input type="datetime-local">
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+}
 
 export default function NewTradePage() {
   const router = useRouter();
 
-  const [openedAt, setOpenedAt] = useState(() =>
-    new Date().toISOString().slice(0, 16)
-  );
+  const [openedAt, setOpenedAt] = useState(nowLocalDatetimeValue);
+
   const [instrument, setInstrument] = useState('EURUSD');
   const [direction, setDirection] = useState<'BUY' | 'SELL'>('BUY');
   const [outcome, setOutcome] = useState<'WIN' | 'LOSS' | 'BREAKEVEN'>('WIN');
+
   const [pnlAmount, setPnlAmount] = useState<number>(2000);
   const [pnlPercent, setPnlPercent] = useState<number>(2);
+
+  // Risk and R-multiple
+  const [riskAmount, setRiskAmount] = useState<number>(1000);
+
   const [setup, setSetup] = useState('');
   const [notes, setNotes] = useState('');
   const [msg, setMsg] = useState('');
+
+  const rMultiple = useMemo(() => {
+    if (!riskAmount || Number.isNaN(riskAmount)) return null;
+    if (Number.isNaN(pnlAmount)) return null;
+    return pnlAmount / riskAmount;
+  }, [pnlAmount, riskAmount]);
 
   async function saveTrade(e: React.FormEvent) {
     e.preventDefault();
@@ -29,6 +53,7 @@ export default function NewTradePage() {
 
     const { error } = await supabase.from('trades').insert({
       user_id: user.id,
+      // Store in DB as UTC ISO
       opened_at: new Date(openedAt).toISOString(),
       instrument,
       direction,
@@ -36,6 +61,8 @@ export default function NewTradePage() {
       outcome,
       pnl_amount: pnlAmount,
       pnl_percent: pnlPercent,
+      risk_amount: riskAmount || null,
+      r_multiple: rMultiple,
       notes: notes || null,
     });
 
@@ -121,6 +148,29 @@ export default function NewTradePage() {
               required
             />
           </Field>
+        </div>
+
+        <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+          <Field label='Risk ($) — for R multiple'>
+            <input
+              className='w-full border rounded-lg p-3'
+              type='number'
+              step='0.01'
+              value={riskAmount}
+              onChange={(e) => setRiskAmount(Number(e.target.value))}
+            />
+          </Field>
+
+          <div className='border rounded-lg p-3 flex items-center'>
+            <div className='text-sm opacity-70'>
+              R-Multiple:{' '}
+              <span className='font-semibold'>
+                {rMultiple === null || Number.isNaN(rMultiple)
+                  ? '—'
+                  : rMultiple.toFixed(2)}
+              </span>
+            </div>
+          </div>
         </div>
 
         <Field label='Setup (optional)'>
