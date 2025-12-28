@@ -88,10 +88,6 @@ export default function MonthlyReportPage() {
       <header className='flex items-start justify-between gap-4'>
         <div className='space-y-1'>
           <h1 className='text-2xl font-semibold'>Monthly Report</h1>
-          <div className='text-sm opacity-80'>
-            Daily grouping timezone:{' '}
-            <span className='font-semibold'>{report.timeZone}</span>
-          </div>
         </div>
 
         <div className='flex gap-2'>
