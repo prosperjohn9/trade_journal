@@ -46,6 +46,27 @@ function formatNumber(amount: number) {
   }).format(amount);
 }
 
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(' ');
+}
+
+function signColor(n: number) {
+  if (n > 0) return 'text-emerald-600';
+  if (n < 0) return 'text-rose-600';
+  return 'text-slate-700';
+}
+
+function badgeClasses(outcome: Trade['outcome']) {
+  switch (outcome) {
+    case 'WIN':
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'LOSS':
+      return 'bg-rose-50 text-rose-700 border-rose-200';
+    default:
+      return 'bg-slate-50 text-slate-700 border-slate-200';
+  }
+}
+
 export default function DashboardPage() {
   const router = useRouter();
 
@@ -120,16 +141,16 @@ export default function DashboardPage() {
     return { total, wins, losses, be, pnl$, pnlPct, winRate };
   }, [trades]);
 
-  // Currency from profile table 
-  const currency = (profile as any)?.base_currency || 'USD';
-
-  // Starting balance logic (treat <= 0 as not set)
   const startingBalanceRaw = (profile as any)?.starting_balance;
-  const startingBalance = toNumberSafe(startingBalanceRaw);
   const hasStartingBalance =
-    Number.isFinite(startingBalance) && startingBalance > 0;
+    startingBalanceRaw !== null && startingBalanceRaw !== undefined;
 
+  const startingBalance = hasStartingBalance
+    ? toNumberSafe(startingBalanceRaw)
+    : 0;
   const equity = hasStartingBalance ? startingBalance + stats.pnl$ : null;
+
+  const currency = (profile as any)?.base_currency || 'USD';
 
   async function logout() {
     await supabase.auth.signOut();
@@ -183,6 +204,9 @@ export default function DashboardPage() {
   const displayName =
     profile?.display_name?.trim() || profile?.display_name || 'Trader';
 
+  const equityUp = equity !== null && equity >= startingBalance;
+  const equityDown = equity !== null && equity < startingBalance;
+
   return (
     <main className='p-6 space-y-6'>
       <header className='flex items-start justify-between gap-4'>
@@ -231,7 +255,6 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* Profile panel */}
       {profile && showProfile && (
         <section className='border rounded-xl p-4 max-w-3xl space-y-3'>
           <div className='flex items-center justify-between gap-3'>
@@ -289,25 +312,37 @@ export default function DashboardPage() {
         />
       </section>
 
-      {/* Stats */}
       <section className='grid grid-cols-2 md:grid-cols-4 gap-3'>
         {hasStartingBalance && (
           <>
             <Card
               title='Starting Balance'
               value={formatMoney(startingBalance, currency)}
+              valueClassName='text-slate-900'
             />
             <Card
               title='Equity'
               value={equity === null ? '—' : formatMoney(equity, currency)}
+              valueClassName={cx(
+                equityUp && 'text-emerald-700',
+                equityDown && 'text-rose-700'
+              )}
             />
           </>
         )}
 
         <Card title='Trades' value={stats.total} />
         <Card title='Win Rate' value={`${formatNumber(stats.winRate)}%`} />
-        <Card title='P&L ($)' value={formatMoney(stats.pnl$, currency)} />
-        <Card title='P&L (%)' value={`${formatNumber(stats.pnlPct)}%`} />
+        <Card
+          title='P&L ($)'
+          value={formatMoney(stats.pnl$, currency)}
+          valueClassName={signColor(stats.pnl$)}
+        />
+        <Card
+          title='P&L (%)'
+          value={`${formatNumber(stats.pnlPct)}%`}
+          valueClassName={signColor(stats.pnlPct)}
+        />
         <Card title='Wins' value={stats.wins} />
         <Card title='Losses' value={stats.losses} />
         <Card title='Breakeven' value={stats.be} />
@@ -331,49 +366,67 @@ export default function DashboardPage() {
             </thead>
 
             <tbody>
-              {trades.map((t) => (
-                <tr key={t.id} className='border-b'>
-                  <td className='p-2'>
-                    {new Date(t.opened_at).toLocaleString()}
-                  </td>
-                  <td className='p-2'>{t.instrument}</td>
-                  <td className='p-2'>{t.direction}</td>
-                  <td className='p-2'>{t.outcome}</td>
-                  <td className='p-2'>
-                    {formatMoney(Number(t.pnl_amount), currency)}
-                  </td>
-                  <td className='p-2'>{`${formatNumber(
-                    Number(t.pnl_percent)
-                  )}%`}</td>
-                  <td className='p-2'>
-                    {t.r_multiple === null || t.r_multiple === undefined
-                      ? '—'
-                      : formatNumber(Number(t.r_multiple))}
-                  </td>
+              {trades.map((t) => {
+                const pnlAmt = Number(t.pnl_amount);
+                const pnlPct = Number(t.pnl_percent);
 
-                  <td className='p-2'>
-                    <div className='flex flex-wrap gap-2'>
-                      <button
-                        className='border rounded-lg px-3 py-1'
-                        onClick={() => router.push(`/trades/${t.id}`)}>
-                        View
-                      </button>
+                return (
+                  <tr key={t.id} className='border-b'>
+                    <td className='p-2'>
+                      {new Date(t.opened_at).toLocaleString()}
+                    </td>
+                    <td className='p-2'>{t.instrument}</td>
+                    <td className='p-2'>{t.direction}</td>
 
-                      <button
-                        className='border rounded-lg px-3 py-1'
-                        onClick={() => router.push(`/trades/${t.id}/edit`)}>
-                        Edit
-                      </button>
+                    <td className='p-2'>
+                      <span
+                        className={cx(
+                          'inline-flex items-center px-2 py-1 rounded-full border text-xs font-semibold',
+                          badgeClasses(t.outcome)
+                        )}>
+                        {t.outcome}
+                      </span>
+                    </td>
 
-                      <button
-                        className='border rounded-lg px-3 py-1'
-                        onClick={() => deleteTrade(t.id)}>
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    <td className={cx('p-2 font-medium', signColor(pnlAmt))}>
+                      {formatMoney(pnlAmt, currency)}
+                    </td>
+                    <td
+                      className={cx(
+                        'p-2 font-medium',
+                        signColor(pnlPct)
+                      )}>{`${formatNumber(pnlPct)}%`}</td>
+
+                    <td className='p-2'>
+                      {t.r_multiple === null || t.r_multiple === undefined
+                        ? '—'
+                        : formatNumber(Number(t.r_multiple))}
+                    </td>
+
+                    <td className='p-2'>
+                      <div className='flex flex-wrap gap-2'>
+                        <button
+                          className='border rounded-lg px-3 py-1'
+                          onClick={() => router.push(`/trades/${t.id}`)}>
+                          View
+                        </button>
+
+                        <button
+                          className='border rounded-lg px-3 py-1'
+                          onClick={() => router.push(`/trades/${t.id}/edit`)}>
+                          Edit
+                        </button>
+
+                        <button
+                          className='border rounded-lg px-3 py-1'
+                          onClick={() => deleteTrade(t.id)}>
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
 
               {!trades.length && (
                 <tr>
@@ -390,11 +443,19 @@ export default function DashboardPage() {
   );
 }
 
-function Card({ title, value }: { title: string; value: any }) {
+function Card({
+  title,
+  value,
+  valueClassName,
+}: {
+  title: string;
+  value: any;
+  valueClassName?: string;
+}) {
   return (
     <div className='border rounded-xl p-4'>
       <div className='text-sm opacity-70'>{title}</div>
-      <div className='text-xl font-semibold'>{value}</div>
+      <div className={cx('text-xl font-semibold', valueClassName)}>{value}</div>
     </div>
   );
 }
