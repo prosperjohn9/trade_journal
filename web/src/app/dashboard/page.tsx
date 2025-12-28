@@ -103,7 +103,7 @@ export default function DashboardPage() {
       setProfile(updated);
       setDisplayNameDraft(updated.display_name ?? '');
       setProfileMsg('Saved');
-      setShowProfile(false); // hide profile panel after saving
+      setShowProfile(false);
     } catch (e: any) {
       console.error(e);
       setProfileMsg(e?.message ?? 'Failed to save');
@@ -111,6 +111,20 @@ export default function DashboardPage() {
       setSavingProfile(false);
       setTimeout(() => setProfileMsg(''), 2000);
     }
+  }
+
+  async function deleteTrade(id: string) {
+    const ok = confirm('Delete this trade? This cannot be undone.');
+    if (!ok) return;
+
+    const { error } = await supabase.from('trades').delete().eq('id', id);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    // Update UI immediately
+    setTrades((prev) => prev.filter((t) => t.id !== id));
   }
 
   const displayName =
@@ -209,6 +223,7 @@ export default function DashboardPage() {
                 <th className='p-2'>P&L ($)</th>
                 <th className='p-2'>P&L (%)</th>
                 <th className='p-2'>R</th>
+                <th className='p-2'>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -227,11 +242,34 @@ export default function DashboardPage() {
                       ? '—'
                       : Number(t.r_multiple).toFixed(2)}
                   </td>
+
+                  <td className='p-2'>
+                    <div className='flex flex-wrap gap-2'>
+                      <button
+                        className='border rounded-lg px-3 py-1'
+                        onClick={() => router.push(`/trades/${t.id}`)}>
+                        View
+                      </button>
+
+                      <button
+                        className='border rounded-lg px-3 py-1'
+                        onClick={() => router.push(`/trades/${t.id}/edit`)}>
+                        Edit
+                      </button>
+
+                      <button
+                        className='border rounded-lg px-3 py-1'
+                        onClick={() => deleteTrade(t.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
+
               {!trades.length && (
                 <tr>
-                  <td className='p-2 opacity-70' colSpan={7}>
+                  <td className='p-2 opacity-70' colSpan={8}>
                     No trades for this month.
                   </td>
                 </tr>
