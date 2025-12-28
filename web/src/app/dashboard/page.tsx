@@ -197,7 +197,7 @@ export default function DashboardPage() {
       </section>
 
       <section className='border rounded-xl p-4'>
-        <h2 className='font-semibold mb-3'>Trades (this month)</h2>
+        <h2 className='font-semibold mb-3'>Trades</h2>
         <div className='overflow-auto'>
           <table className='w-full text-sm'>
             <thead>
@@ -232,7 +232,7 @@ export default function DashboardPage() {
               {!trades.length && (
                 <tr>
                   <td className='p-2 opacity-70' colSpan={7}>
-                    No trades for this month yet.
+                    No trades for this month.
                   </td>
                 </tr>
               )}
