@@ -35,9 +35,9 @@ type Trade = {
   lesson_learned: string | null;
   review_notes: string | null;
 
-  // screenshots
-  before_screenshot_path: string | null; // storage path
-  after_trade_screenshot_url: string | null; // storage path
+  // screenshots (storage paths)
+  before_screenshot_path: string | null;
+  after_trade_screenshot_url: string | null;
 };
 
 type ChecklistItem = {
@@ -75,6 +75,7 @@ async function signPath(path: string) {
   const { data, error } = await supabase.storage
     .from('trade-screenshots')
     .createSignedUrl(path, 60 * 10); // 10 minutes
+
   if (error || !data?.signedUrl) return '';
   return data.signedUrl;
 }
@@ -99,10 +100,12 @@ export default function ViewTradePage() {
     () => (trade ? Number(trade.pnl_amount || 0) : 0),
     [trade]
   );
+
   const commission = useMemo(
     () => (trade ? Number(trade.commission || 0) : 0),
     [trade]
   );
+
   const netPnl = useMemo(() => {
     if (!trade) return 0;
     return trade.net_pnl !== null && trade.net_pnl !== undefined
@@ -125,6 +128,7 @@ export default function ViewTradePage() {
     };
   }, [activeItems, checks]);
 
+  // Load trade
   useEffect(() => {
     (async () => {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -154,7 +158,7 @@ export default function ViewTradePage() {
     })();
   }, [id, router]);
 
-  // Always show screenshot previews (auto sign on load / when paths change)
+  // Auto preview screenshots (sign URLs on load)
   useEffect(() => {
     (async () => {
       if (!trade) return;
@@ -166,6 +170,7 @@ export default function ViewTradePage() {
         const url = await signPath(trade.before_screenshot_path);
         setBeforeUrl(url);
       }
+
       if (trade.after_trade_screenshot_url) {
         const url = await signPath(trade.after_trade_screenshot_url);
         setAfterUrl(url);
@@ -173,7 +178,7 @@ export default function ViewTradePage() {
     })();
   }, [trade?.before_screenshot_path, trade?.after_trade_screenshot_url, trade]);
 
-  // Load checklist items + checks so you can see rule breaks at a glance
+  // Load checklist items + checks
   useEffect(() => {
     (async () => {
       if (!trade?.template_id) {
@@ -182,7 +187,7 @@ export default function ViewTradePage() {
         return;
       }
 
-      // 1) load template items
+      // template items
       const { data: itemRows, error: itemErr } = await supabase
         .from('setup_template_items')
         .select('id, label, sort_order, is_active')
@@ -204,7 +209,7 @@ export default function ViewTradePage() {
         return;
       }
 
-      // 2) load saved checks for this trade
+      // saved checks for this trade
       const { data: checkRows, error: checkErr } = await supabase
         .from('trade_criteria_checks')
         .select('trade_id, item_id, checked')
@@ -216,7 +221,6 @@ export default function ViewTradePage() {
         return;
       }
 
-      // Default false (missed) unless explicitly checked=true
       const map: Record<string, boolean> = {};
       for (const it of list) map[it.id] = false;
 
@@ -266,25 +270,12 @@ export default function ViewTradePage() {
         </div>
 
         <div className='flex gap-2 flex-wrap'>
+          {/* rename Edit Entry -> Edit Trade */}
           <button
             className='border rounded-lg px-4 py-2'
             onClick={() => router.push(`/trades/${trade.id}/edit`)}>
-            Edit Entry
+            Edit Trade
           </button>
-
-          {!isReviewed ? (
-            <button
-              className='border rounded-lg px-4 py-2'
-              onClick={() => router.push(`/trades/${trade.id}/review`)}>
-              Review Trade
-            </button>
-          ) : (
-            <button
-              className='border rounded-lg px-4 py-2'
-              onClick={() => router.push(`/trades/${trade.id}/review/edit`)}>
-              Edit Review
-            </button>
-          )}
 
           <button
             className='border rounded-lg px-4 py-2'
@@ -350,10 +341,7 @@ export default function ViewTradePage() {
                     className={`flex items-center gap-3 border rounded-lg p-3 ${
                       ok ? '' : 'border-red-300'
                     }`}>
-                    <div
-                      className={`h-5 w-5 rounded-full border flex items-center justify-center text-xs ${
-                        ok ? 'opacity-80' : 'opacity-100'
-                      }`}>
+                    <div className='h-5 w-5 rounded-full border flex items-center justify-center text-xs'>
                       {ok ? '✓' : '✕'}
                     </div>
                     <div className='text-sm'>

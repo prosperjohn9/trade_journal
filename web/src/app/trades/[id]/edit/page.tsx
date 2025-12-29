@@ -524,7 +524,7 @@ export default function EditTradePage() {
   return (
     <main className='p-6 max-w-2xl space-y-6'>
       <header className='flex items-center justify-between'>
-        <h1 className='text-2xl font-semibold'>Edit Trade (Entry + Review)</h1>
+        <h1 className='text-2xl font-semibold'>Edit Trade</h1>
         <button
           className='border rounded-lg px-4 py-2'
           onClick={() => router.push(`/trades/${id}`)}>
