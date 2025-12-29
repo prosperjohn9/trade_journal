@@ -70,7 +70,6 @@ function money(n: number) {
 
 function formatErr(err: any) {
   if (!err) return 'Unknown error';
-  // Supabase error shape
   if (err.message) {
     const code = err.code ? ` (code: ${err.code})` : '';
     const details = err.details ? ` | ${err.details}` : '';
@@ -182,7 +181,6 @@ export default function TradeReviewPage() {
     setLessonLearned(t.lesson_learned ?? '');
     setReviewNotes(t.review_notes ?? '');
 
-    // IMPORTANT: set template from trade early (templates will fall back if null)
     if (t.template_id) setTemplateId(t.template_id);
 
     setMsg('');
@@ -203,9 +201,7 @@ export default function TradeReviewPage() {
     const list = (data || []) as Template[];
     setTemplates(list);
 
-    // If template already set (from trade), keep it.
     if (templateId) return;
-
     const def = list.find((t) => t.is_default);
     const pick = def?.id || list[0]?.id || '';
     setTemplateId(pick);
@@ -259,7 +255,7 @@ export default function TradeReviewPage() {
       return;
     }
 
-    // default checked=true (review behaviour)
+    // default checked=true for everything in review
     const map: Record<string, boolean> = {};
     for (const id of itemIds) map[id] = true;
 
@@ -289,7 +285,8 @@ export default function TradeReviewPage() {
     return path; // store path; open via signed URL
   }
 
-  async function saveReview(markReviewed: boolean) {
+  // mark reviewed + go back to dashboard
+  async function saveAndMarkReviewed() {
     if (!trade) return;
 
     setSaving(true);
@@ -310,7 +307,6 @@ export default function TradeReviewPage() {
 
       const afterPath = await uploadAfterScreenshotIfAny(userId);
 
-      // 1) update trade fields
       const updates: any = {
         template_id: tplId,
         entry_price: safeNum(entryPrice),
@@ -324,9 +320,7 @@ export default function TradeReviewPage() {
         lesson_learned: lessonLearned.trim() || null,
         review_notes: reviewNotes.trim() || null,
         after_trade_screenshot_url: afterPath,
-        reviewed_at: markReviewed
-          ? new Date().toISOString()
-          : trade.reviewed_at,
+        reviewed_at: new Date().toISOString(), 
       };
 
       const { error: e1 } = await supabase
@@ -335,7 +329,6 @@ export default function TradeReviewPage() {
         .eq('id', trade.id);
       if (e1) throw e1;
 
-      // 2) upsert checks for ACTIVE items
       const rows = activeItems.map((it) => ({
         trade_id: trade.id,
         item_id: it.id,
@@ -350,13 +343,11 @@ export default function TradeReviewPage() {
         if (e2) throw e2;
       }
 
-      setMsg(markReviewed ? 'Reviewed' : 'Saved');
-      setTrade((prev) => (prev ? { ...prev, ...updates } : prev));
-      setTimeout(() => setMsg(''), 1500);
+      setMsg('Reviewed successfully. Returning to dashboard...');
+      router.push('/dashboard'); 
     } catch (err: any) {
-      console.error('saveReview error:', err);
+      console.error('saveAndMarkReviewed error:', err);
       setMsg(`Failed to save: ${formatErr(err)}`);
-    } finally {
       setSaving(false);
     }
   }
@@ -437,18 +428,6 @@ export default function TradeReviewPage() {
                 </option>
               ))}
             </select>
-
-            {!templates.length && (
-              <div className='text-xs opacity-70'>
-                You need a setup template first. Create one in{' '}
-                <button
-                  className='underline'
-                  onClick={() => router.push('/settings/setups')}>
-                  Settings → Setups
-                </button>
-                .
-              </div>
-            )}
           </label>
 
           <div className='flex items-end'>
@@ -637,25 +616,19 @@ export default function TradeReviewPage() {
         </Field>
       </section>
 
-      {/* Actions */}
-      <section className='flex flex-wrap gap-2'>
+      {/* One action only */}
+      <section className='flex flex-wrap gap-2 items-center'>
         <button
           className='border rounded-lg px-4 py-2 disabled:opacity-60'
           disabled={saving}
-          onClick={() => saveReview(false)}>
-          Save
-        </button>
-
-        <button
-          className='border rounded-lg px-4 py-2 disabled:opacity-60'
-          disabled={saving}
-          onClick={() => saveReview(true)}>
+          onClick={saveAndMarkReviewed}>
           Mark Reviewed
         </button>
 
         {trade.reviewed_at && (
-          <div className='text-sm opacity-80 flex items-center'>
-            Reviewed on {new Date(trade.reviewed_at).toLocaleString()}
+          <div className='text-sm opacity-80'>
+            Previously reviewed on{' '}
+            {new Date(trade.reviewed_at).toLocaleString()}
           </div>
         )}
       </section>
