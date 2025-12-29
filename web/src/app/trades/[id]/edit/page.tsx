@@ -31,13 +31,26 @@ export default function EditTradePage() {
   const [direction, setDirection] = useState<Direction>('BUY');
   const [outcome, setOutcome] = useState<Outcome>('WIN');
 
-  // strings for better typing (minus, empty, etc.)
   const [pnlAmount, setPnlAmount] = useState<string>('0');
   const [pnlPercent, setPnlPercent] = useState<string>('0');
 
   const [riskAmount, setRiskAmount] = useState<number>(1000);
-  const [setup, setSetup] = useState('');
   const [notes, setNotes] = useState('');
+
+  // before screenshot
+  const [beforePath, setBeforePath] = useState<string | null>(null);
+  const [beforeFile, setBeforeFile] = useState<File | null>(null);
+  const [beforePreviewUrl, setBeforePreviewUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!beforeFile) {
+      setBeforePreviewUrl('');
+      return;
+    }
+    const url = URL.createObjectURL(beforeFile);
+    setBeforePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [beforeFile]);
 
   useEffect(() => {
     (async () => {
@@ -48,7 +61,7 @@ export default function EditTradePage() {
       const { data, error } = await supabase
         .from('trades')
         .select(
-          'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, risk_amount, setup, notes'
+          'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, risk_amount, notes, before_screenshot_path'
         )
         .eq('id', id)
         .single();
@@ -66,8 +79,9 @@ export default function EditTradePage() {
       setPnlAmount(String(data.pnl_amount));
       setPnlPercent(String(data.pnl_percent));
       setRiskAmount(data.risk_amount ?? 1000);
-      setSetup(data.setup ?? '');
       setNotes(data.notes ?? '');
+      setBeforePath(data.before_screenshot_path ?? null);
+
       setLoading(false);
     })();
   }, [id, router]);
@@ -79,9 +93,34 @@ export default function EditTradePage() {
     return amountNum / riskAmount;
   }, [pnlAmount, riskAmount]);
 
+  async function uploadBeforeIfAny(userId: string) {
+    if (!beforeFile) return beforePath;
+
+    const ext = beforeFile.name.includes('.')
+      ? beforeFile.name.split('.').pop()
+      : 'png';
+    const path = `before/${userId}/${id}.${ext}`;
+
+    const { error: upErr } = await supabase.storage
+      .from('trade-screenshots')
+      .upload(path, beforeFile, {
+        upsert: true,
+        cacheControl: '3600',
+        contentType: beforeFile.type || undefined,
+      });
+
+    if (upErr) throw upErr;
+
+    return path;
+  }
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setMsg('Saving...');
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData.session?.user.id;
+    if (!userId) return router.push('/auth');
 
     const pnlAmountNum = Number(pnlAmount);
     const pnlPercentNum = Number(pnlPercent);
@@ -107,26 +146,33 @@ export default function EditTradePage() {
         ? finalPnlAmount / riskAmount
         : null;
 
-    const { error } = await supabase
-      .from('trades')
-      .update({
-        opened_at: new Date(openedAt).toISOString(),
-        instrument,
-        direction,
-        outcome,
-        pnl_amount: finalPnlAmount,
-        pnl_percent: finalPnlPercent,
-        risk_amount: riskAmount || null,
-        r_multiple: finalR,
-        setup: setup || null,
-        notes: notes || null,
-      })
-      .eq('id', id);
+    try {
+      const newBeforePath = await uploadBeforeIfAny(userId);
 
-    if (error) return setMsg(error.message);
+      const { error } = await supabase
+        .from('trades')
+        .update({
+          opened_at: new Date(openedAt).toISOString(),
+          instrument,
+          direction,
+          outcome,
+          pnl_amount: finalPnlAmount,
+          pnl_percent: finalPnlPercent,
+          risk_amount: riskAmount || null,
+          r_multiple: finalR,
+          notes: notes || null,
+          before_screenshot_path: newBeforePath ?? null,
+        })
+        .eq('id', id);
 
-    setMsg('Saved successfully');
-    router.push(`/trades/${id}`);
+      if (error) return setMsg(error.message);
+
+      setMsg('Saved successfully');
+      router.push(`/trades/${id}`);
+    } catch (err: any) {
+      console.error(err);
+      setMsg(err?.message ?? 'Failed to save');
+    }
   }
 
   if (loading) {
@@ -140,7 +186,7 @@ export default function EditTradePage() {
   return (
     <main className='p-6 max-w-2xl space-y-6'>
       <header className='flex items-center justify-between'>
-        <h1 className='text-2xl font-semibold'>Edit Trade</h1>
+        <h1 className='text-2xl font-semibold'>Edit Trade (Entry)</h1>
         <button
           className='border rounded-lg px-4 py-2'
           onClick={() => router.push(`/trades/${id}`)}>
@@ -160,6 +206,36 @@ export default function EditTradePage() {
             required
           />
         </Field>
+
+        {/* Before screenshot */}
+        <section className='border rounded-xl p-4 space-y-2'>
+          <div className='font-semibold'>Before-Trade Screenshot</div>
+          <div className='text-sm opacity-70'>
+            Upload to replace the current one (optional).
+          </div>
+
+          <input
+            type='file'
+            accept='image/*'
+            onChange={(e) => setBeforeFile(e.target.files?.[0] ?? null)}
+          />
+
+          <div className='text-xs opacity-70'>
+            {beforeFile
+              ? `Selected: ${beforeFile.name}`
+              : beforePath
+              ? 'Current screenshot exists.'
+              : 'No screenshot.'}
+          </div>
+
+          {beforePreviewUrl && (
+            <img
+              src={beforePreviewUrl}
+              alt='Before preview'
+              className='max-h-64 rounded-lg border'
+            />
+          )}
+        </section>
 
         <Field label='Instrument'>
           <input
@@ -239,14 +315,6 @@ export default function EditTradePage() {
             </div>
           </div>
         </div>
-
-        <Field label='Setup (optional)'>
-          <input
-            className='w-full border rounded-lg p-3'
-            value={setup}
-            onChange={(e) => setSetup(e.target.value)}
-          />
-        </Field>
 
         <Field label='Notes (optional)'>
           <textarea
