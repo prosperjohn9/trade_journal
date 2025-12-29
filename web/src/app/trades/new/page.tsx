@@ -54,10 +54,24 @@ export default function NewTradePage() {
 
   // BEFORE-trade screenshot (setup screenshot)
   const [beforeFile, setBeforeFile] = useState<File | null>(null);
+  const [beforePreviewUrl, setBeforePreviewUrl] = useState<string>('');
 
   const [notes, setNotes] = useState('');
   const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Preview for BEFORE screenshot
+  useEffect(() => {
+    if (!beforeFile) {
+      setBeforePreviewUrl('');
+      return;
+    }
+
+    const url = URL.createObjectURL(beforeFile);
+    setBeforePreviewUrl(url);
+
+    return () => URL.revokeObjectURL(url);
+  }, [beforeFile]);
 
   // Load templates
   useEffect(() => {
@@ -152,12 +166,11 @@ export default function NewTradePage() {
     const ext = file.name.includes('.') ? file.name.split('.').pop() : 'png';
     const path = `before/${userId}/${tradeId}.${ext}`;
 
-    // upload (overwrite false by default)
     const { error: upErr } = await supabase.storage
       .from('trade-screenshots')
       .upload(path, file, {
         cacheControl: '3600',
-        upsert: true, // allow re-upload for same trade
+        upsert: true,
         contentType: file.type || undefined,
       });
 
@@ -204,7 +217,7 @@ export default function NewTradePage() {
           ? finalPnlAmount / riskAmount
           : null;
 
-      // 1) insert trade first 
+      // 1) insert trade first
       const { data: created, error: tradeErr } = await supabase
         .from('trades')
         .insert({
@@ -388,6 +401,14 @@ export default function NewTradePage() {
               ? `Selected: ${beforeFile.name}`
               : 'No screenshot selected.'}
           </div>
+
+          {beforePreviewUrl && (
+            <img
+              src={beforePreviewUrl}
+              alt='Before screenshot preview'
+              className='max-h-64 rounded-lg border'
+            />
+          )}
         </section>
 
         <Field label='Instrument'>
