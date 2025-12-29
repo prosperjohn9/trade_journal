@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/src/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 
@@ -14,9 +14,22 @@ function nowLocalDatetimeValue() {
   const hh = pad(d.getHours());
   const min = pad(d.getMinutes());
 
-  // Format required by <input type="datetime-local">
   return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
 }
+
+type Template = {
+  id: string;
+  name: string;
+  is_default: boolean;
+};
+
+type Item = {
+  id: string;
+  template_id: string;
+  label: string;
+  sort_order: number;
+  is_active: boolean;
+};
 
 export default function NewTradePage() {
   const router = useRouter();
@@ -27,16 +40,97 @@ export default function NewTradePage() {
   const [direction, setDirection] = useState<'BUY' | 'SELL'>('BUY');
   const [outcome, setOutcome] = useState<'WIN' | 'LOSS' | 'BREAKEVEN'>('WIN');
 
-  // Store as strings so it takes "-" naturally
+  // strings so "-" is easy
   const [pnlAmount, setPnlAmount] = useState<string>('2000');
   const [pnlPercent, setPnlPercent] = useState<string>('2');
 
-  // Risk and R-multiple
   const [riskAmount, setRiskAmount] = useState<number>(1000);
 
-  const [setup, setSetup] = useState('');
+  // Setup template + checklist
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templateId, setTemplateId] = useState<string>('');
+  const [items, setItems] = useState<Item[]>([]);
+  const [checks, setChecks] = useState<Record<string, boolean>>({}); // item_id -> checked
+
+  // BEFORE-trade screenshot (setup screenshot)
+  const [beforeFile, setBeforeFile] = useState<File | null>(null);
+
   const [notes, setNotes] = useState('');
   const [msg, setMsg] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Load templates
+  useEffect(() => {
+    (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) return router.push('/auth');
+
+      const { data, error } = await supabase
+        .from('setup_templates')
+        .select('id, name, is_default')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error(error);
+        setMsg(error.message);
+        return;
+      }
+
+      const list = (data || []) as Template[];
+      setTemplates(list);
+
+      // pick default if exists; else first
+      const def = list.find((t) => t.is_default);
+      const pick = def?.id || list[0]?.id || '';
+      setTemplateId((prev) => prev || pick);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load active items whenever template changes
+  useEffect(() => {
+    (async () => {
+      if (!templateId) {
+        setItems([]);
+        setChecks({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('setup_template_items')
+        .select('id, template_id, label, sort_order, is_active')
+        .eq('template_id', templateId)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error(error);
+        setMsg(error.message);
+        return;
+      }
+
+      const list = (data || []) as Item[];
+      setItems(list);
+
+      // reset checks for this template (default false)
+      const next: Record<string, boolean> = {};
+      for (const it of list) next[it.id] = false;
+      setChecks(next);
+    })();
+  }, [templateId]);
+
+  function toggle(itemId: string) {
+    setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
+  }
+
+  const checkedCount = useMemo(
+    () => Object.values(checks).filter(Boolean).length,
+    [checks]
+  );
+  const totalCount = items.length;
+  const checklistScore =
+    totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : null;
 
   const rMultiple = useMemo(() => {
     if (!riskAmount || Number.isNaN(riskAmount)) return null;
@@ -47,59 +141,144 @@ export default function NewTradePage() {
     return amountNum / riskAmount;
   }, [pnlAmount, riskAmount]);
 
+  async function uploadBeforeScreenshot(params: {
+    userId: string;
+    tradeId: string;
+    file: File;
+  }) {
+    const { userId, tradeId, file } = params;
+
+    // keep extension
+    const ext = file.name.includes('.') ? file.name.split('.').pop() : 'png';
+    const path = `before/${userId}/${tradeId}.${ext}`;
+
+    // upload (overwrite false by default)
+    const { error: upErr } = await supabase.storage
+      .from('trade-screenshots')
+      .upload(path, file, {
+        cacheControl: '3600',
+        upsert: true, // allow re-upload for same trade
+        contentType: file.type || undefined,
+      });
+
+    if (upErr) throw upErr;
+
+    return path;
+  }
+
   async function saveTrade(e: React.FormEvent) {
     e.preventDefault();
+    if (saving) return;
+
+    setSaving(true);
     setMsg('Saving...');
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
-    if (!user) return router.push('/auth');
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
+      if (!user) return router.push('/auth');
 
-    const pnlAmountNum = Number(pnlAmount);
-    const pnlPercentNum = Number(pnlPercent);
+      const pnlAmountNum = Number(pnlAmount);
+      const pnlPercentNum = Number(pnlPercent);
 
-    if (Number.isNaN(pnlAmountNum) || Number.isNaN(pnlPercentNum)) {
-      setMsg('Please enter valid P&L values.');
-      return;
+      if (Number.isNaN(pnlAmountNum) || Number.isNaN(pnlPercentNum)) {
+        setMsg('Please enter valid P&L values.');
+        setSaving(false);
+        return;
+      }
+
+      // enforce sign based on outcome
+      let finalPnlAmount = pnlAmountNum;
+      let finalPnlPercent = pnlPercentNum;
+
+      if (outcome === 'LOSS') {
+        finalPnlAmount = -Math.abs(pnlAmountNum);
+        finalPnlPercent = -Math.abs(pnlPercentNum);
+      } else if (outcome === 'WIN') {
+        finalPnlAmount = Math.abs(pnlAmountNum);
+        finalPnlPercent = Math.abs(pnlPercentNum);
+      }
+
+      const finalRMultiple =
+        riskAmount && !Number.isNaN(riskAmount)
+          ? finalPnlAmount / riskAmount
+          : null;
+
+      // 1) insert trade first 
+      const { data: created, error: tradeErr } = await supabase
+        .from('trades')
+        .insert({
+          user_id: user.id,
+          opened_at: new Date(openedAt).toISOString(),
+          instrument,
+          direction,
+          outcome,
+          pnl_amount: finalPnlAmount,
+          pnl_percent: finalPnlPercent,
+          risk_amount: riskAmount || null,
+          r_multiple: finalRMultiple,
+          notes: notes || null,
+          template_id: templateId || null,
+        })
+        .select('id')
+        .single();
+
+      if (tradeErr) {
+        setMsg(tradeErr.message);
+        setSaving(false);
+        return;
+      }
+
+      const tradeId = created?.id as string;
+
+      // 2) save checklist rows (checked / unchecked)
+      if (tradeId && templateId && items.length) {
+        const payload = items.map((it) => ({
+          trade_id: tradeId,
+          item_id: it.id,
+          checked: !!checks[it.id],
+        }));
+
+        const { error: checksErr } = await supabase
+          .from('trade_criteria_checks')
+          .upsert(payload, { onConflict: 'trade_id,item_id' });
+
+        if (checksErr) {
+          console.error(checksErr);
+          setMsg(`Saved trade, but checklist failed: ${checksErr.message}`);
+          setSaving(false);
+          return;
+        }
+      }
+
+      // 3) upload BEFORE screenshot (optional)
+      if (beforeFile) {
+        setMsg('Uploading screenshot...');
+        const path = await uploadBeforeScreenshot({
+          userId: user.id,
+          tradeId,
+          file: beforeFile,
+        });
+
+        const { error: updErr } = await supabase
+          .from('trades')
+          .update({ before_screenshot_path: path })
+          .eq('id', tradeId);
+
+        if (updErr) {
+          setMsg(`Saved trade, but screenshot link failed: ${updErr.message}`);
+          setSaving(false);
+          return;
+        }
+      }
+
+      setMsg('Saved');
+      router.push('/dashboard');
+    } catch (err: any) {
+      console.error(err);
+      setMsg(err?.message ?? 'Something went wrong.');
+      setSaving(false);
     }
-
-    // Enforce sign at save time (no auto-fill, just correct sign if needed)
-    let finalPnlAmount = pnlAmountNum;
-    let finalPnlPercent = pnlPercentNum;
-
-    if (outcome === 'LOSS') {
-      finalPnlAmount = -Math.abs(pnlAmountNum);
-      finalPnlPercent = -Math.abs(pnlPercentNum);
-    } else if (outcome === 'WIN') {
-      finalPnlAmount = Math.abs(pnlAmountNum);
-      finalPnlPercent = Math.abs(pnlPercentNum);
-    }
-    // BREAKEVEN: keep as-is
-
-    const finalRMultiple =
-      riskAmount && !Number.isNaN(riskAmount)
-        ? finalPnlAmount / riskAmount
-        : null;
-
-    const { error } = await supabase.from('trades').insert({
-      user_id: user.id,
-      // Store in DB as UTC ISO
-      opened_at: new Date(openedAt).toISOString(),
-      instrument,
-      direction,
-      setup: setup || null,
-      outcome,
-      pnl_amount: finalPnlAmount,
-      pnl_percent: finalPnlPercent,
-      risk_amount: riskAmount || null,
-      r_multiple: finalRMultiple,
-      notes: notes || null,
-    });
-
-    if (error) return setMsg(error.message);
-
-    setMsg('Saved');
-    router.push('/dashboard');
   }
 
   return (
@@ -123,6 +302,93 @@ export default function NewTradePage() {
             required
           />
         </Field>
+
+        {/* Setup + checklist at entry */}
+        <Field label='Setup (Entry Criteria)'>
+          <div className='space-y-3'>
+            <select
+              className='w-full border rounded-lg p-3'
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}>
+              {!templates.length && <option value=''>No setups yet</option>}
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.is_default ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+
+            {templateId && items.length > 0 ? (
+              <div className='border rounded-lg p-3 space-y-2'>
+                <div className='flex items-center justify-between'>
+                  <div className='text-sm opacity-70'>
+                    Tick what you followed at entry (unchecked = missed
+                    criteria)
+                  </div>
+                  <div className='text-sm font-semibold'>
+                    {checklistScore === null ? '—' : `${checklistScore}%`}
+                  </div>
+                </div>
+
+                <div className='grid grid-cols-1 gap-2'>
+                  {items.map((it) => (
+                    <label
+                      key={it.id}
+                      className='flex items-center gap-3 border rounded-lg px-3 py-2'>
+                      <input
+                        type='checkbox'
+                        checked={!!checks[it.id]}
+                        onChange={() => toggle(it.id)}
+                      />
+                      <span className='text-sm'>{it.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : templateId ? (
+              <div className='text-sm opacity-70'>
+                This setup has no active checklist items.
+              </div>
+            ) : (
+              <div className='text-sm opacity-70'>
+                Create a setup in <span className='font-semibold'>Setups</span>{' '}
+                first.
+              </div>
+            )}
+
+            <div className='text-xs opacity-60'>
+              Manage setups in{' '}
+              <button
+                type='button'
+                className='underline'
+                onClick={() => router.push('/settings/setups')}>
+                Settings → Setups
+              </button>
+            </div>
+          </div>
+        </Field>
+
+        {/* BEFORE trade screenshot (setup screenshot) */}
+        <section className='border rounded-xl p-4 space-y-2'>
+          <div className='font-semibold'>Before-Trade Screenshot</div>
+          <div className='text-sm opacity-70'>
+            Upload your setup screenshot (before you enter). Optional.
+          </div>
+
+          <input
+            className='block'
+            type='file'
+            accept='image/*'
+            onChange={(e) => setBeforeFile(e.target.files?.[0] ?? null)}
+          />
+
+          <div className='text-xs opacity-70'>
+            {beforeFile
+              ? `Selected: ${beforeFile.name}`
+              : 'No screenshot selected.'}
+          </div>
+        </section>
 
         <Field label='Instrument'>
           <input
@@ -203,14 +469,6 @@ export default function NewTradePage() {
           </div>
         </div>
 
-        <Field label='Setup (optional)'>
-          <input
-            className='w-full border rounded-lg p-3'
-            value={setup}
-            onChange={(e) => setSetup(e.target.value)}
-          />
-        </Field>
-
         <Field label='Notes (optional)'>
           <textarea
             className='w-full border rounded-lg p-3 min-h-28'
@@ -219,7 +477,12 @@ export default function NewTradePage() {
           />
         </Field>
 
-        <button className='w-full border rounded-lg p-3'>Save Trade</button>
+        <button
+          className='w-full border rounded-lg p-3 disabled:opacity-60'
+          disabled={saving}>
+          Save Trade
+        </button>
+
         {msg && <p className='text-sm opacity-80'>{msg}</p>}
       </form>
     </main>

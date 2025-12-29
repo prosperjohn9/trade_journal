@@ -19,7 +19,6 @@ type Trade = {
   pnl_percent: number;
   r_multiple: number | null;
 
-  // Review workflow fields
   template_id: string | null;
   reviewed_at: string | null;
 };
@@ -57,9 +56,9 @@ function formatMoney(amount: number, currency = 'USD') {
 }
 
 function formatNumber(amount: number) {
-  return new Intl.NumberFormat(undefined, {
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(
+    amount
+  );
 }
 
 function formatPercent(amount: number) {
@@ -164,31 +163,22 @@ export default function DashboardPage() {
         return;
       }
 
-      const list = (data || []) as Trade[];
-      setTrades(list);
+      setTrades((data || []) as Trade[]);
     })();
   }, [month]);
 
-  // Compute checklist scores for trades (for the month)
+  // Compute checklist scores for ALL trades (entry checklist), not only reviewed
   useEffect(() => {
     (async () => {
-      // Reset when month changes / trades reload
       setChecklistScoreByTrade({});
-
       if (!trades.length) return;
 
-      // Only calculate for reviewed trades (otherwise it’s usually empty)
-      const reviewedTrades = trades.filter((t) => !!t.reviewed_at);
-      if (!reviewedTrades.length) return;
-
-      const tradeIds = reviewedTrades.map((t) => t.id);
-
-      // Collect template IDs used (ignore null)
+      const tradeIds = trades.map((t) => t.id);
       const templateIds = Array.from(
-        new Set(reviewedTrades.map((t) => t.template_id).filter(Boolean))
+        new Set(trades.map((t) => t.template_id).filter(Boolean))
       ) as string[];
 
-      // If a reviewed trade has null template_id, we can’t score it reliably
+      // Base all null
       const baseScores: Record<string, number | null> = {};
       for (const t of trades) baseScores[t.id] = null;
 
@@ -219,13 +209,12 @@ export default function DashboardPage() {
           (denomByTemplate[it.template_id] || 0) + 1;
       }
 
-      // 2) Numerator: checked=true count per trade for ACTIVE items
-      // If there are no items, score is null
       if (!activeItemIds.length) {
         setChecklistScoreByTrade(baseScores);
         return;
       }
 
+      // 2) Numerator: checked=true per trade across active items
       const { data: checksData, error: checksErr } = await supabase
         .from('trade_criteria_checks')
         .select('trade_id, item_id, checked')
@@ -242,15 +231,16 @@ export default function DashboardPage() {
 
       const checkedTrueByTrade: Record<string, number> = {};
       for (const row of checks) {
-        if (row.checked)
+        if (row.checked) {
           checkedTrueByTrade[row.trade_id] =
             (checkedTrueByTrade[row.trade_id] || 0) + 1;
+        }
       }
 
-      // 3) Build final mapping
+      // 3) Final scores
       const scores: Record<string, number | null> = { ...baseScores };
 
-      for (const t of reviewedTrades) {
+      for (const t of trades) {
         const tpl = t.template_id;
         if (!tpl) {
           scores[t.id] = null;
@@ -286,11 +276,9 @@ export default function DashboardPage() {
   const startingBalanceRaw = (profile as any)?.starting_balance;
   const hasStartingBalance =
     startingBalanceRaw !== null && startingBalanceRaw !== undefined;
-
   const startingBalance = hasStartingBalance
     ? toNumberSafe(startingBalanceRaw)
     : 0;
-
   const equity = hasStartingBalance ? startingBalance + stats.pnl$ : null;
 
   const currency = (profile as any)?.base_currency || 'USD';
@@ -346,7 +334,6 @@ export default function DashboardPage() {
 
   const displayName =
     profile?.display_name?.trim() || profile?.display_name || 'Trader';
-
   const equityUp = equity !== null && equity >= startingBalance;
   const equityDown = equity !== null && equity < startingBalance;
 
@@ -493,6 +480,7 @@ export default function DashboardPage() {
 
       <section className='border rounded-xl p-4'>
         <h2 className='font-semibold mb-3'>Trades</h2>
+
         <div className='overflow-auto'>
           <table className='w-full text-sm'>
             <thead>
@@ -514,7 +502,6 @@ export default function DashboardPage() {
               {trades.map((t) => {
                 const pnlAmt = Number(t.pnl_amount);
                 const pnlPct = Number(t.pnl_percent);
-
                 const score = checklistScoreByTrade[t.id] ?? null;
 
                 return (
@@ -538,7 +525,6 @@ export default function DashboardPage() {
                     <td className={cx('p-2 font-medium', signColor(pnlAmt))}>
                       {formatMoney(pnlAmt, currency)}
                     </td>
-
                     <td className={cx('p-2 font-medium', signColor(pnlPct))}>
                       {formatPercent(pnlPct)}
                     </td>
@@ -550,13 +536,8 @@ export default function DashboardPage() {
                     </td>
 
                     <td className='p-2'>
-                      {t.reviewed_at
-                        ? score === null
-                          ? '—'
-                          : `${score.toFixed(0)}%`
-                        : '—'}
+                      {score === null ? '—' : `${score.toFixed(0)}%`}
                     </td>
-
                     <td className='p-2'>{reviewedBadge(t.reviewed_at)}</td>
 
                     <td className='p-2'>
@@ -601,9 +582,8 @@ export default function DashboardPage() {
           </table>
         </div>
 
-        {/* Optional small note for the user */}
         <div className='text-xs opacity-70 mt-3'>
-          Checklist score shows only after a trade is reviewed (Review page).
+          Checklist score is based on what you checked when you added the trade.
         </div>
       </section>
     </main>

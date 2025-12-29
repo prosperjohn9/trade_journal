@@ -37,6 +37,8 @@ type Trade = {
   emotion_tag: string | null;
   lesson_learned: string | null;
   review_notes: string | null;
+
+  after_trade_screenshot_url: string | null;
 };
 
 function toLocalDatetimeValue(dateIso: string | null) {
@@ -58,12 +60,37 @@ function safeNum(v: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function money(n: number) {
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 2,
+  }).format(n);
+}
+
+function formatErr(err: any) {
+  if (!err) return 'Unknown error';
+  // Supabase error shape
+  if (err.message) {
+    const code = err.code ? ` (code: ${err.code})` : '';
+    const details = err.details ? ` | ${err.details}` : '';
+    const hint = err.hint ? ` | ${err.hint}` : '';
+    return `${err.message}${code}${details}${hint}`;
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 export default function TradeReviewPage() {
   const router = useRouter();
   const params = useParams();
-  const tradeId = String(params.id || '');
+  const tradeId = String((params as any).id || '');
 
   const [trade, setTrade] = useState<Trade | null>(null);
+
   const [templates, setTemplates] = useState<Template[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [checks, setChecks] = useState<Record<string, boolean>>({}); // item_id -> checked
@@ -77,20 +104,28 @@ export default function TradeReviewPage() {
   const [stopLoss, setStopLoss] = useState('');
   const [takeProfit, setTakeProfit] = useState('');
   const [exitPrice, setExitPrice] = useState('');
-  const [closedAt, setClosedAt] = useState(''); // datetime-local
+  const [closedAt, setClosedAt] = useState('');
   const [commission, setCommission] = useState('0');
+
   const [emotionTag, setEmotionTag] = useState('');
   const [lessonLearned, setLessonLearned] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
+
+  const [afterFile, setAfterFile] = useState<File | null>(null);
+  const [afterPreviewUrl, setAfterPreviewUrl] = useState<string>('');
 
   const activeItems = useMemo(() => items.filter((i) => i.is_active), [items]);
 
   const adherence = useMemo(() => {
     const total = activeItems.length;
     if (!total) return { total: 0, checked: 0, pct: 0 };
-    const checked = activeItems.filter((i) => checks[i.id]).length;
-    return { total, checked, pct: (checked / total) * 100 };
+    const checkedCount = activeItems.filter((i) => checks[i.id]).length;
+    return { total, checked: checkedCount, pct: (checkedCount / total) * 100 };
   }, [activeItems, checks]);
+
+  const grossPnl = Number(trade?.pnl_amount ?? 0);
+  const commissionNum = safeNum(commission) ?? 0;
+  const netPnl = grossPnl - commissionNum;
 
   useEffect(() => {
     (async () => {
@@ -113,20 +148,22 @@ export default function TradeReviewPage() {
   }, [templateId]);
 
   async function loadTrade() {
+    setMsg('Loading...');
     const { data, error } = await supabase
       .from('trades')
       .select(
         `id, instrument, direction, outcome, opened_at, pnl_amount, pnl_percent, r_multiple,
          template_id, reviewed_at,
          entry_price, stop_loss, take_profit, exit_price, closed_at, commission, net_pnl,
-         emotion_tag, lesson_learned, review_notes`
+         emotion_tag, lesson_learned, review_notes,
+         after_trade_screenshot_url`
       )
       .eq('id', tradeId)
       .single();
 
     if (error) {
       console.error(error);
-      setMsg(error.message);
+      setMsg(formatErr(error));
       return;
     }
 
@@ -140,11 +177,15 @@ export default function TradeReviewPage() {
     setExitPrice(t.exit_price?.toString() ?? '');
     setClosedAt(toLocalDatetimeValue(t.closed_at));
     setCommission((t.commission ?? 0).toString());
+
     setEmotionTag(t.emotion_tag ?? '');
     setLessonLearned(t.lesson_learned ?? '');
     setReviewNotes(t.review_notes ?? '');
 
-    // template selection will be set after templates load (default logic)
+    // IMPORTANT: set template from trade early (templates will fall back if null)
+    if (t.template_id) setTemplateId(t.template_id);
+
+    setMsg('');
   }
 
   async function loadTemplates() {
@@ -155,20 +196,18 @@ export default function TradeReviewPage() {
 
     if (error) {
       console.error(error);
-      setMsg(error.message);
+      setMsg(formatErr(error));
       return;
     }
 
     const list = (data || []) as Template[];
     setTemplates(list);
 
-    // choose template:
-    // 1) trade.template_id
-    // 2) user default
-    // 3) first template
-    const currentTradeTemplateId = (trade as any)?.template_id as string | null;
+    // If template already set (from trade), keep it.
+    if (templateId) return;
+
     const def = list.find((t) => t.is_default);
-    const pick = currentTradeTemplateId || def?.id || list[0]?.id || '';
+    const pick = def?.id || list[0]?.id || '';
     setTemplateId(pick);
   }
 
@@ -182,7 +221,7 @@ export default function TradeReviewPage() {
 
     if (error) {
       console.error(error);
-      setMsg(error.message);
+      setMsg(formatErr(error));
       return;
     }
 
@@ -190,7 +229,6 @@ export default function TradeReviewPage() {
   }
 
   async function loadChecks(trId: string, tplId: string) {
-    // Load checks only for items of this template.
     const { data: itemRows, error: itemErr } = await supabase
       .from('setup_template_items')
       .select('id')
@@ -198,6 +236,7 @@ export default function TradeReviewPage() {
 
     if (itemErr) {
       console.error(itemErr);
+      setMsg(formatErr(itemErr));
       return;
     }
 
@@ -216,20 +255,38 @@ export default function TradeReviewPage() {
 
     if (error) {
       console.error(error);
-      setMsg(error.message);
+      setMsg(formatErr(error));
       return;
     }
 
+    // default checked=true (review behaviour)
     const map: Record<string, boolean> = {};
-    for (const id of itemIds) map[id] = true; // default: checked
+    for (const id of itemIds) map[id] = true;
+
     for (const row of (data || []) as CheckRow[]) {
       map[row.item_id] = !!row.checked;
     }
+
     setChecks(map);
   }
 
   function toggleCheck(itemId: string) {
     setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
+  }
+
+  async function uploadAfterScreenshotIfAny(userId: string) {
+    if (!afterFile) return trade?.after_trade_screenshot_url ?? null;
+
+    const ext = afterFile.name.split('.').pop()?.toLowerCase() || 'png';
+    const path = `${userId}/${tradeId}/after-${Date.now()}.${ext}`;
+
+    const { error: upErr } = await supabase.storage
+      .from('trade-screenshots')
+      .upload(path, afterFile, { upsert: true });
+
+    if (upErr) throw upErr;
+
+    return path; // store path; open via signed URL
   }
 
   async function saveReview(markReviewed: boolean) {
@@ -238,75 +295,99 @@ export default function TradeReviewPage() {
     setSaving(true);
     setMsg('Saving...');
 
-    const tplId = templateId || null;
-    const commissionNum = safeNum(commission) ?? 0;
-    const pnl = Number(trade.pnl_amount) || 0;
-
-    // optional derived net pnl
-    const netPnl = pnl - commissionNum;
-
-    // 1) update trade fields
-    const updates: any = {
-      template_id: tplId,
-      entry_price: safeNum(entryPrice),
-      stop_loss: safeNum(stopLoss),
-      take_profit: safeNum(takeProfit),
-      exit_price: safeNum(exitPrice),
-      closed_at: closedAt ? new Date(closedAt).toISOString() : null,
-      commission: commissionNum,
-      net_pnl: netPnl,
-      emotion_tag: emotionTag.trim() || null,
-      lesson_learned: lessonLearned.trim() || null,
-      review_notes: reviewNotes.trim() || null,
-      reviewed_at: markReviewed ? new Date().toISOString() : trade.reviewed_at,
-    };
-
-    const { error: e1 } = await supabase
-      .from('trades')
-      .update(updates)
-      .eq('id', trade.id);
-
-    if (e1) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData.session?.user.id;
+    if (!userId) {
       setSaving(false);
-      setMsg(e1.message);
-      return;
+      return router.push('/auth');
     }
 
-    // 2) upsert checks for active items
-    const rows = activeItems.map((it) => ({
-      trade_id: trade.id,
-      item_id: it.id,
-      checked: !!checks[it.id],
-    }));
+    try {
+      const tplId = templateId || null;
+      const pnl = Number(trade.pnl_amount) || 0;
+      const commissionNum2 = safeNum(commission) ?? 0;
+      const netPnl2 = pnl - commissionNum2;
 
-    const { error: e2 } = await supabase
-      .from('trade_criteria_checks')
-      .upsert(rows, { onConflict: 'trade_id,item_id' });
+      const afterPath = await uploadAfterScreenshotIfAny(userId);
 
-    if (e2) {
+      // 1) update trade fields
+      const updates: any = {
+        template_id: tplId,
+        entry_price: safeNum(entryPrice),
+        stop_loss: safeNum(stopLoss),
+        take_profit: safeNum(takeProfit),
+        exit_price: safeNum(exitPrice),
+        closed_at: closedAt ? new Date(closedAt).toISOString() : null,
+        commission: commissionNum2,
+        net_pnl: netPnl2,
+        emotion_tag: emotionTag.trim() || null,
+        lesson_learned: lessonLearned.trim() || null,
+        review_notes: reviewNotes.trim() || null,
+        after_trade_screenshot_url: afterPath,
+        reviewed_at: markReviewed
+          ? new Date().toISOString()
+          : trade.reviewed_at,
+      };
+
+      const { error: e1 } = await supabase
+        .from('trades')
+        .update(updates)
+        .eq('id', trade.id);
+      if (e1) throw e1;
+
+      // 2) upsert checks for ACTIVE items
+      const rows = activeItems.map((it) => ({
+        trade_id: trade.id,
+        item_id: it.id,
+        checked: !!checks[it.id],
+      }));
+
+      if (rows.length) {
+        const { error: e2 } = await supabase
+          .from('trade_criteria_checks')
+          .upsert(rows, { onConflict: 'trade_id,item_id' });
+
+        if (e2) throw e2;
+      }
+
+      setMsg(markReviewed ? 'Reviewed' : 'Saved');
+      setTrade((prev) => (prev ? { ...prev, ...updates } : prev));
+      setTimeout(() => setMsg(''), 1500);
+    } catch (err: any) {
+      console.error('saveReview error:', err);
+      setMsg(`Failed to save: ${formatErr(err)}`);
+    } finally {
       setSaving(false);
-      setMsg(e2.message);
-      return;
     }
-
-    setMsg(markReviewed ? 'Reviewed' : 'Saved');
-    setSaving(false);
-
-    // refresh trade state locally
-    setTrade((prev) =>
-      prev
-        ? {
-            ...prev,
-            ...updates,
-          }
-        : prev
-    );
-
-    setTimeout(() => setMsg(''), 1500);
   }
 
+  async function openAfterScreenshot() {
+    if (!trade?.after_trade_screenshot_url) return;
+
+    const { data, error } = await supabase.storage
+      .from('trade-screenshots')
+      .createSignedUrl(trade.after_trade_screenshot_url, 60);
+
+    if (error || !data?.signedUrl) {
+      alert(formatErr(error) || 'Could not open screenshot');
+      return;
+    }
+
+    window.open(data.signedUrl, '_blank');
+  }
+
+  useEffect(() => {
+    if (!afterFile) {
+      setAfterPreviewUrl('');
+      return;
+    }
+    const url = URL.createObjectURL(afterFile);
+    setAfterPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [afterFile]);
+
   if (!trade) {
-    return <main className='p-6'>Loading...</main>;
+    return <main className='p-6'>{msg || 'Loading...'}</main>;
   }
 
   return (
@@ -330,7 +411,7 @@ export default function TradeReviewPage() {
         </div>
       </header>
 
-      {/* Template picker */}
+      {/* Setup checklist */}
       <section className='border rounded-xl p-4 space-y-3'>
         <div className='flex items-center justify-between gap-3'>
           <h2 className='font-semibold'>Setup Checklist</h2>
@@ -379,7 +460,6 @@ export default function TradeReviewPage() {
           </div>
         </div>
 
-        {/* Checklist */}
         <div className='grid grid-cols-1 md:grid-cols-2 gap-2'>
           {activeItems.map((it) => (
             <label
@@ -401,7 +481,6 @@ export default function TradeReviewPage() {
           )}
         </div>
 
-        {/* Missed criteria = “mistakes” automatically */}
         {activeItems.length > 0 && (
           <div className='text-sm opacity-80'>
             Missed criteria:{' '}
@@ -412,9 +491,15 @@ export default function TradeReviewPage() {
         )}
       </section>
 
-      {/* Execution fields */}
+      {/* Execution */}
       <section className='border rounded-xl p-4 space-y-4'>
-        <h2 className='font-semibold'>Execution</h2>
+        <div className='flex items-center justify-between gap-3'>
+          <h2 className='font-semibold'>Execution</h2>
+          <div className='text-sm opacity-80'>
+            Gross P/L: <span className='font-semibold'>{money(grossPnl)}</span>{' '}
+            • Net P/L: <span className='font-semibold'>{money(netPnl)}</span>
+          </div>
+        </div>
 
         <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
           <Field label='Entry Price'>
@@ -476,6 +561,40 @@ export default function TradeReviewPage() {
             />
           </Field>
         </div>
+      </section>
+
+      {/* Screenshot AFTER trade */}
+      <section className='border rounded-xl p-4 space-y-3'>
+        <h2 className='font-semibold'>After-Trade Screenshot</h2>
+
+        {trade.after_trade_screenshot_url ? (
+          <div className='flex items-center gap-2 flex-wrap'>
+            <button
+              className='border rounded-lg px-4 py-2'
+              onClick={openAfterScreenshot}>
+              View current
+            </button>
+            <div className='text-sm opacity-70'>
+              Upload a new one to replace it.
+            </div>
+          </div>
+        ) : (
+          <div className='text-sm opacity-70'>No screenshot uploaded yet.</div>
+        )}
+
+        <input
+          type='file'
+          accept='image/*'
+          onChange={(e) => setAfterFile(e.target.files?.[0] ?? null)}
+        />
+
+        {afterPreviewUrl && (
+          <img
+            src={afterPreviewUrl}
+            alt='After screenshot preview'
+            className='max-h-64 rounded-lg border'
+          />
+        )}
       </section>
 
       {/* Reflection */}

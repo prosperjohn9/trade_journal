@@ -71,7 +71,6 @@ export default function SetupsPage() {
     const list = (data || []) as Template[];
     setTemplates(list);
 
-    // pick default if exists; else first
     const def = list.find((t) => t.is_default);
     const pick = def?.id || list[0]?.id || '';
     setSelectedTemplateId((prev) => prev || pick);
@@ -106,7 +105,7 @@ export default function SetupsPage() {
     const { error } = await supabase.from('setup_templates').insert({
       user_id: userId,
       name,
-      is_default: templates.length === 0, // first template becomes default
+      is_default: templates.length === 0,
     });
 
     if (error) {
@@ -166,23 +165,19 @@ export default function SetupsPage() {
   async function setDefaultTemplate(templateId: string) {
     setMsg('Setting default...');
 
-    // 1) unset current default(s)
     const { error: e1 } = await supabase
       .from('setup_templates')
       .update({ is_default: false })
       .eq('is_default', true);
-
     if (e1) {
       setMsg(e1.message);
       return;
     }
 
-    // 2) set new default
     const { error: e2 } = await supabase
       .from('setup_templates')
       .update({ is_default: true })
       .eq('id', templateId);
-
     if (e2) {
       setMsg(e2.message);
       return;
@@ -244,12 +239,10 @@ export default function SetupsPage() {
       .from('setup_template_items')
       .update({ is_active: !item.is_active })
       .eq('id', item.id);
-
     if (error) {
       setMsg(error.message);
       return;
     }
-
     await loadItems(item.template_id);
   }
 
@@ -261,7 +254,6 @@ export default function SetupsPage() {
       .from('setup_template_items')
       .delete()
       .eq('id', item.id);
-
     if (error) {
       setMsg(error.message);
       return;
@@ -279,7 +271,6 @@ export default function SetupsPage() {
 
     const other = items[swapWith];
 
-    // swap sort_order
     const { error } = await supabase.from('setup_template_items').upsert([
       { id: item.id, sort_order: other.sort_order },
       { id: other.id, sort_order: item.sort_order },
@@ -293,9 +284,7 @@ export default function SetupsPage() {
     await loadItems(item.template_id);
   }
 
-  if (loading) {
-    return <main className='p-6'>Loading...</main>;
-  }
+  if (loading) return <main className='p-6'>Loading...</main>;
 
   return (
     <main className='p-6 space-y-6'>
@@ -303,8 +292,8 @@ export default function SetupsPage() {
         <div className='space-y-1'>
           <h1 className='text-2xl font-semibold'>Setups</h1>
           <p className='text-sm opacity-80'>
-            Create your own entry criteria checklist. You’ll use these as
-            checkboxes when reviewing trades.
+            Create your own entry criteria checklists. These appear as
+            checkboxes when you add a trade.
           </p>
           {msg && <p className='text-sm opacity-80'>{msg}</p>}
         </div>
@@ -318,7 +307,6 @@ export default function SetupsPage() {
         </div>
       </header>
 
-      {/* Create template */}
       <section className='border rounded-xl p-4 space-y-3 max-w-3xl'>
         <h2 className='font-semibold'>Create Setup Template</h2>
         <div className='flex flex-wrap gap-2'>
@@ -336,7 +324,6 @@ export default function SetupsPage() {
         </div>
       </section>
 
-      {/* Template selector */}
       <section className='border rounded-xl p-4 space-y-3 max-w-3xl'>
         <div className='flex items-center justify-between gap-3'>
           <h2 className='font-semibold'>Your Templates</h2>
@@ -376,13 +363,12 @@ export default function SetupsPage() {
         </select>
       </section>
 
-      {/* Items */}
       {selectedTemplateId && (
         <section className='border rounded-xl p-4 space-y-4 max-w-3xl'>
           <div className='space-y-1'>
             <h2 className='font-semibold'>Checklist Items</h2>
             <p className='text-sm opacity-80'>
-              These become checkboxes on the Trade Review page.
+              These become checkboxes on the Add Trade page.
             </p>
           </div>
 
