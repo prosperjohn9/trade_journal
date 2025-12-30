@@ -146,6 +146,15 @@ export default function EditTradePage() {
     setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
   }
 
+  // Cancel should return to previous page or trade view
+  function onCancel() {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push(`/trades/${id}`);
+  }
+
   // ====== local file previews ======
   useEffect(() => {
     if (!beforeFile) {
@@ -224,7 +233,6 @@ export default function EditTradePage() {
       setExitPrice(data.exit_price == null ? '' : String(data.exit_price));
 
       if (data.closed_at) {
-        // convert ISO to datetime-local
         setClosedAtLocal(toDatetimeLocalValue(data.closed_at));
       } else {
         setClosedAtLocal('');
@@ -438,7 +446,6 @@ export default function EditTradePage() {
       setBeforeFile(null);
 
       setMsg('Entry saved successfully.');
-      // stay on page; user can continue editing review below
     } catch (err: any) {
       console.error(err);
       setMsg(err?.message ?? 'Failed to save entry');
@@ -463,7 +470,6 @@ export default function EditTradePage() {
 
       const commissionNum = safeNum(commission) ?? 0;
 
-      // if user typed net pnl use it, else compute it
       const netPnlNum =
         safeNum(netPnl) !== null ? (safeNum(netPnl) as number) : netPnlComputed;
 
@@ -472,7 +478,7 @@ export default function EditTradePage() {
         : null;
 
       const nowIso = new Date().toISOString();
-      const reviewedAtIso = reviewedAt ?? nowIso; // mark reviewed if not already
+      const reviewedAtIso = reviewedAt ?? nowIso;
 
       const { error } = await supabase
         .from('trades')
@@ -497,7 +503,6 @@ export default function EditTradePage() {
         return;
       }
 
-      // refresh previews if changed
       if (newAfterPath && newAfterPath !== afterPath)
         setAfterPath(newAfterPath);
       setAfterFile(null);
@@ -505,7 +510,6 @@ export default function EditTradePage() {
       if (!reviewedAt) setReviewedAt(reviewedAtIso);
 
       setMsg('Review saved successfully.');
-      // optional: go back to the trade view
       router.push(`/trades/${id}`);
     } catch (err: any) {
       console.error(err);
@@ -525,9 +529,7 @@ export default function EditTradePage() {
     <main className='p-6 max-w-2xl space-y-6'>
       <header className='flex items-center justify-between'>
         <h1 className='text-2xl font-semibold'>Edit Trade</h1>
-        <button
-          className='border rounded-lg px-4 py-2'
-          onClick={() => router.push(`/trades/${id}`)}>
+        <button className='border rounded-lg px-4 py-2' onClick={onCancel}>
           Cancel
         </button>
       </header>
@@ -602,7 +604,7 @@ export default function EditTradePage() {
           )}
         </section>
 
-        {/* Before screenshot (auto preview current + allow replace + show new preview) */}
+        {/* Before screenshot */}
         <section className='border rounded-xl p-4 space-y-2'>
           <div className='font-semibold'>Before-Trade Screenshot</div>
           <div className='text-sm opacity-70'>
@@ -837,7 +839,7 @@ export default function EditTradePage() {
           </Field>
         </div>
 
-        {/* After screenshot auto preview */}
+        {/* After screenshot */}
         <section className='border rounded-xl p-4 space-y-2'>
           <div className='font-semibold'>After-Trade Screenshot</div>
           <div className='text-sm opacity-70'>
@@ -888,7 +890,6 @@ export default function EditTradePage() {
           )}
         </section>
 
-        {/* Reflection */}
         <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
           <Field label='Emotion Tag'>
             <input
