@@ -25,6 +25,13 @@ type Trade = {
   r_multiple: number | null;
 
   reviewed_at: string | null;
+  
+  template_id: string | null;
+};
+
+type SetupTemplate = {
+  id: string;
+  name: string;
 };
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -509,6 +516,10 @@ export default function AnalyticsPage() {
     '' | 'REVIEWED' | 'NOT_REVIEWED'
   >('');
 
+  // Setup filter
+  const [setupTemplates, setSetupTemplates] = useState<SetupTemplate[]>([]);
+  const [setupFilter, setSetupFilter] = useState<'' | 'NO_SETUP' | string>('');
+
   const [calendarMonth, setCalendarMonth] = useState(() =>
     yyyyMm(today.toISOString())
   );
@@ -518,18 +529,89 @@ export default function AnalyticsPage() {
 
   const [trades, setTrades] = useState<Trade[]>([]);
 
+  // Filters panel (collapsible by default)
+  const [showFilters, setShowFilters] = useState(false);
+
+  const activeFilterCount = useMemo(() => {
+    let c = 0;
+    if (instrumentQuery.trim()) c++;
+    if (directionFilter) c++;
+    if (outcomeFilter) c++;
+    if (reviewedFilter) c++;
+    if (setupFilter) c++;
+    return c;
+  }, [
+    instrumentQuery,
+    directionFilter,
+    outcomeFilter,
+    reviewedFilter,
+    setupFilter,
+  ]);
+
+  const filtersSummary = useMemo(() => {
+    const bits: string[] = [];
+    bits.push(`${rangeStart} → ${rangeEnd}`);
+
+    if (instrumentQuery.trim())
+      bits.push(`Instrument: ${instrumentQuery.trim().toUpperCase()}`);
+    if (directionFilter) bits.push(`Dir: ${directionFilter}`);
+    if (outcomeFilter) bits.push(`Outcome: ${outcomeFilter}`);
+    if (reviewedFilter === 'REVIEWED') bits.push(`Reviewed`);
+    if (reviewedFilter === 'NOT_REVIEWED') bits.push(`Not reviewed`);
+
+    if (setupFilter === 'NO_SETUP') bits.push('Setup: none');
+    else if (setupFilter) {
+      const name = setupTemplates.find((s) => s.id === setupFilter)?.name;
+      bits.push(`Setup: ${name || 'Selected'}`);
+    }
+
+    return bits.join(' • ');
+  }, [
+    rangeStart,
+    rangeEnd,
+    instrumentQuery,
+    directionFilter,
+    outcomeFilter,
+    reviewedFilter,
+    setupFilter,
+    setupTemplates,
+  ]);
+
   useEffect(() => {
     (async () => {
       try {
         const { profile, user } = await getOrCreateProfile();
         if (!user) return router.push('/auth');
         setProfile(profile);
-      } catch (e) {
+      } catch {
         router.push('/auth');
       }
     })();
   }, [router]);
 
+  // Load setup templates
+  useEffect(() => {
+    (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('setup_templates')
+        .select('id, name')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error(error);
+        setSetupTemplates([]);
+        return;
+      }
+
+      setSetupTemplates((data || []) as SetupTemplate[]);
+    })();
+  }, []);
+
+  // Load trades (date range)
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -549,7 +631,7 @@ export default function AnalyticsPage() {
            instrument, direction, outcome,
            pnl_amount, pnl_percent,
            commission, net_pnl, r_multiple,
-           reviewed_at`
+           reviewed_at, template_id`
         )
         .gte('opened_at', start.toISOString())
         .lte('opened_at', end.toISOString())
@@ -568,17 +650,39 @@ export default function AnalyticsPage() {
     })();
   }, [rangeStart, rangeEnd, router]);
 
+  // Apply all filters
   const filteredTrades = useMemo(() => {
     const q = instrumentQuery.trim().toUpperCase();
+
     return trades.filter((t) => {
       if (q && !t.instrument?.toUpperCase().includes(q)) return false;
       if (directionFilter && t.direction !== directionFilter) return false;
       if (outcomeFilter && t.outcome !== outcomeFilter) return false;
       if (reviewedFilter === 'REVIEWED' && !t.reviewed_at) return false;
       if (reviewedFilter === 'NOT_REVIEWED' && !!t.reviewed_at) return false;
+
+      // setup filter:
+      // - '' => all
+      // - 'NO_SETUP' => template_id is null
+      // - template id => match template_id
+      if (setupFilter === 'NO_SETUP' && t.template_id !== null) return false;
+      if (
+        setupFilter &&
+        setupFilter !== 'NO_SETUP' &&
+        t.template_id !== setupFilter
+      )
+        return false;
+
       return true;
     });
-  }, [trades, instrumentQuery, directionFilter, outcomeFilter, reviewedFilter]);
+  }, [
+    trades,
+    instrumentQuery,
+    directionFilter,
+    outcomeFilter,
+    reviewedFilter,
+    setupFilter,
+  ]);
 
   const stats = useMemo(() => {
     const list = filteredTrades;
@@ -610,6 +714,7 @@ export default function AnalyticsPage() {
     const avgWin = winCount
       ? winners.map(calcNetPnl).reduce((s, v) => s + v, 0) / winCount
       : 0;
+
     const avgLossAbs = lossCount
       ? Math.abs(losers.map(calcNetPnl).reduce((s, v) => s + v, 0) / lossCount)
       : 0;
@@ -876,92 +981,140 @@ export default function AnalyticsPage() {
         </div>
       </header>
 
-      {/* Filters */}
+      {/* Filters (collapsible) */}
       <section className='border rounded-xl p-4 space-y-3'>
-        <div className='font-semibold'>Filters</div>
+        <div className='flex items-start justify-between gap-3 flex-wrap'>
+          <div>
+            <div className='font-semibold'>Filters</div>
+            <div className='text-xs opacity-70 mt-1'>{filtersSummary}</div>
+          </div>
 
-        <div className='grid grid-cols-1 md:grid-cols-4 gap-3'>
-          <Field label='Start'>
-            <input
-              className='w-full border rounded-lg p-3'
-              type='date'
-              value={rangeStart}
-              onChange={(e) => setRangeStart(e.target.value)}
-            />
-          </Field>
+          <div className='flex gap-2 items-center'>
+            {activeFilterCount > 0 && (
+              <span className='text-xs border rounded-full px-2 py-1 bg-slate-50'>
+                {activeFilterCount} active
+              </span>
+            )}
 
-          <Field label='End'>
-            <input
-              className='w-full border rounded-lg p-3'
-              type='date'
-              value={rangeEnd}
-              onChange={(e) => setRangeEnd(e.target.value)}
-            />
-          </Field>
-
-          <Field label='Instrument'>
-            <input
-              className='w-full border rounded-lg p-3'
-              placeholder='e.g. EURUSD'
-              value={instrumentQuery}
-              onChange={(e) => setInstrumentQuery(e.target.value)}
-            />
-          </Field>
-
-          <Field label='Reviewed'>
-            <select
-              className='w-full border rounded-lg p-3'
-              value={reviewedFilter}
-              onChange={(e) => setReviewedFilter(e.target.value as any)}>
-              <option value=''>All</option>
-              <option value='REVIEWED'>Reviewed</option>
-              <option value='NOT_REVIEWED'>Not reviewed</option>
-            </select>
-          </Field>
-
-          <Field label='Direction'>
-            <select
-              className='w-full border rounded-lg p-3'
-              value={directionFilter}
-              onChange={(e) => setDirectionFilter(e.target.value as any)}>
-              <option value=''>All</option>
-              <option value='BUY'>BUY</option>
-              <option value='SELL'>SELL</option>
-            </select>
-          </Field>
-
-          <Field label='Outcome'>
-            <select
-              className='w-full border rounded-lg p-3'
-              value={outcomeFilter}
-              onChange={(e) => setOutcomeFilter(e.target.value as any)}>
-              <option value=''>All</option>
-              <option value='WIN'>WIN</option>
-              <option value='LOSS'>LOSS</option>
-              <option value='BREAKEVEN'>BREAKEVEN</option>
-            </select>
-          </Field>
-
-          <div className='md:col-span-2 flex items-end gap-2'>
             <button
-              className='border rounded-lg px-4 py-3 w-full'
               type='button'
-              onClick={() => {
-                setInstrumentQuery('');
-                setDirectionFilter('');
-                setOutcomeFilter('');
-                setReviewedFilter('');
-              }}>
-              Clear filters
+              className='border rounded-lg px-4 py-2'
+              onClick={() => setShowFilters((v) => !v)}>
+              {showFilters ? 'Hide filters' : 'Show filters'}
             </button>
           </div>
         </div>
 
-        <div className='text-xs opacity-70'>
-          Loaded: <span className='font-semibold'>{trades.length}</span> •
-          Showing:{' '}
-          <span className='font-semibold'>{filteredTrades.length}</span>
-        </div>
+        {showFilters && (
+          <>
+            <div className='grid grid-cols-1 md:grid-cols-4 gap-3'>
+              <Field label='Start'>
+                <input
+                  className='w-full border rounded-lg p-3'
+                  type='date'
+                  value={rangeStart}
+                  onChange={(e) => setRangeStart(e.target.value)}
+                />
+              </Field>
+
+              <Field label='End'>
+                <input
+                  className='w-full border rounded-lg p-3'
+                  type='date'
+                  value={rangeEnd}
+                  onChange={(e) => setRangeEnd(e.target.value)}
+                />
+              </Field>
+
+              <Field label='Instrument'>
+                <input
+                  className='w-full border rounded-lg p-3'
+                  placeholder='e.g. EURUSD'
+                  value={instrumentQuery}
+                  onChange={(e) => setInstrumentQuery(e.target.value)}
+                />
+              </Field>
+
+              <Field label='Reviewed'>
+                <select
+                  className='w-full border rounded-lg p-3'
+                  value={reviewedFilter}
+                  onChange={(e) => setReviewedFilter(e.target.value as any)}>
+                  <option value=''>All</option>
+                  <option value='REVIEWED'>Reviewed</option>
+                  <option value='NOT_REVIEWED'>Not reviewed</option>
+                </select>
+              </Field>
+
+              <Field label='Direction'>
+                <select
+                  className='w-full border rounded-lg p-3'
+                  value={directionFilter}
+                  onChange={(e) => setDirectionFilter(e.target.value as any)}>
+                  <option value=''>All</option>
+                  <option value='BUY'>BUY</option>
+                  <option value='SELL'>SELL</option>
+                </select>
+              </Field>
+
+              <Field label='Setup'>
+                <select
+                  className='w-full border rounded-lg p-3'
+                  value={setupFilter}
+                  onChange={(e) => setSetupFilter(e.target.value as any)}>
+                  <option value=''>All</option>
+                  <option value='NO_SETUP'>No setup</option>
+                  {setupTemplates.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label='Outcome'>
+                <select
+                  className='w-full border rounded-lg p-3'
+                  value={outcomeFilter}
+                  onChange={(e) => setOutcomeFilter(e.target.value as any)}>
+                  <option value=''>All</option>
+                  <option value='WIN'>WIN</option>
+                  <option value='LOSS'>LOSS</option>
+                  <option value='BREAKEVEN'>BREAKEVEN</option>
+                </select>
+              </Field>
+
+              <div className='md:col-span-2 flex items-end gap-2'>
+                <button
+                  className='border rounded-lg px-4 py-3 w-full'
+                  type='button'
+                  onClick={() => {
+                    setInstrumentQuery('');
+                    setDirectionFilter('');
+                    setOutcomeFilter('');
+                    setReviewedFilter('');
+                    setSetupFilter('');
+                  }}>
+                  Clear filters
+                </button>
+              </div>
+            </div>
+
+            <div className='text-xs opacity-70'>
+              Loaded: <span className='font-semibold'>{trades.length}</span> •
+              Showing:{' '}
+              <span className='font-semibold'>{filteredTrades.length}</span>
+            </div>
+          </>
+        )}
+
+        {!showFilters && (
+          <div className='text-xs opacity-70'>
+            Loaded: <span className='font-semibold'>{trades.length}</span> •
+            Showing:{' '}
+            <span className='font-semibold'>{filteredTrades.length}</span>
+          </div>
+        )}
       </section>
 
       {msg && <p className='text-sm opacity-80'>{msg}</p>}
@@ -1072,7 +1225,7 @@ export default function AnalyticsPage() {
           subtitle='Net PnL per month'
           bars={monthlyNetBars.map((b) => ({ xLabel: b.xLabel, y: b.y }))}
           yFormatter={(y) => formatMoney(y, currency)}
-          xLabelFormatter={(x) => x.slice(5)} // show MM
+          xLabelFormatter={(x) => x.slice(5)}
         />
 
         <SvgBarChart
@@ -1264,12 +1417,18 @@ export default function AnalyticsPage() {
                 <th className='p-2'>Net PnL</th>
                 <th className='p-2'>PnL (%)</th>
                 <th className='p-2'>Reviewed</th>
+                <th className='p-2'>Setup</th>
               </tr>
             </thead>
             <tbody>
               {filteredTrades.map((t) => {
                 const net = calcNetPnl(t);
                 const pct = Number(t.pnl_percent || 0);
+                const setupName =
+                  t.template_id === null
+                    ? '—'
+                    : setupTemplates.find((s) => s.id === t.template_id)
+                        ?.name || 'Unknown';
                 return (
                   <tr key={t.id} className='border-b'>
                     <td className='p-2'>
@@ -1285,13 +1444,14 @@ export default function AnalyticsPage() {
                       {formatPercent(pct, 2)}
                     </td>
                     <td className='p-2'>{t.reviewed_at ? 'Yes' : 'No'}</td>
+                    <td className='p-2'>{setupName}</td>
                   </tr>
                 );
               })}
 
               {!filteredTrades.length && (
                 <tr>
-                  <td colSpan={7} className='p-2 opacity-70'>
+                  <td colSpan={8} className='p-2 opacity-70'>
                     No trades for selected filters.
                   </td>
                 </tr>
