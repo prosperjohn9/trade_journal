@@ -1,7 +1,8 @@
 import type { NextConfig } from 'next';
 
-const nextConfig: NextConfig = {
-  turbopack: false,
-};
+/**
+ * Default Next.js configuration.
+ */
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

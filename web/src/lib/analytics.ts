@@ -78,7 +78,11 @@ export type CoreReport = {
   bySymbol: SymbolStat[];
 };
 
-function n(x: any, fallback = 0) {
+/**
+ * Safe numeric coercion.
+ * Converts unknown input to a finite number, otherwise returns `fallback`.
+ */
+function n(x: unknown, fallback = 0) {
   const v = Number(x);
   return Number.isFinite(v) ? v : fallback;
 }
@@ -120,8 +124,12 @@ function inInstrumentFilter(symbol: string, instruments?: string[]) {
   return set.has(symbol);
 }
 
+/**
+ * Converts a month key (`YYYY-MM`) into an ISO start/end range.
+ * - startIso is inclusive
+ * - endIso is exclusive
+ **/
 export function monthToRange(month: string) {
-  // month: 'YYYY-MM'
   const start = new Date(`${month}-01T00:00:00`);
   const end = new Date(start);
   end.setMonth(end.getMonth() + 1);
@@ -129,9 +137,9 @@ export function monthToRange(month: string) {
 }
 
 /**
- * Apply client-side filters after fetching (useful for analytics).
- * For monthly report also filter at SQL-level and pass already-filtered trades.
- */
+ * Applies client-side analytics filters to trades (instrument/direction/outcome/date range).
+ * Prefer SQL-level filtering when possible, and use this for additional client-side slicing.
+ **/
 export function filterTrades(trades: TradeRow[], f: AnalyticsFilters) {
   const dir = f.direction ?? 'ALL';
   const out = f.outcome ?? 'ALL';
@@ -152,11 +160,11 @@ export function filterTrades(trades: TradeRow[], f: AnalyticsFilters) {
 }
 
 /**
- * Main computation engine: returns all core metrics + equity curve points.
- * - Uses pnl_amount for equity curve & PF.
- * - Uses daily returns for Sharpe.
- * - Uses timeZone for grouping trades into days (for Best/Worst day + Sharpe).
- */
+ * Computes the core performance report:
+ * - Equity curve and profit factor use `pnl_amount`.
+ * - Sharpe uses daily returns computed from the equity curve.
+ * - Day grouping respects `timeZone` for best/worst day and Sharpe calculations.
+ **/
 export function computeReport(params: {
   trades: TradeRow[];
   startingBalance: number; // from profiles.starting_balance
@@ -258,7 +266,10 @@ export function computeReport(params: {
   let equity = startingBalance;
   const daily: DailyPoint[] = [];
   for (const k of dailyKeys) {
-    const { pnl, label } = dailyMap.get(k)!;
+    const v = dailyMap.get(k);
+    if (!v) continue;
+
+    const { pnl, label } = v;
     const prevEquity = equity;
     equity = equity + pnl;
     const ret = prevEquity !== 0 ? pnl / prevEquity : 0;
