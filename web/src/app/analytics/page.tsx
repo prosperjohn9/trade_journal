@@ -743,6 +743,49 @@ export default function AnalyticsPage() {
     const lossCount = losers.length;
     const beCount = list.filter((t) => t.outcome === 'BREAKEVEN').length;
 
+    const winShare = totalTrades ? (winCount / totalTrades) * 100 : 0;
+    const lossShare = totalTrades ? (lossCount / totalTrades) * 100 : 0;
+    const beShare = totalTrades ? (beCount / totalTrades) * 100 : 0;
+
+    const winPctAvg = winCount
+      ? winners.reduce((s, t) => s + Number(t.pnl_percent || 0), 0) / winCount
+      : 0;
+
+    const lossPctAvg = lossCount
+      ? losers.reduce((s, t) => s + Number(t.pnl_percent || 0), 0) / lossCount
+      : 0;
+
+    const bestWinPct = winCount
+      ? Math.max(...winners.map((t) => Number(t.pnl_percent || 0)))
+      : 0;
+
+    const worstLossPct = lossCount
+      ? Math.min(...losers.map((t) => Number(t.pnl_percent || 0)))
+      : 0;
+
+    const durationMin = (t: Trade) => {
+      if (!t.closed_at) return null;
+      const mins =
+        (new Date(t.closed_at).getTime() - new Date(t.opened_at).getTime()) / 60000;
+      return Number.isFinite(mins) && mins >= 0 ? mins : null;
+    };
+
+    const winDurations = winners
+      .map(durationMin)
+      .filter((n): n is number => n !== null);
+
+    const lossDurations = losers
+      .map(durationMin)
+      .filter((n): n is number => n !== null);
+
+    const avgWinDurationMin = winDurations.length
+      ? winDurations.reduce((s, v) => s + v, 0) / winDurations.length
+      : 0;
+
+    const avgLossDurationMin = lossDurations.length
+      ? lossDurations.reduce((s, v) => s + v, 0) / lossDurations.length
+      : 0;
+
     const netPnls = list.map(calcNetPnl);
     const totalPnl = netPnls.reduce((s, v) => s + v, 0);
 
@@ -830,6 +873,15 @@ export default function AnalyticsPage() {
       winCount,
       lossCount,
       beCount,
+      winShare,
+      lossShare,
+      beShare,
+      avgWinDurationMin,
+      avgLossDurationMin,
+      winPctAvg,
+      lossPctAvg,
+      bestWinPct,
+      worstLossPct,
       totalPnl,
       winRate,
       profitFactor,
@@ -1493,6 +1545,96 @@ export default function AnalyticsPage() {
                 <span className='font-semibold'>
                   {formatNumber(stats.avgConsecutiveLosses, 1)}
                 </span>
+              </div>
+            </div>
+          </div>
+          <div className='border-t pt-3'>
+            <div className='font-semibold'>Winners vs Losers</div>
+            <div className='text-xs opacity-70 mt-1'>Counts, % stats, and average duration</div>
+
+            <div className='mt-3 grid grid-cols-1 gap-3'>
+              <div className='border rounded-xl p-4'>
+                <div className='flex items-center justify-between gap-3'>
+                  <div>
+                    <div className='font-semibold'>Winners</div>
+                    <div className='text-xs opacity-70 mt-1'>Best win %, Avg PnL %, Avg duration</div>
+                  </div>
+                  <div className='text-xs border rounded-full px-2 py-1 bg-emerald-50 border-emerald-200 text-emerald-900'>
+                    {formatPercent(stats.winShare, 0)}
+                  </div>
+                </div>
+
+                <div className='mt-4 grid grid-cols-2 gap-3 text-sm'>
+                  <div className='border rounded-lg p-3'>
+                    <div className='text-xs opacity-70'>Trades</div>
+                    <div className='text-lg font-semibold'>{stats.winCount}</div>
+                  </div>
+                  <div className='border rounded-lg p-3'>
+                    <div className='text-xs opacity-70'>Avg PnL %</div>
+                    <div className={cx('text-lg font-semibold', signColor(stats.winPctAvg))}>
+                      {formatPercent(stats.winPctAvg, 2)}
+                    </div>
+                  </div>
+
+                  <div className='border rounded-lg p-3'>
+                    <div className='text-xs opacity-70'>Best win %</div>
+                    <div className='text-lg font-semibold text-emerald-700'>
+                      {formatPercent(stats.bestWinPct, 2)}
+                    </div>
+                  </div>
+                  <div className='border rounded-lg p-3'>
+                    <div className='text-xs opacity-70'>Avg duration (wins)</div>
+                    <div className='text-lg font-semibold'>
+                      {stats.avgWinDurationMin ? `${formatNumber(stats.avgWinDurationMin, 0)} min` : '—'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className='mt-3 text-xs opacity-70'>
+                  Avg duration uses only trades with <span className='font-semibold'>closed_at</span>.
+                </div>
+              </div>
+
+              <div className='border rounded-xl p-4'>
+                <div className='flex items-center justify-between gap-3'>
+                  <div>
+                    <div className='font-semibold'>Losers</div>
+                    <div className='text-xs opacity-70 mt-1'>Worst loss %, Avg PnL %, Avg duration</div>
+                  </div>
+                  <div className='text-xs border rounded-full px-2 py-1 bg-rose-50 border-rose-200 text-rose-900'>
+                    {formatPercent(stats.lossShare, 0)}
+                  </div>
+                </div>
+
+                <div className='mt-4 grid grid-cols-2 gap-3 text-sm'>
+                  <div className='border rounded-lg p-3'>
+                    <div className='text-xs opacity-70'>Trades</div>
+                    <div className='text-lg font-semibold'>{stats.lossCount}</div>
+                  </div>
+                  <div className='border rounded-lg p-3'>
+                    <div className='text-xs opacity-70'>Avg PnL %</div>
+                    <div className={cx('text-lg font-semibold', signColor(stats.lossPctAvg))}>
+                      {formatPercent(stats.lossPctAvg, 2)}
+                    </div>
+                  </div>
+
+                  <div className='border rounded-lg p-3'>
+                    <div className='text-xs opacity-70'>Worst loss %</div>
+                    <div className='text-lg font-semibold text-rose-700'>
+                      {formatPercent(stats.worstLossPct, 2)}
+                    </div>
+                  </div>
+                  <div className='border rounded-lg p-3'>
+                    <div className='text-xs opacity-70'>Avg duration (losses)</div>
+                    <div className='text-lg font-semibold'>
+                      {stats.avgLossDurationMin ? `${formatNumber(stats.avgLossDurationMin, 0)} min` : '—'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className='mt-3 text-xs opacity-70'>
+                  Breakeven share: <span className='font-semibold'>{formatPercent(stats.beShare, 0)}</span>
+                </div>
               </div>
             </div>
           </div>
