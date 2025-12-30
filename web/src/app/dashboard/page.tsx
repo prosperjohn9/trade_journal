@@ -504,6 +504,12 @@ export default function DashboardPage() {
 
           <button
             className='border rounded-lg px-4 py-2'
+            onClick={() => router.push('/analytics')}>
+            Analytics
+          </button>
+
+          <button
+            className='border rounded-lg px-4 py-2'
             onClick={() => setShowProfile((v) => !v)}>
             {showProfile ? 'Close' : 'Edit Profile'}
           </button>
@@ -514,7 +520,7 @@ export default function DashboardPage() {
             + Add Trade
           </button>
 
-          {/* ✅ Logout now asks for confirmation */}
+          {/* Logout now asks for confirmation */}
           <button
             className='border rounded-lg px-4 py-2'
             onClick={requestLogout}>
