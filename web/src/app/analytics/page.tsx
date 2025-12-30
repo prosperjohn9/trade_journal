@@ -1477,6 +1477,24 @@ export default function AnalyticsPage() {
       {msg && <p className='text-sm opacity-80'>{msg}</p>}
       {loading && <p className='text-sm opacity-80'>Loading…</p>}
 
+      {/* Equity curve (full width, shown before KPIs) */}
+      <section className='grid grid-cols-1 gap-3'>
+        <SvgLineChart
+          title={
+            hasStartingBalance
+              ? 'Equity Curve (daily)'
+              : 'Cumulative Net PnL (daily)'
+          }
+          subtitle={
+            hasStartingBalance
+              ? `Starting balance: ${formatMoney(startingBalance, currency)}`
+              : 'Set starting balance for true equity'
+          }
+          points={equitySeries}
+          yFormatter={(y) => formatMoney(y, currency)}
+        />
+      </section>
+
       {/* Summary cards */}
       <section className='grid grid-cols-2 md:grid-cols-4 gap-3'>
         <Card
@@ -1547,23 +1565,8 @@ export default function AnalyticsPage() {
         />
       </section>
 
-      {/* Equity curve + daily net */}
-      <section className='grid grid-cols-1 lg:grid-cols-2 gap-3'>
-        <SvgLineChart
-          title={
-            hasStartingBalance
-              ? 'Equity Curve (daily)'
-              : 'Cumulative Net PnL (daily)'
-          }
-          subtitle={
-            hasStartingBalance
-              ? `Starting balance: ${formatMoney(startingBalance, currency)}`
-              : 'Set starting balance for true equity'
-          }
-          points={equitySeries}
-          yFormatter={(y) => formatMoney(y, currency)}
-        />
-
+      {/* Daily net */}
+      <section className='grid grid-cols-1 gap-3'>
         <SvgBarChart
           title='Daily Net PnL'
           subtitle='Sum of net PnL per day'
