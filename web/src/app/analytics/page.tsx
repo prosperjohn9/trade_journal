@@ -1441,7 +1441,7 @@ export default function AnalyticsPage() {
                   type='button'
                   onClick={() => {
                     const cleared: Filters = {
-                      ...draft,
+                      ...initialFilters,
                       instrumentQuery: '',
                       directionFilter: '',
                       sessionFilter: '',
