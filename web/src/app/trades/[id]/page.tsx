@@ -270,7 +270,6 @@ export default function ViewTradePage() {
         </div>
 
         <div className='flex gap-2 flex-wrap'>
-          {/* rename Edit Entry -> Edit Trade */}
           <button
             className='border rounded-lg px-4 py-2'
             onClick={() => router.push(`/trades/${trade.id}/edit`)}>
@@ -388,68 +387,87 @@ export default function ViewTradePage() {
         </div>
       </section>
 
-      {/* REVIEW */}
-      <section className='border rounded-xl p-4 space-y-4'>
-        <div className='flex items-center justify-between gap-3'>
-          <h2 className='font-semibold'>Review</h2>
-          <div className='text-sm opacity-80'>
-            Gross P/L: <span className='font-semibold'>{money(grossPnl)}</span>{' '}
-            • Net P/L: <span className='font-semibold'>{money(netPnl)}</span>
-          </div>
-        </div>
-
-        <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
-          <Row label='Entry Price' value={fmtNum(trade.entry_price)} />
-          <Row label='Stop Loss' value={fmtNum(trade.stop_loss)} />
-          <Row label='Take Profit' value={fmtNum(trade.take_profit)} />
-          <Row label='Exit Price' value={fmtNum(trade.exit_price)} />
-          <Row
-            label='Exit Date/Time'
-            value={
-              trade.closed_at ? new Date(trade.closed_at).toLocaleString() : '—'
-            }
-          />
-          <Row label='Commission' value={fmtMoney(trade.commission ?? 0)} />
-        </div>
-
-        {/* After screenshot (AUTO PREVIEW) */}
-        <div className='pt-3 border-t space-y-2'>
+      {/* REVIEW (hide/soften when not reviewed) */}
+      {!isReviewed ? (
+        <section className='border rounded-xl p-4 space-y-3'>
           <div className='flex items-center justify-between gap-3'>
-            <div className='font-semibold'>After-Trade Screenshot</div>
-            {afterUrl ? (
-              <button
-                className='border rounded-lg px-3 py-2'
-                onClick={() => openFull(afterUrl)}>
-                View
-              </button>
-            ) : (
-              <div className='text-sm opacity-70'>None</div>
+            <h2 className='font-semibold'>Review</h2>
+            <button
+              className='border rounded-lg px-4 py-2'
+              onClick={() => router.push(`/trades/${trade.id}/review`)}>
+              Review Trade
+            </button>
+          </div>
+          <div className='text-sm opacity-70'>
+            This trade hasn’t been reviewed yet.
+          </div>
+        </section>
+      ) : (
+        <section className='border rounded-xl p-4 space-y-4'>
+          <div className='flex items-center justify-between gap-3'>
+            <h2 className='font-semibold'>Review</h2>
+            <div className='text-sm opacity-80'>
+              Gross P/L:{' '}
+              <span className='font-semibold'>{money(grossPnl)}</span> • Net
+              P/L: <span className='font-semibold'>{money(netPnl)}</span>
+            </div>
+          </div>
+
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+            <Row label='Entry Price' value={fmtNum(trade.entry_price)} />
+            <Row label='Stop Loss' value={fmtNum(trade.stop_loss)} />
+            <Row label='Take Profit' value={fmtNum(trade.take_profit)} />
+            <Row label='Exit Price' value={fmtNum(trade.exit_price)} />
+            <Row
+              label='Exit Date/Time'
+              value={
+                trade.closed_at
+                  ? new Date(trade.closed_at).toLocaleString()
+                  : '—'
+              }
+            />
+            <Row label='Commission' value={fmtMoney(trade.commission ?? 0)} />
+          </div>
+
+          {/* After screenshot (AUTO PREVIEW) */}
+          <div className='pt-3 border-t space-y-2'>
+            <div className='flex items-center justify-between gap-3'>
+              <div className='font-semibold'>After-Trade Screenshot</div>
+              {afterUrl ? (
+                <button
+                  className='border rounded-lg px-3 py-2'
+                  onClick={() => openFull(afterUrl)}>
+                  View
+                </button>
+              ) : (
+                <div className='text-sm opacity-70'>None</div>
+              )}
+            </div>
+
+            {afterUrl && (
+              <img
+                src={afterUrl}
+                alt='After trade screenshot'
+                className='max-h-72 rounded-lg border cursor-pointer'
+                onClick={() => openFull(afterUrl)}
+                title='Click to view full screen'
+              />
             )}
           </div>
 
-          {afterUrl && (
-            <img
-              src={afterUrl}
-              alt='After trade screenshot'
-              className='max-h-72 rounded-lg border cursor-pointer'
-              onClick={() => openFull(afterUrl)}
-              title='Click to view full screen'
-            />
-          )}
-        </div>
-
-        {/* Reflection */}
-        <div className='pt-3 border-t'>
-          <h3 className='font-semibold'>Reflection</h3>
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-3 mt-2'>
-            <Row label='Emotion Tag' value={trade.emotion_tag ?? '—'} />
-            <Row label='Lesson Learned' value={trade.lesson_learned ?? '—'} />
+          {/* Reflection */}
+          <div className='pt-3 border-t'>
+            <h3 className='font-semibold'>Reflection</h3>
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-3 mt-2'>
+              <Row label='Emotion Tag' value={trade.emotion_tag ?? '—'} />
+              <Row label='Lesson Learned' value={trade.lesson_learned ?? '—'} />
+            </div>
+            {trade.review_notes && (
+              <Row label='Extra Notes' value={trade.review_notes} />
+            )}
           </div>
-          {trade.review_notes && (
-            <Row label='Extra Notes' value={trade.review_notes} />
-          )}
-        </div>
-      </section>
+        </section>
+      )}
     </main>
   );
 }
