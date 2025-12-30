@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/src/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import { getOrCreateProfile, type Profile } from '@/src/lib/profile';
@@ -159,20 +159,50 @@ function calcNetPnl(t: Trade) {
 
 // Lightweight SVG charts.
 
+type LinePoint = {
+  xLabel: string;
+  y: number;
+  // Optional extra info per point (e.g., daily net, cumulative net)
+  meta?: {
+    dayNet?: number;
+    cumNet?: number;
+  };
+};
+
 function SvgLineChart({
   title,
   subtitle,
   points,
   height = 220,
   yFormatter,
+  tooltipFormatter,
 }: {
   title: string;
   subtitle?: string;
-  points: Array<{ xLabel: string; y: number }>;
+  points: Array<LinePoint>;
   height?: number;
   yFormatter: (y: number) => string;
+  tooltipFormatter?: (p: LinePoint, index: number, all: Array<LinePoint>) => string;
 }) {
   const width = 820;
+
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [hover, setHover] = useState<
+    | {
+        x: number;
+        y: number;
+        content: string;
+      }
+    | null
+  >(null);
+
+  const setHoverFromEvent = (e: React.MouseEvent, content: string) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setHover({ x, y, content });
+  };
 
   // Padding tuned to prevent Y-axis value labels (which can be long) from colliding with X-axis date labels.
   const padL = 96; // left space for money labels (supports large values)
@@ -226,7 +256,7 @@ function SvgLineChart({
   );
 
   return (
-    <div className='border rounded-xl p-4'>
+    <div className='border rounded-xl p-4 relative'>
       <div className='flex items-start justify-between gap-3'>
         <div>
           <div className='font-semibold'>{title}</div>
@@ -239,8 +269,21 @@ function SvgLineChart({
         </div>
       </div>
 
+      {hover && (
+        <div
+          className='pointer-events-none absolute z-10 rounded-lg border bg-white px-3 py-2 text-xs shadow-sm'
+          style={{
+            left: Math.max(8, Math.min(hover.x + 12, width - 220)),
+            top: Math.max(8, Math.min(hover.y + 12, height - 80)),
+            whiteSpace: 'pre-line',
+          }}>
+          {hover.content}
+        </div>
+      )}
+
       <div className='mt-3 w-full overflow-x-auto'>
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
           className='w-full min-w-[680px]'
           role='img'
@@ -281,16 +324,36 @@ function SvgLineChart({
             className='text-slate-900'
           />
 
-          {points.map((p, i) => (
-            <circle
-              key={i}
-              cx={toX(i)}
-              cy={toY(p.y)}
-              r='2.5'
-              fill='currentColor'
-              className='text-slate-900'
-            />
-          ))}
+          {points.map((p, i) => {
+            const tip = tooltipFormatter
+              ? tooltipFormatter(p, i, points)
+              : `${p.xLabel}: ${yFormatter(p.y)}`;
+
+            return (
+              <g key={i}>
+                {/* Invisible larger target to make hovering easier */}
+                <circle
+                  cx={toX(i)}
+                  cy={toY(p.y)}
+                  r='10'
+                  fill='transparent'
+                  style={{ pointerEvents: 'all' }}
+                  onMouseEnter={(e) => setHoverFromEvent(e, tip)}
+                  onMouseMove={(e) => setHoverFromEvent(e, tip)}
+                  onMouseLeave={() => setHover(null)}
+                />
+
+                {/* Visible dot */}
+                <circle
+                  cx={toX(i)}
+                  cy={toY(p.y)}
+                  r='2.5'
+                  fill='currentColor'
+                  className='text-slate-900'
+                />
+              </g>
+            );
+          })}
 
           {points.map((p, i) => {
             if (points.length > 20) {
@@ -331,6 +394,24 @@ function SvgBarChart({
   xLabelFormatter?: (x: string) => string;
 }) {
   const width = 820;
+
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [hover, setHover] = useState<
+    | {
+        x: number;
+        y: number;
+        content: string;
+      }
+    | null
+  >(null);
+
+  const setHoverFromEvent = (e: React.MouseEvent, content: string) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setHover({ x, y, content });
+  };
 
   // Padding tuned to prevent Y-axis value labels from colliding with X-axis category labels.
   const padL = 96;
@@ -377,7 +458,7 @@ function SvgBarChart({
   );
 
   return (
-    <div className='border rounded-xl p-4'>
+    <div className='border rounded-xl p-4 relative'>
       <div className='flex items-start justify-between gap-3'>
         <div>
           <div className='font-semibold'>{title}</div>
@@ -390,8 +471,21 @@ function SvgBarChart({
         </div>
       </div>
 
+      {hover && (
+        <div
+          className='pointer-events-none absolute z-10 rounded-lg border bg-white px-3 py-2 text-xs shadow-sm'
+          style={{
+            left: Math.max(8, Math.min(hover.x + 12, width - 220)),
+            top: Math.max(8, Math.min(hover.y + 12, height - 80)),
+            whiteSpace: 'pre-line',
+          }}>
+          {hover.content}
+        </div>
+      )}
+
       <div className='mt-3 w-full overflow-x-auto'>
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
           className='w-full min-w-[680px]'
           role='img'
@@ -442,6 +536,19 @@ function SvgBarChart({
                   className={b.y >= 0 ? 'text-emerald-700' : 'text-rose-700'}
                   opacity={0.9}
                   rx={3}
+                  onMouseEnter={(e) =>
+                    setHoverFromEvent(
+                      e,
+                      `${xLabelFormatter ? xLabelFormatter(b.xLabel) : b.xLabel}: ${yFormatter(b.y)}`
+                    )
+                  }
+                  onMouseMove={(e) =>
+                    setHoverFromEvent(
+                      e,
+                      `${xLabelFormatter ? xLabelFormatter(b.xLabel) : b.xLabel}: ${yFormatter(b.y)}`
+                    )
+                  }
+                  onMouseLeave={() => setHover(null)}
                 />
                 <text
                   x={x + innerW / 2}
@@ -969,12 +1076,13 @@ export default function AnalyticsPage() {
 
     const res = days.reduce(
       (acc, d) => {
-        acc.cum += byDay[d] || 0;
+        const dayNet = byDay[d] || 0;
+        acc.cum += dayNet;
         const y = hasStartingBalance ? startingBalance + acc.cum : acc.cum;
-        acc.series.push({ xLabel: d, y });
+        acc.series.push({ xLabel: d, y, meta: { dayNet, cumNet: acc.cum } });
         return acc;
       },
-      { cum: 0, series: [] as Array<{ xLabel: string; y: number }> }
+      { cum: 0, series: [] as Array<{ xLabel: string; y: number; meta?: { dayNet?: number; cumNet?: number } }> }
     );
 
     return res.series;
@@ -1503,6 +1611,26 @@ export default function AnalyticsPage() {
           }
           points={equitySeries}
           yFormatter={(y) => formatMoney(y, currency)}
+          tooltipFormatter={(p) => {
+            const dayNet = p.meta?.dayNet ?? 0;
+            const cumNet = p.meta?.cumNet ?? 0;
+            const equityLabel = hasStartingBalance
+              ? `Equity: ${formatMoney(p.y, currency)}`
+              : `Cum Net: ${formatMoney(p.y, currency)}`;
+
+            const lines = [
+              `Date: ${p.xLabel}`,
+              equityLabel,
+              `Day Net PnL: ${formatMoney(dayNet, currency)}`,
+            ];
+
+            // When equity is shown, also show cumulative net PnL since start.
+            if (hasStartingBalance) {
+              lines.push(`Cum Net PnL: ${formatMoney(cumNet, currency)}`);
+            }
+
+            return lines.join('\n');
+          }}
         />
       </section>
 
