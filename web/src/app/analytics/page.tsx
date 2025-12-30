@@ -945,6 +945,105 @@ export default function AnalyticsPage() {
       .map((m) => ({ xLabel: m, y: byMonth[m] }));
   }, [filteredTrades]);
 
+  const monthlyAdvanced = useMemo(() => {
+    const byMonth: Record<
+      string,
+      {
+        month: string;
+        pnl: number;
+        trades: number;
+        wins: number;
+        losses: number;
+        be: number;
+        winSum: number;
+        lossSumAbs: number;
+        winCount: number;
+        lossCount: number;
+        durationSumMin: number;
+        durationCount: number;
+        days: Set<string>;
+      }
+    > = {};
+
+    for (const t of filteredTrades) {
+      const m = yyyyMm(t.opened_at);
+      if (!byMonth[m]) {
+        byMonth[m] = {
+          month: m,
+          pnl: 0,
+          trades: 0,
+          wins: 0,
+          losses: 0,
+          be: 0,
+          winSum: 0,
+          lossSumAbs: 0,
+          winCount: 0,
+          lossCount: 0,
+          durationSumMin: 0,
+          durationCount: 0,
+          days: new Set<string>(),
+        };
+      }
+
+      const r = byMonth[m];
+      const net = calcNetPnl(t);
+      r.pnl += net;
+      r.trades += 1;
+      r.days.add(yyyyMmDd(t.opened_at));
+
+      if (t.outcome === 'WIN') {
+        r.wins += 1;
+        r.winSum += net;
+        r.winCount += 1;
+      } else if (t.outcome === 'LOSS') {
+        r.losses += 1;
+        r.lossSumAbs += Math.abs(net);
+        r.lossCount += 1;
+      } else {
+        r.be += 1;
+      }
+
+      if (t.closed_at) {
+        const mins =
+          (new Date(t.closed_at).getTime() - new Date(t.opened_at).getTime()) /
+          60000;
+        if (Number.isFinite(mins) && mins >= 0) {
+          r.durationSumMin += mins;
+          r.durationCount += 1;
+        }
+      }
+    }
+
+    return Object.values(byMonth)
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .map((r) => {
+        const winRate = r.trades ? (r.wins / r.trades) * 100 : 0;
+        const avgWin = r.winCount ? r.winSum / r.winCount : 0;
+        const avgLossAbs = r.lossCount ? r.lossSumAbs / r.lossCount : 0;
+        const rrr =
+          avgLossAbs > 0 ? avgWin / avgLossAbs : avgWin > 0 ? Infinity : 0;
+        const lossRate = 1 - (r.trades ? r.wins / r.trades : 0);
+        const expectancy = (winRate / 100) * avgWin - lossRate * avgLossAbs;
+        const avgDurationMin = r.durationCount
+          ? r.durationSumMin / r.durationCount
+          : 0;
+
+        return {
+          month: r.month,
+          trades: r.trades,
+          pnl: r.pnl,
+          winRate,
+          wins: r.wins,
+          losses: r.losses,
+          be: r.be,
+          rrr,
+          expectancy,
+          avgDurationMin,
+          activeDays: r.days.size,
+        };
+      });
+  }, [filteredTrades]);
+
   const dayOfWeekBars = useMemo(() => {
     const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const byDow: number[] = Array(7).fill(0);
@@ -1435,6 +1534,70 @@ export default function AnalyticsPage() {
           bars={dayOfWeekBars}
           yFormatter={(y) => formatMoney(y, currency)}
         />
+      </section>
+
+      <section className='border rounded-xl p-4'>
+        <div className='flex items-center justify-between gap-3 flex-wrap'>
+          <div>
+            <div className='font-semibold'>Monthly advanced metrics</div>
+            <div className='text-xs opacity-70 mt-1'>Win rate, expectancy, RRR, duration, activity</div>
+          </div>
+        </div>
+
+        <div className='overflow-auto mt-3'>
+          <table className='w-full text-sm'>
+            <thead>
+              <tr className='text-left border-b'>
+                <th className='p-2'>Month</th>
+                <th className='p-2'>Trades</th>
+                <th className='p-2'>Win %</th>
+                <th className='p-2'>RRR</th>
+                <th className='p-2'>Expectancy / trade</th>
+                <th className='p-2'>Avg Duration</th>
+                <th className='p-2'>Active Days</th>
+                <th className='p-2'>Net PnL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthlyAdvanced.map((m) => (
+                <tr key={m.month} className='border-b'>
+                  <td className='p-2 font-medium'>{m.month}</td>
+                  <td className='p-2'>{m.trades}</td>
+                  <td className='p-2'>{formatPercent(m.winRate, 0)}</td>
+                  <td className='p-2'>
+                    {m.rrr === Infinity
+                      ? '∞'
+                      : Number.isFinite(m.rrr)
+                      ? formatNumber(m.rrr, 2)
+                      : '—'}
+                  </td>
+                  <td className={cx('p-2 font-medium', signColor(m.expectancy))}>
+                    {formatMoney(m.expectancy, currency)}
+                  </td>
+                  <td className='p-2'>
+                    {m.avgDurationMin ? `${formatNumber(m.avgDurationMin, 0)} min` : '—'}
+                  </td>
+                  <td className='p-2'>{m.activeDays}</td>
+                  <td className={cx('p-2 font-medium', signColor(m.pnl))}>
+                    {formatMoney(m.pnl, currency)}
+                  </td>
+                </tr>
+              ))}
+
+              {!monthlyAdvanced.length && (
+                <tr>
+                  <td colSpan={8} className='p-2 opacity-70'>
+                    No monthly data for selected filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className='mt-3 text-xs opacity-70'>
+          Avg duration uses only trades with <span className='font-semibold'>closed_at</span>. Active Days counts distinct trade days.
+        </div>
       </section>
 
       <section className='grid grid-cols-1 gap-3'>
