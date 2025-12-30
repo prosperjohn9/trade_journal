@@ -4,46 +4,63 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/src/lib/supabaseClient';
 import { getOrCreateProfile, type Profile } from '@/src/lib/profile';
-import {
-  computeReport,
-  monthToRange,
-  type TradeRow,
-} from '@/src/lib/analytics';
+import { computeReport, monthToRange, type TradeRow } from '@/src/lib/analytics';
 
-function monthInputDefault() {
+//** Returns the current month in YYYY-MM format for the <input type="month" /> control. */
+function getDefaultMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function n(x: any, fallback = 0) {
-  const v = Number(x);
-  return Number.isFinite(v) ? v : fallback;
+/**
+ * Converts an unknown value to a finite number.
+ * Used for optional profile fields (e.g., starting_balance) that may be null/string/number.
+ **/
+function toNumberSafe(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
+
+//Some profile fields might not exist on the generated `Profile` type.
+type ProfileExtras = {
+  starting_balance?: number | string | null;
+  base_currency?: string | null;
+};
 
 export default function MonthlyReportPage() {
   const router = useRouter();
 
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [month, setMonth] = useState(monthInputDefault);
+  const [month, setMonth] = useState<string>(getDefaultMonth);
   const [trades, setTrades] = useState<TradeRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState('');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [msg, setMsg] = useState<string>('');
 
-  // Use the browser timezone for daily grouping (matches what user sees locally)
-  const localTz = useMemo(
+  // Use the browser timezone for daily grouping (matches what the user sees locally).
+  const localTimeZone = useMemo(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     []
   );
 
+  /**
+   * Load profile + monthly trades when the selected month changes.
+   * Note: filter by opened_at within the month range.
+   **/
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       setLoading(true);
       setMsg('');
 
       try {
         const { profile, user } = await getOrCreateProfile();
-        if (!user) return router.push('/auth');
-        setProfile(profile);
+        if (!user) {
+          router.push('/auth');
+          return;
+        }
+
+        if (!cancelled) setProfile(profile);
 
         const { startIso, endIso } = monthToRange(month);
 
@@ -56,35 +73,50 @@ export default function MonthlyReportPage() {
           .lt('opened_at', endIso)
           .order('opened_at', { ascending: true });
 
+        if (cancelled) return;
+
         if (error) {
           console.error(error);
           setTrades([]);
           setMsg(error.message);
-        } else {
-          setTrades((data ?? []) as TradeRow[]);
+          return;
         }
-      } catch (e: any) {
-        console.error(e);
-        setMsg(e?.message ?? 'Failed to load monthly report');
+
+        setTrades((data ?? []) as TradeRow[]);
+      } catch (err: unknown) {
+        console.error(err);
+        const message = err instanceof Error ? err.message : 'Failed to load monthly report';
+        if (!cancelled) setMsg(message);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [month, router]);
 
+  // Read optional fields safely 
+  const profileExtras = (profile ?? null) as unknown as ProfileExtras | null;
+  const baseCurrency = profileExtras?.base_currency ?? 'USD';
+  const startingBalance = toNumberSafe(profileExtras?.starting_balance, 0);
+
+  /**
+   * Compute all report metrics from the raw trade rows.
+   * Keeping this in useMemo prevents unnecessary re-computation.
+   **/
   const report = useMemo(() => {
-    const startingBalance = n((profile as any)?.starting_balance, 0);
     return computeReport({
       trades,
       startingBalance,
-      timeZone: localTz,
+      timeZone: localTimeZone,
     });
-  }, [trades, profile, localTz]);
-
-  const baseCurrency = (profile as any)?.base_currency || 'USD';
+  }, [trades, startingBalance, localTimeZone]);
 
   return (
     <main className='p-6 space-y-6'>
+      {/* Header */}
       <header className='flex items-start justify-between gap-4'>
         <div className='space-y-1'>
           <h1 className='text-2xl font-semibold'>Monthly Report</h1>
@@ -99,6 +131,7 @@ export default function MonthlyReportPage() {
         </div>
       </header>
 
+      {/* Month selector */}
       <section className='flex items-center gap-3'>
         <label className='text-sm opacity-80'>Month:</label>
         <input
@@ -109,7 +142,7 @@ export default function MonthlyReportPage() {
         />
       </section>
 
-      {loading && <p className='opacity-80'>Loading...</p>}
+      {loading && <p className='opacity-80'>Loading…</p>}
       {msg && <p className='opacity-80'>{msg}</p>}
 
       {!loading && (
@@ -124,6 +157,7 @@ export default function MonthlyReportPage() {
               </div>
             </div>
 
+            {/* Minimal in-page chart for portability (no chart libs) */}
             <LineChart
               values={[
                 report.startingBalance,
@@ -150,14 +184,8 @@ export default function MonthlyReportPage() {
           <section className='grid grid-cols-2 md:grid-cols-4 gap-3'>
             <Card title='Average Profit' value={report.avgWin.toFixed(2)} />
             <Card title='Average Loss' value={report.avgLoss.toFixed(2)} />
-            <Card
-              title='RRR (AvgWin/|AvgLoss|)'
-              value={report.rrr.toFixed(2)}
-            />
-            <Card
-              title='Expectancy / trade'
-              value={report.expectancy.toFixed(2)}
-            />
+            <Card title='RRR (AvgWin/|AvgLoss|)' value={report.rrr.toFixed(2)} />
+            <Card title='Expectancy / trade' value={report.expectancy.toFixed(2)} />
             <Card
               title='Profit Factor'
               value={
@@ -168,10 +196,7 @@ export default function MonthlyReportPage() {
             />
             <Card title='Sharpe Ratio' value={report.sharpe.toFixed(2)} />
             <Card title='Gross Profit' value={report.grossProfit.toFixed(2)} />
-            <Card
-              title='Gross Loss (abs)'
-              value={report.grossLossAbs.toFixed(2)}
-            />
+            <Card title='Gross Loss (abs)' value={report.grossLossAbs.toFixed(2)} />
           </section>
 
           {/* Best / Worst Day */}
@@ -216,7 +241,7 @@ export default function MonthlyReportPage() {
                     <th className='p-2'>Symbol</th>
                     <th className='p-2'>Trades</th>
                     <th className='p-2'>Win Rate</th>
-                    <th className='p-2'>Net P&L</th>
+                    <th className='p-2'>Net P&amp;L</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -241,7 +266,7 @@ export default function MonthlyReportPage() {
             </div>
           </section>
 
-          {/* Daily table (useful for verifying numbers) */}
+          {/* Daily table (helps verify numbers quickly) */}
           <section className='border rounded-xl p-4 space-y-3'>
             <h2 className='font-semibold'>Daily Results</h2>
             <div className='overflow-auto'>
@@ -249,7 +274,7 @@ export default function MonthlyReportPage() {
                 <thead>
                   <tr className='text-left border-b'>
                     <th className='p-2'>Day</th>
-                    <th className='p-2'>Daily P&L</th>
+                    <th className='p-2'>Daily P&amp;L</th>
                     <th className='p-2'>Equity</th>
                   </tr>
                 </thead>
@@ -282,7 +307,7 @@ export default function MonthlyReportPage() {
   );
 }
 
-function Card({ title, value }: { title: string; value: any }) {
+function Card({ title, value }: { title: string; value: React.ReactNode }) {
   return (
     <div className='border rounded-xl p-4'>
       <div className='text-sm opacity-70'>{title}</div>
@@ -292,8 +317,9 @@ function Card({ title, value }: { title: string; value: any }) {
 }
 
 /**
- * Minimal SVG line chart (no libs)
- */
+ * Minimal SVG line chart (no libraries).
+ * Renders only an axis + a line and highlights the latest point.
+ **/
 function LineChart({ values, labels }: { values: number[]; labels: string[] }) {
   const width = 900;
   const height = 220;
@@ -306,16 +332,19 @@ function LineChart({ values, labels }: { values: number[]; labels: string[] }) {
   const points = values.map((v, i) => {
     const x = pad + (i * (width - pad * 2)) / Math.max(values.length - 1, 1);
     const y = pad + (1 - (v - min) / range) * (height - pad * 2);
-    return { x, y, v, label: labels[i] ?? '' };
+    return { x, y, label: labels[i] ?? '' };
   });
 
   const d = points
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+    .map(
+      (p, i) =>
+        `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`
+    )
     .join(' ');
 
   return (
     <div className='w-full overflow-x-auto'>
-      <svg width={width} height={height} className='block'>
+      <svg width={width} height={height} className='block' role='img' aria-label='Equity curve'>
         <line
           x1={pad}
           y1={height - pad}

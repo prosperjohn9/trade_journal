@@ -10,13 +10,6 @@ type Direction = 'BUY' | 'SELL';
 
 type Session = 'ASIA' | 'LONDON' | 'NEW_YORK' | 'OVERLAP';
 
-/**
- * Session buckets using UTC hours (consistent across users):
- * - ASIA: 21:00–06:59 UTC
- * - LONDON: 07:00–11:59 UTC
- * - OVERLAP: 12:00–15:59 UTC (London–NY overlap)
- * - NEW_YORK: 16:00–20:59 UTC
- */
 function getSessionUTC(iso: string): Session {
   const h = new Date(iso).getUTCHours();
 
@@ -83,7 +76,6 @@ type Trade = {
   r_multiple: number | null;
 
   reviewed_at: string | null;
-  
   template_id: string | null;
 };
 
@@ -165,7 +157,7 @@ function calcNetPnl(t: Trade) {
   return gross - comm;
 }
 
-// -------------------- Simple SVG charts (no deps) --------------------
+// Lightweight SVG charts.
 
 function SvgLineChart({
   title,
@@ -544,14 +536,14 @@ function CalendarHeatmap({
   );
 }
 
-// -------------------- Page --------------------
+// Page
 
 export default function AnalyticsPage() {
   const router = useRouter();
 
   const [profile, setProfile] = useState<Profile | null>(null);
 
-  // Some fields may not be present on the generated Profile type.
+  // The generated `Profile` type may not include all columns stored; safely read optional extras.
   type ProfileExtras = {
     base_currency?: string | null;
     starting_balance?: number | string | null;
@@ -585,12 +577,11 @@ export default function AnalyticsPage() {
     };
   }, [today]);
 
-  // Draft filters are what the panel edits
+  // `draft` is what the UI edits; `applied` is what actually drives queries + derived analytics.
   const [draft, setDraft] = useState<Filters>(() => initialFilters);
-  // Applied filters drive stats/charts/table
   const [applied, setApplied] = useState<Filters>(() => initialFilters);
 
-  // Setup filter
+  // Setup templates populate the Setup filter dropdown.
   const [setupTemplates, setSetupTemplates] = useState<SetupTemplate[]>([]);
 
   const [calendarMonth, setCalendarMonth] = useState(() =>
@@ -602,7 +593,7 @@ export default function AnalyticsPage() {
 
   const [trades, setTrades] = useState<Trade[]>([]);
 
-  // Filters panel (collapsible by default)
+  // Filters panel is collapsible to keep the page focused on charts.
   const [showFilters, setShowFilters] = useState(false);
 
   const activeFilterCount = useMemo(() => {
@@ -674,7 +665,7 @@ export default function AnalyticsPage() {
     })();
   }, []);
 
-  // Load trades (date range)
+  // Fetch trades for the selected date range (ordered for deterministic charts/stats).
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -713,7 +704,7 @@ export default function AnalyticsPage() {
     })();
   }, [applied.rangeStart, applied.rangeEnd, router]);
 
-  // Apply all filters
+  // Apply all non-date filters client-side to the already-fetched trade list.
   const filteredTrades = useMemo(() => {
     const q = applied.instrumentQuery.trim().toUpperCase();
 
@@ -856,6 +847,8 @@ export default function AnalyticsPage() {
     };
   }, [filteredTrades]);
 
+  // Build an equity curve by aggregating net PnL per day, then cumulatively summing.
+  // If a starting balance is set, plot equity; otherwise plot cumulative net PnL.
   const equitySeries = useMemo(() => {
     const byDay: Record<string, number> = {};
     for (const t of filteredTrades) {
@@ -913,6 +906,7 @@ export default function AnalyticsPage() {
     return labels.map((lbl, i) => ({ xLabel: lbl, y: byDow[i] }));
   }, [filteredTrades]);
 
+  // Hour-of-day performance based on the user's local time (uses `Date.getHours()`).
   const hourBars = useMemo(() => {
     const byHour: number[] = Array(24).fill(0);
     for (const t of filteredTrades) {

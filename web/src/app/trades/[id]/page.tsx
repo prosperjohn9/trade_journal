@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/src/lib/supabaseClient';
 import { useParams, useRouter } from 'next/navigation';
 
@@ -22,7 +23,7 @@ type Trade = {
 
   reviewed_at: string | null;
 
-  // review fields
+  // Review fields
   entry_price: number | null;
   stop_loss: number | null;
   take_profit: number | null;
@@ -35,7 +36,7 @@ type Trade = {
   lesson_learned: string | null;
   review_notes: string | null;
 
-  // screenshots (storage paths)
+  // Screenshots (storage paths)
   before_screenshot_path: string | null;
   after_trade_screenshot_url: string | null;
 };
@@ -71,55 +72,51 @@ function fmtMoney(n: number | null) {
   return money(Number(n));
 }
 
-async function signPath(path: string) {
+
+/**
+ * Create a short-lived signed URL for a storage path.
+ * Returns '' if signing fails.
+ **/
+async function signPath(path: string, seconds = 60 * 10) {
   const { data, error } = await supabase.storage
     .from('trade-screenshots')
-    .createSignedUrl(path, 60 * 10); // 10 minutes
+    .createSignedUrl(path, seconds);
 
   if (error || !data?.signedUrl) return '';
   return data.signedUrl;
 }
 
+/**
+ * View page: shows a trade entry, checklist adherence, and review details (if reviewed),
+ * plus clickable before/after screenshots using signed URLs.
+ **/
 export default function ViewTradePage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const id = params.id;
+  const tradeId = params.id;
 
   const [trade, setTrade] = useState<Trade | null>(null);
   const [msg, setMsg] = useState('Loading...');
 
-  // always-on previews (signed urls)
-  const [beforeUrl, setBeforeUrl] = useState<string>('');
-  const [afterUrl, setAfterUrl] = useState<string>('');
+  // Signed URL previews for screenshots (computed from storage paths)
+  const [beforeUrl, setBeforeUrl] = useState('');
+  const [afterUrl, setAfterUrl] = useState('');
 
-  // checklist
+  // Checklist items + saved checks
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [checks, setChecks] = useState<Record<string, boolean>>({}); // item_id -> checked
 
-  const grossPnl = useMemo(
-    () => (trade ? Number(trade.pnl_amount || 0) : 0),
-    [trade]
-  );
-
-  const commission = useMemo(
-    () => (trade ? Number(trade.commission || 0) : 0),
-    [trade]
-  );
-
-  const netPnl = useMemo(() => {
-    if (!trade) return 0;
-    return trade.net_pnl !== null && trade.net_pnl !== undefined
-      ? Number(trade.net_pnl)
-      : grossPnl - commission;
-  }, [trade, grossPnl, commission]);
+  const isReviewed = !!trade?.reviewed_at;
 
   const activeItems = useMemo(() => items.filter((i) => i.is_active), [items]);
 
   const adherence = useMemo(() => {
     const total = activeItems.length;
     if (!total) return { total: 0, checked: 0, missed: 0, pct: 0 };
+
     const checkedCount = activeItems.filter((i) => checks[i.id]).length;
     const missed = total - checkedCount;
+
     return {
       total,
       checked: checkedCount,
@@ -128,119 +125,168 @@ export default function ViewTradePage() {
     };
   }, [activeItems, checks]);
 
-  // Load trade
-  useEffect(() => {
-    (async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const user = sessionData.session?.user;
-      if (!user) return router.push('/auth');
-
-      const { data, error } = await supabase
-        .from('trades')
-        .select(
-          `id, opened_at, instrument, direction, outcome,
-           pnl_amount, pnl_percent, risk_amount, r_multiple,
-           template_id, notes, reviewed_at,
-           entry_price, stop_loss, take_profit, exit_price, closed_at, commission, net_pnl,
-           emotion_tag, lesson_learned, review_notes,
-           before_screenshot_path, after_trade_screenshot_url`
-        )
-        .eq('id', id)
-        .single();
-
-      if (error || !data) {
-        setMsg(error?.message ?? 'Trade not found');
-        return;
-      }
-
-      setTrade(data as Trade);
-      setMsg('');
-    })();
-  }, [id, router]);
-
-  // Auto preview screenshots (sign URLs on load)
-  useEffect(() => {
-    (async () => {
-      if (!trade) return;
-
-      setBeforeUrl('');
-      setAfterUrl('');
-
-      if (trade.before_screenshot_path) {
-        const url = await signPath(trade.before_screenshot_path);
-        setBeforeUrl(url);
-      }
-
-      if (trade.after_trade_screenshot_url) {
-        const url = await signPath(trade.after_trade_screenshot_url);
-        setAfterUrl(url);
-      }
-    })();
-  }, [trade?.before_screenshot_path, trade?.after_trade_screenshot_url, trade]);
-
-  // Load checklist items + checks
-  useEffect(() => {
-    (async () => {
-      if (!trade?.template_id) {
-        setItems([]);
-        setChecks({});
-        return;
-      }
-
-      // template items
-      const { data: itemRows, error: itemErr } = await supabase
-        .from('setup_template_items')
-        .select('id, label, sort_order, is_active')
-        .eq('template_id', trade.template_id)
-        .order('sort_order', { ascending: true })
-        .order('created_at', { ascending: true });
-
-      if (itemErr) {
-        console.error(itemErr);
-        return;
-      }
-
-      const list = (itemRows || []) as ChecklistItem[];
-      setItems(list);
-
-      const itemIds = list.map((i) => i.id);
-      if (!itemIds.length) {
-        setChecks({});
-        return;
-      }
-
-      // saved checks for this trade
-      const { data: checkRows, error: checkErr } = await supabase
-        .from('trade_criteria_checks')
-        .select('trade_id, item_id, checked')
-        .eq('trade_id', trade.id)
-        .in('item_id', itemIds);
-
-      if (checkErr) {
-        console.error(checkErr);
-        return;
-      }
-
-      const map: Record<string, boolean> = {};
-      for (const it of list) map[it.id] = false;
-
-      for (const row of (checkRows || []) as CheckRow[]) {
-        map[row.item_id] = !!row.checked;
-      }
-
-      setChecks(map);
-    })();
-  }, [trade?.id, trade?.template_id]);
+  // Derived P/L numbers for the Review section
+  const grossPnl = Number(trade?.pnl_amount ?? 0);
+  const commission = Number(trade?.commission ?? 0);
+  const netPnl =
+    trade?.net_pnl !== null && trade?.net_pnl !== undefined
+      ? Number(trade.net_pnl)
+      : grossPnl - commission;
 
   function openFull(url: string) {
     if (!url) return;
     window.open(url, '_blank');
   }
 
+  /**
+   * Load the trade from DB.
+   * Also keep the UI safe by showing a message if the record is missing.
+   **/
+  const loadTrade = useCallback(async () => {
+    setMsg('Loading...');
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      router.push('/auth');
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('trades')
+      .select(
+        `id, opened_at, instrument, direction, outcome,
+         pnl_amount, pnl_percent, risk_amount, r_multiple,
+         template_id, notes, reviewed_at,
+         entry_price, stop_loss, take_profit, exit_price, closed_at, commission, net_pnl,
+         emotion_tag, lesson_learned, review_notes,
+         before_screenshot_path, after_trade_screenshot_url`
+      )
+      .eq('id', tradeId)
+      .single();
+
+    if (error || !data) {
+      setTrade(null);
+      setMsg(error?.message ?? 'Trade not found');
+      return;
+    }
+
+    setTrade(data as Trade);
+    setMsg('');
+  }, [router, tradeId]);
+
+  /**
+   * Load checklist items for the trade's template + checks for this trade.
+   * If trade has no template, clear checklist UI.
+   **/
+  const loadChecklist = useCallback(async (tr: Trade) => {
+    if (!tr.template_id) {
+      setItems([]);
+      setChecks({});
+      return;
+    }
+
+    // 1) Load template items
+    const { data: itemRows, error: itemErr } = await supabase
+      .from('setup_template_items')
+      .select('id, label, sort_order, is_active')
+      .eq('template_id', tr.template_id)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    if (itemErr) {
+      console.error(itemErr);
+      return;
+    }
+
+    const list = (itemRows || []) as ChecklistItem[];
+    setItems(list);
+
+    const itemIds = list.map((i) => i.id);
+    if (!itemIds.length) {
+      setChecks({});
+      return;
+    }
+
+    // 2) Load checks for this trade
+    const { data: checkRows, error: checkErr } = await supabase
+      .from('trade_criteria_checks')
+      .select('trade_id, item_id, checked')
+      .eq('trade_id', tr.id)
+      .in('item_id', itemIds);
+
+    if (checkErr) {
+      console.error(checkErr);
+      return;
+    }
+
+    // Default false; then override with DB values.
+    const map: Record<string, boolean> = {};
+    for (const it of list) map[it.id] = false;
+
+    for (const row of (checkRows || []) as CheckRow[]) {
+      map[row.item_id] = !!row.checked;
+    }
+
+    setChecks(map);
+  }, []);
+
+  /**
+   * Sign screenshot URLs when paths are available.
+   * Reset URLs first to avoid showing stale images while loading.
+   **/
+  const loadSignedScreenshots = useCallback(async (tr: Trade) => {
+    setBeforeUrl('');
+    setAfterUrl('');
+
+    if (tr.before_screenshot_path) {
+      const url = await signPath(tr.before_screenshot_path);
+      setBeforeUrl(url);
+    }
+
+    if (tr.after_trade_screenshot_url) {
+      const url = await signPath(tr.after_trade_screenshot_url);
+      setAfterUrl(url);
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      await loadTrade();
+      if (cancelled) return;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadTrade]);
+
+  // When trade changes, refresh checklist + signed screenshots
+  useEffect(() => {
+    if (!trade) return;
+
+    let cancelled = false;
+
+    (async () => {
+      await loadSignedScreenshots(trade);
+      if (cancelled) return;
+
+      await loadChecklist(trade);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [trade, loadChecklist, loadSignedScreenshots]);
+
+  // Loading / not found state
   if (!trade) {
     return (
       <main className='p-6'>
         <p className='opacity-80'>{msg}</p>
+
         <button
           className='border rounded-lg px-4 py-2 mt-4'
           onClick={() => router.push('/dashboard')}>
@@ -250,21 +296,20 @@ export default function ViewTradePage() {
     );
   }
 
-  const isReviewed = !!trade.reviewed_at;
-
   return (
     <main className='p-6 max-w-4xl space-y-6'>
       <header className='flex items-start justify-between gap-4'>
         <div className='space-y-1'>
           <h1 className='text-2xl font-semibold'>Trade Details</h1>
+
           <div className='text-sm opacity-80'>
             {trade.instrument} • {trade.direction} • {trade.outcome} •{' '}
             {new Date(trade.opened_at).toLocaleString()}
           </div>
-          {isReviewed && (
+
+          {isReviewed && trade.reviewed_at && (
             <div className='text-sm opacity-80'>
-              Reviewed on{' '}
-              {new Date(trade.reviewed_at as string).toLocaleString()}
+              Reviewed on {new Date(trade.reviewed_at).toLocaleString()}
             </div>
           )}
         </div>
@@ -318,6 +363,7 @@ export default function ViewTradePage() {
         <div className='pt-3 border-t space-y-3'>
           <div className='flex items-center justify-between gap-3'>
             <div className='font-semibold'>Setup Checklist</div>
+
             {activeItems.length ? (
               <div className='text-sm opacity-80'>
                 Adherence:{' '}
@@ -334,6 +380,7 @@ export default function ViewTradePage() {
             <div className='grid grid-cols-1 md:grid-cols-2 gap-2'>
               {activeItems.map((it) => {
                 const ok = !!checks[it.id];
+
                 return (
                   <div
                     key={it.id}
@@ -343,6 +390,7 @@ export default function ViewTradePage() {
                     <div className='h-5 w-5 rounded-full border flex items-center justify-center text-xs'>
                       {ok ? '✓' : '✕'}
                     </div>
+
                     <div className='text-sm'>
                       <span className={ok ? '' : 'font-semibold'}>
                         {it.label}
@@ -360,10 +408,11 @@ export default function ViewTradePage() {
           )}
         </div>
 
-        {/* Before screenshot (AUTO PREVIEW) */}
+        {/* BEFORE screenshot */}
         <div className='pt-3 border-t space-y-2'>
           <div className='flex items-center justify-between gap-3'>
             <div className='font-semibold'>Before-Trade Screenshot</div>
+
             {beforeUrl ? (
               <button
                 className='border rounded-lg px-3 py-2'
@@ -376,10 +425,13 @@ export default function ViewTradePage() {
           </div>
 
           {beforeUrl && (
-            <img
+            <Image
               src={beforeUrl}
               alt='Before trade screenshot'
-              className='max-h-72 rounded-lg border cursor-pointer'
+              width={1200}
+              height={700}
+              unoptimized
+              className='max-h-72 w-auto rounded-lg border cursor-pointer'
               onClick={() => openFull(beforeUrl)}
               title='Click to view full screen'
             />
@@ -387,7 +439,7 @@ export default function ViewTradePage() {
         </div>
       </section>
 
-      {/* REVIEW (hide/soften when not reviewed) */}
+      {/* REVIEW */}
       {!isReviewed ? (
         <section className='border rounded-xl p-4 space-y-3'>
           <div className='flex items-center justify-between gap-3'>
@@ -398,6 +450,7 @@ export default function ViewTradePage() {
               Review Trade
             </button>
           </div>
+
           <div className='text-sm opacity-70'>
             This trade hasn’t been reviewed yet.
           </div>
@@ -429,10 +482,11 @@ export default function ViewTradePage() {
             <Row label='Commission' value={fmtMoney(trade.commission ?? 0)} />
           </div>
 
-          {/* After screenshot (AUTO PREVIEW) */}
+          {/* AFTER screenshot */}
           <div className='pt-3 border-t space-y-2'>
             <div className='flex items-center justify-between gap-3'>
               <div className='font-semibold'>After-Trade Screenshot</div>
+
               {afterUrl ? (
                 <button
                   className='border rounded-lg px-3 py-2'
@@ -445,10 +499,13 @@ export default function ViewTradePage() {
             </div>
 
             {afterUrl && (
-              <img
+              <Image
                 src={afterUrl}
                 alt='After trade screenshot'
-                className='max-h-72 rounded-lg border cursor-pointer'
+                width={1200}
+                height={700}
+                unoptimized
+                className='max-h-72 w-auto rounded-lg border cursor-pointer'
                 onClick={() => openFull(afterUrl)}
                 title='Click to view full screen'
               />
@@ -458,10 +515,12 @@ export default function ViewTradePage() {
           {/* Reflection */}
           <div className='pt-3 border-t'>
             <h3 className='font-semibold'>Reflection</h3>
+
             <div className='grid grid-cols-1 md:grid-cols-2 gap-3 mt-2'>
               <Row label='Emotion Tag' value={trade.emotion_tag ?? '—'} />
               <Row label='Lesson Learned' value={trade.lesson_learned ?? '—'} />
             </div>
+
             {trade.review_notes && (
               <Row label='Extra Notes' value={trade.review_notes} />
             )}
@@ -472,7 +531,7 @@ export default function ViewTradePage() {
   );
 }
 
-function Row({ label, value }: { label: string; value: any }) {
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className='grid grid-cols-3 gap-3'>
       <div className='text-sm opacity-70'>{label}</div>

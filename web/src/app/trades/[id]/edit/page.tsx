@@ -1,11 +1,32 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { supabase } from '@/src/lib/supabaseClient';
 import { useParams, useRouter } from 'next/navigation';
 
 type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
 type Direction = 'BUY' | 'SELL';
+
+// Narrow a select value to Direction (defaults to 'BUY' if unexpected).
+function parseDirection(value: string): Direction {
+  return value === 'SELL' ? 'SELL' : 'BUY';
+}
+
+// Narrow a select value to Outcome (defaults to 'WIN' if unexpected).
+function parseOutcome(value: string): Outcome {
+  if (value === 'LOSS') return 'LOSS';
+  if (value === 'BREAKEVEN') return 'BREAKEVEN';
+  return 'WIN';
+}
 
 type ChecklistItem = {
   id: string;
@@ -20,6 +41,10 @@ type CheckRow = {
   checked: boolean;
 };
 
+/**
+ * Convert an ISO datetime string to the format required by <input type="datetime-local" />.
+ * Note: datetime-local is interpreted in the user's local timezone.
+ **/
 function toDatetimeLocalValue(dateIso: string) {
   const d = new Date(dateIso);
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -31,6 +56,7 @@ function toDatetimeLocalValue(dateIso: string) {
   return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
 }
 
+// Parse a numeric input value. Returns null for empty/invalid values. 
 function safeNum(v: string): number | null {
   const t = (v ?? '').trim();
   if (!t) return null;
@@ -38,6 +64,7 @@ function safeNum(v: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Format a number as USD for the UI. 
 function money(n: number) {
   return new Intl.NumberFormat(undefined, {
     style: 'currency',
@@ -46,16 +73,38 @@ function money(n: number) {
   }).format(n);
 }
 
-async function signPath(path: string) {
+// Convert an unknown thrown value into a safe, user-friendly message.
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return 'Unknown error';
+  }
+}
+
+/**
+ * Create a short-lived signed URL for a storage path.
+ * Returns an empty string when signing fails.
+ **/
+async function signScreenshotPath(path: string) {
   const { data, error } = await supabase.storage
     .from('trade-screenshots')
-    .createSignedUrl(path, 60 * 10); // 10 mins
+    .createSignedUrl(path, 60 * 10); // 10 minutes
 
   if (error || !data?.signedUrl) return '';
   return data.signedUrl;
 }
 
 export default function EditTradePage() {
+  function onDirectionChange(e: ChangeEvent<HTMLSelectElement>) {
+    setDirection(parseDirection(e.target.value));
+  }
+
+  function onOutcomeChange(e: ChangeEvent<HTMLSelectElement>) {
+    setOutcome(parseOutcome(e.target.value));
+  }
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -90,6 +139,8 @@ export default function EditTradePage() {
   const [beforeSignedUrl, setBeforeSignedUrl] = useState<string>('');
   const [beforeFile, setBeforeFile] = useState<File | null>(null);
   const [beforePreviewUrl, setBeforePreviewUrl] = useState<string>('');
+  // Keep a ref to revoke the previous Object URL before creating a new one.
+  const beforePreviewUrlRef = useRef<string>('');
 
   // ========= REVIEW FIELDS (EDITABLE ON THIS PAGE) =========
   const [reviewedAt, setReviewedAt] = useState<string | null>(null);
@@ -112,6 +163,8 @@ export default function EditTradePage() {
   const [afterSignedUrl, setAfterSignedUrl] = useState<string>('');
   const [afterFile, setAfterFile] = useState<File | null>(null);
   const [afterPreviewUrl, setAfterPreviewUrl] = useState<string>('');
+  // Keep a ref to revoke the previous Object URL before creating a new one.
+  const afterPreviewUrlRef = useRef<string>('');
 
   // ====== computed ======
   const rMultiple = useMemo(() => {
@@ -177,38 +230,68 @@ export default function EditTradePage() {
     goBackSafe();
   }
 
-  // ====== local file previews ======
-  useEffect(() => {
-    if (!beforeFile) {
+  //Set the "before" screenshot file and maintain a safe object URL preview.
+  function setBeforeFileWithPreview(file: File | null) {
+    if (beforePreviewUrlRef.current) {
+      URL.revokeObjectURL(beforePreviewUrlRef.current);
+      beforePreviewUrlRef.current = '';
+    }
+
+    setBeforeFile(file);
+
+    if (!file) {
       setBeforePreviewUrl('');
       return;
     }
-    const url = URL.createObjectURL(beforeFile);
-    setBeforePreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [beforeFile]);
 
-  useEffect(() => {
-    if (!afterFile) {
+    const url = URL.createObjectURL(file);
+    beforePreviewUrlRef.current = url;
+    setBeforePreviewUrl(url);
+  }
+
+  //Set the "after" screenshot file and maintain a safe object URL preview.
+  function setAfterFileWithPreview(file: File | null) {
+    if (afterPreviewUrlRef.current) {
+      URL.revokeObjectURL(afterPreviewUrlRef.current);
+      afterPreviewUrlRef.current = '';
+    }
+
+    setAfterFile(file);
+
+    if (!file) {
       setAfterPreviewUrl('');
       return;
     }
-    const url = URL.createObjectURL(afterFile);
+
+    const url = URL.createObjectURL(file);
+    afterPreviewUrlRef.current = url;
     setAfterPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [afterFile]);
+  }
+
+  // Revoke any created object URLs when the page unmounts.
+  useEffect(() => {
+    return () => {
+      if (beforePreviewUrlRef.current) URL.revokeObjectURL(beforePreviewUrlRef.current);
+      if (afterPreviewUrlRef.current) URL.revokeObjectURL(afterPreviewUrlRef.current);
+    };
+  }, []);
 
   function openFull(url: string) {
     if (!url) return;
     window.open(url, '_blank');
   }
 
-  // ====== load trade ======
+  // Load the trade once the page mounts (and when the route id changes).
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       const { data: sessionData } = await supabase.auth.getSession();
       const user = sessionData.session?.user;
-      if (!user) return router.push('/auth');
+      if (!user) {
+        router.push('/auth');
+        return;
+      }
 
       const { data, error } = await supabase
         .from('trades')
@@ -224,15 +307,17 @@ export default function EditTradePage() {
         .eq('id', id)
         .single();
 
+      if (cancelled) return;
+
       if (error || !data) {
         setMsg(error?.message ?? 'Trade not found');
         setLoading(false);
         return;
       }
 
-      // entry
+      // Entry
       setOpenedAt(toDatetimeLocalValue(data.opened_at));
-      setInstrument(data.instrument);
+      setInstrument((data.instrument ?? 'EURUSD').toUpperCase());
       setDirection(data.direction);
       setOutcome(data.outcome);
       setPnlAmount(String(data.pnl_amount ?? 0));
@@ -240,25 +325,20 @@ export default function EditTradePage() {
       setRiskAmount(data.risk_amount ?? 1000);
       setNotes(data.notes ?? '');
 
-      // template/checklist
+      // Checklist template
       setTemplateId(data.template_id ?? null);
 
-      // screenshots
+      // Screenshots (stored as storage paths)
       setBeforePath(data.before_screenshot_path ?? null);
       setAfterPath(data.after_trade_screenshot_url ?? null);
 
-      // review
+      // Review
       setReviewedAt(data.reviewed_at ?? null);
       setEntryPrice(data.entry_price == null ? '' : String(data.entry_price));
       setStopLoss(data.stop_loss == null ? '' : String(data.stop_loss));
       setTakeProfit(data.take_profit == null ? '' : String(data.take_profit));
       setExitPrice(data.exit_price == null ? '' : String(data.exit_price));
-
-      if (data.closed_at) {
-        setClosedAtLocal(toDatetimeLocalValue(data.closed_at));
-      } else {
-        setClosedAtLocal('');
-      }
+      setClosedAtLocal(data.closed_at ? toDatetimeLocalValue(data.closed_at) : '');
 
       setCommission(data.commission == null ? '0' : String(data.commission));
       setNetPnl(data.net_pnl == null ? '' : String(data.net_pnl));
@@ -270,29 +350,47 @@ export default function EditTradePage() {
       setLoading(false);
       setMsg('');
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id, router]);
 
-  // ====== always show current signed URLs (auto preview, no need to click View first) ======
+  // always show current signed URLs (auto preview, no need to click View first) 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       setBeforeSignedUrl('');
       if (!beforePath) return;
-      const url = await signPath(beforePath);
-      setBeforeSignedUrl(url);
+      const url = await signScreenshotPath(beforePath);
+      if (!cancelled) setBeforeSignedUrl(url);
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [beforePath]);
 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       setAfterSignedUrl('');
       if (!afterPath) return;
-      const url = await signPath(afterPath);
-      setAfterSignedUrl(url);
+      const url = await signScreenshotPath(afterPath);
+      if (!cancelled) setAfterSignedUrl(url);
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [afterPath]);
 
-  // ====== load checklist items + existing checks ======
+  // Load checklist items and the saved checks for this trade.
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       if (!templateId) {
         setItems([]);
@@ -306,6 +404,8 @@ export default function EditTradePage() {
         .eq('template_id', templateId)
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true });
+
+      if (cancelled) return;
 
       if (itemErr) {
         console.error(itemErr);
@@ -327,11 +427,14 @@ export default function EditTradePage() {
         .eq('trade_id', id)
         .in('item_id', itemIds);
 
+      if (cancelled) return;
+
       if (checkErr) {
         console.error(checkErr);
         return;
       }
 
+      // Default everything to false, then apply values from the DB.
       const map: Record<string, boolean> = {};
       for (const it of list) map[it.id] = false;
 
@@ -341,6 +444,10 @@ export default function EditTradePage() {
 
       setChecks(map);
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [templateId, id]);
 
   // ====== uploads ======
@@ -403,7 +510,7 @@ export default function EditTradePage() {
   }
 
   // ====== SAVE ENTRY (includes checklist + before screenshot) ======
-  async function saveEntry(e: React.FormEvent) {
+  async function saveEntry(e: FormEvent) {
     e.preventDefault();
 
     setMsg(''); // keep header msg for other stuff
@@ -452,7 +559,7 @@ export default function EditTradePage() {
           pnl_percent: finalPnlPercent,
           risk_amount: riskAmount || null,
           r_multiple: finalR,
-          notes: notes || null,
+          notes: notes.trim() ? notes : null,
           before_screenshot_path: newBeforePath ?? null,
         })
         .eq('id', id);
@@ -467,12 +574,12 @@ export default function EditTradePage() {
       // refresh previews if changed
       if (newBeforePath && newBeforePath !== beforePath)
         setBeforePath(newBeforePath);
-      setBeforeFile(null);
+      setBeforeFileWithPreview(null);
 
       setEntryFeedback('Entry saved successfully.', 'success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setEntryFeedback(err?.message ?? 'Failed to save entry', 'error');
+      setEntryFeedback(getErrorMessage(err) || 'Failed to save entry', 'error');
     }
   }
 
@@ -494,8 +601,8 @@ export default function EditTradePage() {
 
       const commissionNum = safeNum(commission) ?? 0;
 
-      const netPnlNum =
-        safeNum(netPnl) !== null ? (safeNum(netPnl) as number) : netPnlComputed;
+      const explicitNet = safeNum(netPnl);
+      const netPnlNum = explicitNet !== null ? explicitNet : netPnlComputed;
 
       const closedAtIso = closedAtLocal
         ? new Date(closedAtLocal).toISOString()
@@ -529,7 +636,7 @@ export default function EditTradePage() {
 
       if (newAfterPath && newAfterPath !== afterPath)
         setAfterPath(newAfterPath);
-      setAfterFile(null);
+      setAfterFileWithPreview(null);
 
       if (!reviewedAt) setReviewedAt(reviewedAtIso);
 
@@ -537,9 +644,9 @@ export default function EditTradePage() {
 
       // GO BACK (same behavior as Cancel)
       goBackSafe();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setMsg(err?.message ?? 'Failed to save review');
+      setMsg(getErrorMessage(err) || 'Failed to save review');
     }
   }
 
@@ -656,10 +763,13 @@ export default function EditTradePage() {
                   View Full
                 </button>
               </div>
-              <img
+              <Image
                 src={beforeSignedUrl}
                 alt='Current before screenshot'
-                className='max-h-64 rounded-lg border cursor-pointer'
+                width={1200}
+                height={700}
+                unoptimized
+                className='max-h-64 w-auto rounded-lg border cursor-pointer'
                 onClick={() => openFull(beforeSignedUrl)}
                 title='Click to view full screen'
               />
@@ -671,7 +781,7 @@ export default function EditTradePage() {
           <input
             type='file'
             accept='image/*'
-            onChange={(e) => setBeforeFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => setBeforeFileWithPreview(e.target.files?.[0] ?? null)}
           />
 
           {beforePreviewUrl && (
@@ -679,10 +789,13 @@ export default function EditTradePage() {
               <div className='text-sm opacity-80'>
                 New screenshot preview (will replace on save)
               </div>
-              <img
+              <Image
                 src={beforePreviewUrl}
                 alt='New before preview'
-                className='max-h-64 rounded-lg border'
+                width={1200}
+                height={700}
+                unoptimized
+                className='max-h-64 w-auto rounded-lg border'
               />
             </div>
           )}
@@ -702,7 +815,7 @@ export default function EditTradePage() {
             <select
               className='w-full border rounded-lg p-3'
               value={direction}
-              onChange={(e) => setDirection(e.target.value as any)}>
+              onChange={onDirectionChange}>
               <option value='BUY'>BUY</option>
               <option value='SELL'>SELL</option>
             </select>
@@ -712,7 +825,7 @@ export default function EditTradePage() {
             <select
               className='w-full border rounded-lg p-3'
               value={outcome}
-              onChange={(e) => setOutcome(e.target.value as any)}>
+              onChange={onOutcomeChange}>
               <option value='WIN'>WIN</option>
               <option value='LOSS'>LOSS</option>
               <option value='BREAKEVEN'>BREAKEVEN</option>
@@ -898,10 +1011,13 @@ export default function EditTradePage() {
                   View Full
                 </button>
               </div>
-              <img
+              <Image
                 src={afterSignedUrl}
                 alt='Current after screenshot'
-                className='max-h-64 rounded-lg border cursor-pointer'
+                width={1200}
+                height={700}
+                unoptimized
+                className='max-h-64 w-auto rounded-lg border cursor-pointer'
                 onClick={() => openFull(afterSignedUrl)}
                 title='Click to view full screen'
               />
@@ -913,7 +1029,7 @@ export default function EditTradePage() {
           <input
             type='file'
             accept='image/*'
-            onChange={(e) => setAfterFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => setAfterFileWithPreview(e.target.files?.[0] ?? null)}
           />
 
           {afterPreviewUrl && (
@@ -921,10 +1037,13 @@ export default function EditTradePage() {
               <div className='text-sm opacity-80'>
                 New screenshot preview (will replace on save)
               </div>
-              <img
+              <Image
                 src={afterPreviewUrl}
                 alt='New after preview'
-                className='max-h-64 rounded-lg border'
+                width={1200}
+                height={700}
+                unoptimized
+                className='max-h-64 w-auto rounded-lg border'
               />
             </div>
           )}
@@ -974,7 +1093,7 @@ function Field({
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <label className='block space-y-1'>

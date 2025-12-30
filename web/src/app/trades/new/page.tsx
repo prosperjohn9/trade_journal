@@ -1,9 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { supabase } from '@/src/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 
+/**
+ * Returns current local time in the format required by <input type="datetime-local" />.
+ * Note: This is local time (no timezone offset in the string).
+ **/
 function nowLocalDatetimeValue() {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -17,6 +22,19 @@ function nowLocalDatetimeValue() {
   return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
 }
 
+// Select value types (keeps the <select> handlers type-safe without `any`).
+type Direction = 'BUY' | 'SELL';
+type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
+
+function toDirection(v: string): Direction {
+  return v === 'SELL' ? 'SELL' : 'BUY';
+}
+
+function toOutcome(v: string): Outcome {
+  if (v === 'LOSS' || v === 'BREAKEVEN') return v;
+  return 'WIN';
+}
+
 type Template = {
   id: string;
   name: string;
@@ -25,59 +43,79 @@ type Template = {
 
 type Item = {
   id: string;
-  template_id: string;
   label: string;
   sort_order: number;
-  is_active: boolean;
 };
 
 export default function NewTradePage() {
   const router = useRouter();
 
+  // Default opened time to "now" (local time string)
   const [openedAt, setOpenedAt] = useState(nowLocalDatetimeValue);
 
   const [instrument, setInstrument] = useState('EURUSD');
-  const [direction, setDirection] = useState<'BUY' | 'SELL'>('BUY');
-  const [outcome, setOutcome] = useState<'WIN' | 'LOSS' | 'BREAKEVEN'>('WIN');
+  const [direction, setDirection] = useState<Direction>('BUY');
+  const [outcome, setOutcome] = useState<Outcome>('WIN');
 
-  // strings so "-" is easy
+  // Keep these as strings so the inputs stay controlled (and typing "-" is possible).
   const [pnlAmount, setPnlAmount] = useState<string>('2000');
   const [pnlPercent, setPnlPercent] = useState<string>('2');
 
   const [riskAmount, setRiskAmount] = useState<number>(1000);
 
-  // Setup template + checklist
+  // Setup template + checklist captured at entry time.
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateId, setTemplateId] = useState<string>('');
   const [items, setItems] = useState<Item[]>([]);
   const [checks, setChecks] = useState<Record<string, boolean>>({}); // item_id -> checked
 
-  // BEFORE-trade screenshot (setup screenshot)
+  // Optional BEFORE-trade setup screenshot.
   const [beforeFile, setBeforeFile] = useState<File | null>(null);
   const [beforePreviewUrl, setBeforePreviewUrl] = useState<string>('');
+  const beforePreviewUrlRef = useRef<string>('');
 
   const [notes, setNotes] = useState('');
   const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Preview for BEFORE screenshot
-  useEffect(() => {
-    if (!beforeFile) {
+  // Create a preview URL immediately when a file is chosen.
+  function onBeforeFileChange(file: File | null) {
+    // Revoke previous preview URL before creating a new one.
+    if (beforePreviewUrlRef.current) {
+      URL.revokeObjectURL(beforePreviewUrlRef.current);
+      beforePreviewUrlRef.current = '';
+    }
+
+    setBeforeFile(file);
+
+    if (!file) {
       setBeforePreviewUrl('');
       return;
     }
 
-    const url = URL.createObjectURL(beforeFile);
+    const url = URL.createObjectURL(file);
+    beforePreviewUrlRef.current = url;
     setBeforePreviewUrl(url);
+  }
 
-    return () => URL.revokeObjectURL(url);
-  }, [beforeFile]);
+  // Cleanup preview URL on unmount.
+  useEffect(() => {
+    return () => {
+      if (beforePreviewUrlRef.current) {
+        URL.revokeObjectURL(beforePreviewUrlRef.current);
+        beforePreviewUrlRef.current = '';
+      }
+    };
+  }, []);
 
-  // Load templates
+  // Load available setup templates once.
   useEffect(() => {
     (async () => {
       const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) return router.push('/auth');
+      if (!sessionData.session) {
+        router.push('/auth');
+        return;
+      }
 
       const { data, error } = await supabase
         .from('setup_templates')
@@ -93,15 +131,14 @@ export default function NewTradePage() {
       const list = (data || []) as Template[];
       setTemplates(list);
 
-      // pick default if exists; else first
+      // Pick default template if present; otherwise pick the first one.
       const def = list.find((t) => t.is_default);
       const pick = def?.id || list[0]?.id || '';
       setTemplateId((prev) => prev || pick);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [router]);
 
-  // Load active items whenever template changes
+  // Load checklist items for the selected template (active only).
   useEffect(() => {
     (async () => {
       if (!templateId) {
@@ -112,7 +149,7 @@ export default function NewTradePage() {
 
       const { data, error } = await supabase
         .from('setup_template_items')
-        .select('id, template_id, label, sort_order, is_active')
+        .select('id, label, sort_order')
         .eq('template_id', templateId)
         .eq('is_active', true)
         .order('sort_order', { ascending: true })
@@ -127,7 +164,7 @@ export default function NewTradePage() {
       const list = (data || []) as Item[];
       setItems(list);
 
-      // reset checks for this template (default false)
+      // Reset checks for the selected template (default: unchecked).
       const next: Record<string, boolean> = {};
       for (const it of list) next[it.id] = false;
       setChecks(next);
@@ -142,7 +179,9 @@ export default function NewTradePage() {
     () => Object.values(checks).filter(Boolean).length,
     [checks]
   );
+
   const totalCount = items.length;
+
   const checklistScore =
     totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : null;
 
@@ -162,8 +201,8 @@ export default function NewTradePage() {
   }) {
     const { userId, tradeId, file } = params;
 
-    // keep extension
-    const ext = file.name.includes('.') ? file.name.split('.').pop() : 'png';
+    // Store as: before/<userId>/<tradeId>.<ext>
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase();
     const path = `before/${userId}/${tradeId}.${ext}`;
 
     const { error: upErr } = await supabase.storage
@@ -175,11 +214,10 @@ export default function NewTradePage() {
       });
 
     if (upErr) throw upErr;
-
     return path;
   }
 
-  async function saveTrade(e: React.FormEvent) {
+  async function saveTrade(e: FormEvent) {
     e.preventDefault();
     if (saving) return;
 
@@ -189,7 +227,10 @@ export default function NewTradePage() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const user = sessionData.session?.user;
-      if (!user) return router.push('/auth');
+      if (!user) {
+        router.push('/auth');
+        return;
+      }
 
       const pnlAmountNum = Number(pnlAmount);
       const pnlPercentNum = Number(pnlPercent);
@@ -200,7 +241,7 @@ export default function NewTradePage() {
         return;
       }
 
-      // enforce sign based on outcome
+      // Normalize P&L sign based on the selected outcome.
       let finalPnlAmount = pnlAmountNum;
       let finalPnlPercent = pnlPercentNum;
 
@@ -217,7 +258,7 @@ export default function NewTradePage() {
           ? finalPnlAmount / riskAmount
           : null;
 
-      // 1) insert trade first
+      // 1) Create the trade record.
       const { data: created, error: tradeErr } = await supabase
         .from('trades')
         .insert({
@@ -236,16 +277,16 @@ export default function NewTradePage() {
         .select('id')
         .single();
 
-      if (tradeErr) {
-        setMsg(tradeErr.message);
+      if (tradeErr || !created?.id) {
+        setMsg(tradeErr?.message ?? 'Failed to create trade.');
         setSaving(false);
         return;
       }
 
-      const tradeId = created?.id as string;
+      const tradeId = created.id as string;
 
-      // 2) save checklist rows (checked / unchecked)
-      if (tradeId && templateId && items.length) {
+      // 2) Save checklist adherence for this trade.
+      if (templateId && items.length) {
         const payload = items.map((it) => ({
           trade_id: tradeId,
           item_id: it.id,
@@ -264,7 +305,7 @@ export default function NewTradePage() {
         }
       }
 
-      // 3) upload BEFORE screenshot if any
+      // 3) Upload BEFORE screenshot (optional) and store its path on the trade.
       if (beforeFile) {
         setMsg('Uploading screenshot...');
         const path = await uploadBeforeScreenshot({
@@ -287,9 +328,15 @@ export default function NewTradePage() {
 
       setMsg('Saved');
       router.push('/dashboard');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setMsg(err?.message ?? 'Something went wrong.');
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'string'
+          ? err
+          : 'Something went wrong.';
+      setMsg(message);
       setSaving(false);
     }
   }
@@ -393,7 +440,7 @@ export default function NewTradePage() {
             className='block'
             type='file'
             accept='image/*'
-            onChange={(e) => setBeforeFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => onBeforeFileChange(e.target.files?.[0] ?? null)}
           />
 
           <div className='text-xs opacity-70'>
@@ -403,10 +450,13 @@ export default function NewTradePage() {
           </div>
 
           {beforePreviewUrl && (
-            <img
+            <Image
               src={beforePreviewUrl}
               alt='Before screenshot preview'
-              className='max-h-64 rounded-lg border'
+              width={1200}
+              height={700}
+              unoptimized
+              className='max-h-64 w-auto rounded-lg border'
             />
           )}
         </section>
@@ -425,7 +475,7 @@ export default function NewTradePage() {
             <select
               className='w-full border rounded-lg p-3'
               value={direction}
-              onChange={(e) => setDirection(e.target.value as any)}>
+              onChange={(e) => setDirection(toDirection(e.target.value))}>
               <option value='BUY'>BUY</option>
               <option value='SELL'>SELL</option>
             </select>
@@ -435,7 +485,7 @@ export default function NewTradePage() {
             <select
               className='w-full border rounded-lg p-3'
               value={outcome}
-              onChange={(e) => setOutcome(e.target.value as any)}>
+              onChange={(e) => setOutcome(toOutcome(e.target.value))}>
               <option value='WIN'>WIN</option>
               <option value='LOSS'>LOSS</option>
               <option value='BREAKEVEN'>BREAKEVEN</option>

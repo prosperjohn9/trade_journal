@@ -1,24 +1,26 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/src/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/src/lib/supabaseClient';
 import {
   getOrCreateProfile,
   updateProfile,
   type Profile,
 } from '@/src/lib/profile';
 
+type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
+type Direction = 'BUY' | 'SELL';
+
 type Trade = {
   id: string;
   opened_at: string;
   instrument: string;
-  direction: 'BUY' | 'SELL';
-  outcome: 'WIN' | 'LOSS' | 'BREAKEVEN';
+  direction: Direction;
+  outcome: Outcome;
   pnl_amount: number;
   pnl_percent: number;
   r_multiple: number | null;
-
   template_id: string | null;
   reviewed_at: string | null;
 };
@@ -35,19 +37,26 @@ type TemplateItemRow = {
   is_active: boolean;
 };
 
-function numOrNull(v: string) {
+type UpdateProfileInput = {
+  display_name: string | null;
+  starting_balance: number | null;
+};
+
+// Parse a numeric input from an <input> value. Empty/invalid => null.
+function numOrNull(v: string): number | null {
   const t = v.trim();
   if (!t) return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
 }
 
-function toNumberSafe(v: any) {
+// Coerce unknown values to a finite number (otherwise 0).
+function toNumberSafe(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
-function formatMoney(amount: number, currency = 'USD') {
+function formatMoney(amount: number, currency = 'USD'): string {
   return new Intl.NumberFormat(undefined, {
     style: 'currency',
     currency,
@@ -55,27 +64,27 @@ function formatMoney(amount: number, currency = 'USD') {
   }).format(amount);
 }
 
-function formatNumber(amount: number) {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(
+function formatNumber(amount: number, maxDigits = 2): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: maxDigits }).format(
     amount
   );
 }
 
-function formatPercent(amount: number) {
-  return `${formatNumber(amount)}%`;
+function formatPercent(amount: number, maxDigits = 2): string {
+  return `${formatNumber(amount, maxDigits)}%`;
 }
 
-function cx(...classes: Array<string | false | null | undefined>) {
+function cx(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ');
 }
 
-function signColor(n: number) {
+function signColor(n: number): string {
   if (n > 0) return 'text-emerald-600';
   if (n < 0) return 'text-rose-600';
   return 'text-slate-700';
 }
 
-function badgeClasses(outcome: Trade['outcome']) {
+function badgeClasses(outcome: Outcome): string {
   switch (outcome) {
     case 'WIN':
       return 'bg-emerald-50 text-emerald-700 border-emerald-200';
@@ -98,7 +107,7 @@ function reviewedBadge(reviewedAt: string | null) {
   );
 }
 
-/** Simple modal (same style as Setups modal) */
+// Minimal modal used for logout/delete confirmations. 
 function Modal({
   open,
   title,
@@ -117,11 +126,13 @@ function Modal({
       className='fixed inset-0 z-50 flex items-center justify-center p-4'
       aria-modal='true'
       role='dialog'>
+      {/* Backdrop */}
       <button
         className='absolute inset-0 bg-black/40'
         onClick={onClose}
         aria-label='Close modal'
       />
+
       <div className='relative w-full max-w-md rounded-xl border bg-white p-4 shadow-lg'>
         <div className='flex items-start justify-between gap-3'>
           <div className='text-lg font-semibold'>{title}</div>
@@ -140,6 +151,13 @@ export default function DashboardPage() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
 
+  // Some fields may not be present on the generated Profile type.
+  type ProfileExtras = {
+    base_currency?: string | null;
+    starting_balance?: number | string | null;
+  };
+  const profileExtras = (profile ?? null) as unknown as ProfileExtras | null;
+
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [startingBalanceDraft, setStartingBalanceDraft] = useState('');
 
@@ -148,48 +166,56 @@ export default function DashboardPage() {
   const [showProfile, setShowProfile] = useState(false);
 
   const [trades, setTrades] = useState<Trade[]>([]);
+
+  // Selected month controls the table/stats range.
   const [month, setMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
 
-  // Checklist score per trade (0-100). null = not available
+  // Checklist score per trade (0–100). null => no checklist available for this trade.
   const [checklistScoreByTrade, setChecklistScoreByTrade] = useState<
     Record<string, number | null>
   >({});
 
-  // DELETE MODAL STATE
-  const [deleteTradeTarget, setDeleteTradeTarget] = useState<Trade | null>(
-    null
-  );
+  // Delete confirmation modal state.
+  const [deleteTradeTarget, setDeleteTradeTarget] = useState<Trade | null>(null);
   const [deletingTrade, setDeletingTrade] = useState(false);
 
-  // ✅ LOGOUT MODAL STATE
+  // Logout confirmation modal state.
   const [showLogout, setShowLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  // Load session + profile
+  const currency = profileExtras?.base_currency ?? 'USD';
+
+  const startingBalanceRaw = profileExtras?.starting_balance;
+  const hasStartingBalance =
+    startingBalanceRaw !== null && startingBalanceRaw !== undefined;
+  const startingBalance = hasStartingBalance ? toNumberSafe(startingBalanceRaw) : 0;
+
+  // --- Auth + profile ---
   useEffect(() => {
     (async () => {
       try {
         const { profile, user } = await getOrCreateProfile();
-        if (!user) return router.push('/auth');
+        if (!user) {
+          router.push('/auth');
+          return;
+        }
 
         setProfile(profile);
         setDisplayNameDraft(profile?.display_name ?? '');
 
-        const sb = (profile as any)?.starting_balance;
-        setStartingBalanceDraft(
-          sb === null || sb === undefined ? '' : String(sb)
-        );
-      } catch (e: any) {
-        console.error(e);
+        const sb = (profile as unknown as ProfileExtras)?.starting_balance;
+        setStartingBalanceDraft(sb === null || sb === undefined ? '' : String(sb));
+      } catch (err: unknown) {
+        console.error(err);
         router.push('/auth');
       }
     })();
   }, [router]);
 
-  // Load trades for selected month
+  // --- Trades (selected month) ---
   useEffect(() => {
     (async () => {
       const start = new Date(`${month}-01T00:00:00`);
@@ -207,6 +233,7 @@ export default function DashboardPage() {
 
       if (error) {
         console.error(error);
+        setTrades([]);
         return;
       }
 
@@ -214,7 +241,8 @@ export default function DashboardPage() {
     })();
   }, [month]);
 
-  // Compute checklist scores for ALL trades (entry checklist), not only reviewed
+  // --- Checklist scores ---
+  // Score is computed from: checked items / active items for the trade's setup template.
   useEffect(() => {
     (async () => {
       setChecklistScoreByTrade({});
@@ -225,7 +253,7 @@ export default function DashboardPage() {
         new Set(trades.map((t) => t.template_id).filter(Boolean))
       ) as string[];
 
-      // Base all null
+      // Default: no checklist available.
       const baseScores: Record<string, number | null> = {};
       for (const t of trades) baseScores[t.id] = null;
 
@@ -234,7 +262,7 @@ export default function DashboardPage() {
         return;
       }
 
-      // 1) Denominator: active items per template
+      // 1) Denominator: number of active items per template.
       const { data: itemsData, error: itemsErr } = await supabase
         .from('setup_template_items')
         .select('id, template_id, is_active')
@@ -252,8 +280,7 @@ export default function DashboardPage() {
       const activeItemIds = activeItems.map((i) => i.id);
 
       for (const it of activeItems) {
-        denomByTemplate[it.template_id] =
-          (denomByTemplate[it.template_id] || 0) + 1;
+        denomByTemplate[it.template_id] = (denomByTemplate[it.template_id] || 0) + 1;
       }
 
       if (!activeItemIds.length) {
@@ -261,7 +288,7 @@ export default function DashboardPage() {
         return;
       }
 
-      // 2) Numerator: checked=true per trade across active items
+      // 2) Numerator: number of checked=true rows per trade (restricted to active items).
       const { data: checksData, error: checksErr } = await supabase
         .from('trade_criteria_checks')
         .select('trade_id, item_id, checked')
@@ -275,29 +302,29 @@ export default function DashboardPage() {
       }
 
       const checks = (checksData || []) as CriteriaCheckRow[];
-
       const checkedTrueByTrade: Record<string, number> = {};
+
       for (const row of checks) {
         if (row.checked) {
-          checkedTrueByTrade[row.trade_id] =
-            (checkedTrueByTrade[row.trade_id] || 0) + 1;
+          checkedTrueByTrade[row.trade_id] = (checkedTrueByTrade[row.trade_id] || 0) + 1;
         }
       }
 
-      // 3) Final scores
+      // 3) Final scores.
       const scores: Record<string, number | null> = { ...baseScores };
 
       for (const t of trades) {
-        const tpl = t.template_id;
-        if (!tpl) {
+        if (!t.template_id) {
           scores[t.id] = null;
           continue;
         }
-        const denom = denomByTemplate[tpl] || 0;
+
+        const denom = denomByTemplate[t.template_id] || 0;
         if (!denom) {
           scores[t.id] = null;
           continue;
         }
+
         const num = checkedTrueByTrade[t.id] || 0;
         scores[t.id] = (num / denom) * 100;
       }
@@ -306,36 +333,34 @@ export default function DashboardPage() {
     })();
   }, [trades]);
 
+  // --- Summary stats for the selected month ---
   const stats = useMemo(() => {
     const total = trades.length;
     const wins = trades.filter((t) => t.outcome === 'WIN').length;
     const losses = trades.filter((t) => t.outcome === 'LOSS').length;
     const be = trades.filter((t) => t.outcome === 'BREAKEVEN').length;
 
-    const pnl$ = trades.reduce((s, t) => s + Number(t.pnl_amount), 0);
-    const pnlPct = trades.reduce((s, t) => s + Number(t.pnl_percent), 0);
+    const pnlDollar = trades.reduce((s, t) => s + Number(t.pnl_amount || 0), 0);
+    const pnlPct = trades.reduce((s, t) => s + Number(t.pnl_percent || 0), 0);
 
     const winRate = total ? (wins / total) * 100 : 0;
 
-    return { total, wins, losses, be, pnl$, pnlPct, winRate };
+    return { total, wins, losses, be, pnlDollar, pnlPct, winRate };
   }, [trades]);
 
-  const startingBalanceRaw = (profile as any)?.starting_balance;
-  const hasStartingBalance =
-    startingBalanceRaw !== null && startingBalanceRaw !== undefined;
-  const startingBalance = hasStartingBalance
-    ? toNumberSafe(startingBalanceRaw)
-    : 0;
-  const equity = hasStartingBalance ? startingBalance + stats.pnl$ : null;
+  // Equity is only meaningful if starting balance is set.
+  const equity = hasStartingBalance ? startingBalance + stats.pnlDollar : null;
 
-  const currency = (profile as any)?.base_currency || 'USD';
+  const displayName =
+    profile?.display_name?.trim() || profile?.display_name || 'Trader';
 
-  // ✅ open logout confirmation modal
+  const equityUp = equity !== null && equity >= startingBalance;
+  const equityDown = equity !== null && equity < startingBalance;
+
   function requestLogout() {
     setShowLogout(true);
   }
 
-  // ✅ confirm logout inside modal
   async function confirmLogout() {
     if (loggingOut) return;
     setLoggingOut(true);
@@ -354,38 +379,34 @@ export default function DashboardPage() {
     setProfileMsg('Saving...');
 
     try {
-      const starting_balance = numOrNull(startingBalanceDraft);
-
-      const updated = await updateProfile({
+      const payload: UpdateProfileInput = {
         display_name: displayNameDraft.trim() || null,
-        starting_balance,
-      } as any);
+        starting_balance: numOrNull(startingBalanceDraft),
+      };
+
+      const updated = await updateProfile(payload as unknown as Partial<Profile>);
 
       setProfile(updated);
       setDisplayNameDraft(updated.display_name ?? '');
 
-      const sb = (updated as any)?.starting_balance;
-      setStartingBalanceDraft(
-        sb === null || sb === undefined ? '' : String(sb)
-      );
+      const sb = (updated as unknown as ProfileExtras)?.starting_balance;
+      setStartingBalanceDraft(sb === null || sb === undefined ? '' : String(sb));
 
       setProfileMsg('Saved');
       setShowProfile(false);
-    } catch (e: any) {
-      console.error(e);
-      setProfileMsg(e?.message ?? 'Failed to save');
+    } catch (err: unknown) {
+      console.error(err);
+      setProfileMsg(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSavingProfile(false);
       setTimeout(() => setProfileMsg(''), 2000);
     }
   }
 
-  // Open modal instead of confirm()
   function requestDeleteTrade(t: Trade) {
     setDeleteTradeTarget(t);
   }
 
-  // Confirm delete inside modal
   async function confirmDeleteTrade() {
     if (!deleteTradeTarget) return;
 
@@ -405,18 +426,15 @@ export default function DashboardPage() {
     setDeletingTrade(false);
   }
 
-  const displayName =
-    profile?.display_name?.trim() || profile?.display_name || 'Trader';
-  const equityUp = equity !== null && equity >= startingBalance;
-  const equityDown = equity !== null && equity < startingBalance;
-
   return (
     <main className='p-6 space-y-6'>
-      {/* ✅ LOGOUT MODAL */}
+      {/* Logout confirmation */}
       <Modal
         open={showLogout}
         title='Log out?'
-        onClose={() => (loggingOut ? null : setShowLogout(false))}>
+        onClose={() => {
+          if (!loggingOut) setShowLogout(false);
+        }}>
         <p className='text-sm opacity-80'>Are you sure you want to log out?</p>
 
         <div className='mt-4 flex gap-2 justify-end'>
@@ -435,11 +453,13 @@ export default function DashboardPage() {
         </div>
       </Modal>
 
-      {/* DELETE MODAL */}
+      {/* Delete confirmation */}
       <Modal
         open={!!deleteTradeTarget}
         title='Delete trade?'
-        onClose={() => (deletingTrade ? null : setDeleteTradeTarget(null))}>
+        onClose={() => {
+          if (!deletingTrade) setDeleteTradeTarget(null);
+        }}>
         <p className='text-sm opacity-80'>
           This will permanently delete this trade. This cannot be undone.
         </p>
@@ -447,10 +467,8 @@ export default function DashboardPage() {
         {deleteTradeTarget && (
           <div className='mt-3 text-sm'>
             <div className='opacity-80'>
-              <span className='font-semibold'>
-                {deleteTradeTarget.instrument}
-              </span>{' '}
-              • {deleteTradeTarget.direction} • {deleteTradeTarget.outcome}
+              <span className='font-semibold'>{deleteTradeTarget.instrument}</span> •{' '}
+              {deleteTradeTarget.direction} • {deleteTradeTarget.outcome}
             </div>
             <div className='opacity-70'>
               {new Date(deleteTradeTarget.opened_at).toLocaleString()}
@@ -484,11 +502,9 @@ export default function DashboardPage() {
           {!hasStartingBalance && (
             <div className='text-sm opacity-80'>
               <span className='font-semibold'>Tip:</span> Set your{' '}
-              <span className='font-semibold'>Starting Balance</span> to make
-              your equity curve and drawdown meaningful.
-              <button
-                className='ml-2 underline'
-                onClick={() => setShowProfile(true)}>
+              <span className='font-semibold'>Starting Balance</span> to make your equity
+              curve and drawdown meaningful.
+              <button className='ml-2 underline' onClick={() => setShowProfile(true)}>
                 Set now
               </button>
             </div>
@@ -520,10 +536,7 @@ export default function DashboardPage() {
             + Add Trade
           </button>
 
-          {/* Logout now asks for confirmation */}
-          <button
-            className='border rounded-lg px-4 py-2'
-            onClick={requestLogout}>
+          <button className='border rounded-lg px-4 py-2' onClick={requestLogout}>
             Logout
           </button>
         </div>
@@ -533,9 +546,7 @@ export default function DashboardPage() {
         <section className='border rounded-xl p-4 max-w-3xl space-y-3'>
           <div className='flex items-center justify-between gap-3'>
             <h2 className='font-semibold'>Profile</h2>
-            {profileMsg && (
-              <span className='text-sm opacity-80'>{profileMsg}</span>
-            )}
+            {profileMsg && <span className='text-sm opacity-80'>{profileMsg}</span>}
           </div>
 
           <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
@@ -606,15 +617,15 @@ export default function DashboardPage() {
         )}
 
         <Card title='Trades' value={stats.total} />
-        <Card title='Win Rate' value={formatPercent(stats.winRate)} />
+        <Card title='Win Rate' value={formatPercent(stats.winRate, 0)} />
         <Card
           title='P&L ($)'
-          value={formatMoney(stats.pnl$, currency)}
-          valueClassName={signColor(stats.pnl$)}
+          value={formatMoney(stats.pnlDollar, currency)}
+          valueClassName={signColor(stats.pnlDollar)}
         />
         <Card
           title='P&L (%)'
-          value={formatPercent(stats.pnlPct)}
+          value={formatPercent(stats.pnlPct, 2)}
           valueClassName={signColor(stats.pnlPct)}
         />
         <Card title='Wins' value={stats.wins} />
@@ -644,15 +655,13 @@ export default function DashboardPage() {
 
             <tbody>
               {trades.map((t) => {
-                const pnlAmt = Number(t.pnl_amount);
-                const pnlPct = Number(t.pnl_percent);
+                const pnlAmt = Number(t.pnl_amount || 0);
+                const pnlPct = Number(t.pnl_percent || 0);
                 const score = checklistScoreByTrade[t.id] ?? null;
 
                 return (
                   <tr key={t.id} className='border-b'>
-                    <td className='p-2'>
-                      {new Date(t.opened_at).toLocaleString()}
-                    </td>
+                    <td className='p-2'>{new Date(t.opened_at).toLocaleString()}</td>
                     <td className='p-2'>{t.instrument}</td>
                     <td className='p-2'>{t.direction}</td>
 
@@ -670,18 +679,19 @@ export default function DashboardPage() {
                       {formatMoney(pnlAmt, currency)}
                     </td>
                     <td className={cx('p-2 font-medium', signColor(pnlPct))}>
-                      {formatPercent(pnlPct)}
+                      {formatPercent(pnlPct, 2)}
                     </td>
 
                     <td className='p-2'>
                       {t.r_multiple === null || t.r_multiple === undefined
                         ? '—'
-                        : formatNumber(Number(t.r_multiple))}
+                        : formatNumber(Number(t.r_multiple), 2)}
                     </td>
 
                     <td className='p-2'>
                       {score === null ? '—' : `${score.toFixed(0)}%`}
                     </td>
+
                     <td className='p-2'>{reviewedBadge(t.reviewed_at)}</td>
 
                     <td className='p-2'>
@@ -740,7 +750,7 @@ function Card({
   valueClassName,
 }: {
   title: string;
-  value: any;
+  value: React.ReactNode;
   valueClassName?: string;
 }) {
   return (

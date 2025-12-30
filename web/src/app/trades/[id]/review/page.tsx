@@ -1,16 +1,26 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react';
 import { supabase } from '@/src/lib/supabaseClient';
-import { useRouter, useParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 
 type Template = { id: string; name: string; is_default: boolean };
+
 type Item = {
   id: string;
   label: string;
   sort_order: number;
   is_active: boolean;
 };
+
 type CheckRow = { trade_id: string; item_id: string; checked: boolean };
 
 type Trade = {
@@ -41,25 +51,28 @@ type Trade = {
   after_trade_screenshot_url: string | null; // storage path
 };
 
+/**
+ * Convert ISO datetime to <input type="datetime-local" /> format.
+ * Note: datetime-local is displayed in the user's local timezone.
+ **/
 function toLocalDatetimeValue(dateIso: string | null) {
   if (!dateIso) return '';
   const d = new Date(dateIso);
   const pad = (n: number) => String(n).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  const mm = pad(d.getMonth() + 1);
-  const dd = pad(d.getDate());
-  const hh = pad(d.getHours());
-  const min = pad(d.getMinutes());
-  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours()
+  )}:${pad(d.getMinutes())}`;
 }
 
+// Parse a numeric text input. Returns null for empty/invalid. 
 function safeNum(v: string): number | null {
-  const t = v.trim();
+  const t = (v ?? '').trim();
   if (!t) return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
 }
 
+// Format a number as USD for the UI. 
 function money(n: number) {
   return new Intl.NumberFormat(undefined, {
     style: 'currency',
@@ -68,21 +81,44 @@ function money(n: number) {
   }).format(n);
 }
 
-function formatErr(err: any) {
+/**
+ * Normalize unknown errors into a readable message for the UI.
+ * Supabase errors usually include { message, code, details, hint }.
+ **/
+function formatErr(err: unknown) {
   if (!err) return 'Unknown error';
-  if (err.message) {
-    const code = err.code ? ` (code: ${err.code})` : '';
-    const details = err.details ? ` | ${err.details}` : '';
-    const hint = err.hint ? ` | ${err.hint}` : '';
-    return `${err.message}${code}${details}${hint}`;
+  if (typeof err === 'string') return err;
+  if (err instanceof Error) return err.message || 'Unknown error';
+
+  if (typeof err === 'object') {
+    const e = err as {
+      message?: unknown;
+      code?: unknown;
+      details?: unknown;
+      hint?: unknown;
+    };
+
+    const msg = typeof e.message === 'string' ? e.message : '';
+    const code =
+      typeof e.code === 'string' || typeof e.code === 'number'
+        ? ` (code: ${String(e.code)})`
+        : '';
+    const details = typeof e.details === 'string' ? ` | ${e.details}` : '';
+    const hint = typeof e.hint === 'string' ? ` | ${e.hint}` : '';
+
+    if (msg) return `${msg}${code}${details}${hint}`;
+
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
   }
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return String(err);
-  }
+
+  return String(err);
 }
 
+// Create a short-lived signed URL for a storage path. Returns '' if it fails. 
 async function signPath(path: string, seconds = 60 * 10) {
   const { data, error } = await supabase.storage
     .from('trade-screenshots')
@@ -92,10 +128,35 @@ async function signPath(path: string, seconds = 60 * 10) {
   return data.signedUrl;
 }
 
+/**
+ * Review page: update execution + reflection fields, checklist adherence,
+ * and after-trade screenshot, then mark the trade as reviewed.
+ **/
 export default function TradeReviewPage() {
   const router = useRouter();
-  const params = useParams();
-  const tradeId = String((params as any).id || '');
+  const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const tradeId = params.id;
+
+  // Optional safe fallback route (only allow internal paths).
+  const returnToParam = searchParams.get('returnTo');
+  const returnTo =
+    returnToParam && returnToParam.startsWith('/') ? returnToParam : null;
+
+  const backHref = returnTo ?? `/trades/${tradeId}`;
+
+  /**
+   * Behaves like a real Back button:
+   * - If the user navigated here from another page, go back in browser history.
+   * - If the page was opened directly (new tab / refresh), fall back to a safe internal route.
+   **/
+  function goBack() {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push(backHref);
+  }
 
   const [trade, setTrade] = useState<Trade | null>(null);
 
@@ -107,7 +168,7 @@ export default function TradeReviewPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
 
-  // editable fields
+  // Editable review fields
   const [entryPrice, setEntryPrice] = useState('');
   const [stopLoss, setStopLoss] = useState('');
   const [takeProfit, setTakeProfit] = useState('');
@@ -119,8 +180,10 @@ export default function TradeReviewPage() {
   const [lessonLearned, setLessonLearned] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
 
+  // AFTER screenshot: file upload + previews
   const [afterFile, setAfterFile] = useState<File | null>(null);
   const [afterPreviewUrl, setAfterPreviewUrl] = useState<string>('');
+  const afterPreviewUrlRef = useRef<string>('');
 
   // Auto-preview current screenshot (signed url)
   const [afterSignedUrl, setAfterSignedUrl] = useState<string>('');
@@ -138,28 +201,50 @@ export default function TradeReviewPage() {
   const commissionNum = safeNum(commission) ?? 0;
   const netPnl = grossPnl - commissionNum;
 
+  function toggleCheck(itemId: string) {
+    setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
+  }
+
+  function onTemplateChange(e: ChangeEvent<HTMLSelectElement>) {
+    setTemplateId(e.target.value);
+  }
+
+  function onAfterFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+
+    // Revoke previous preview URL before creating a new one.
+    if (afterPreviewUrlRef.current) {
+      URL.revokeObjectURL(afterPreviewUrlRef.current);
+      afterPreviewUrlRef.current = '';
+    }
+
+    setAfterFile(file);
+
+    if (!file) {
+      setAfterPreviewUrl('');
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    afterPreviewUrlRef.current = url;
+    setAfterPreviewUrl(url);
+  }
+
+  // Revoke any preview URL when the page unmounts.
   useEffect(() => {
-    (async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) return router.push('/auth');
+    return () => {
+      if (afterPreviewUrlRef.current) {
+        URL.revokeObjectURL(afterPreviewUrlRef.current);
+        afterPreviewUrlRef.current = '';
+      }
+    };
+  }, []);
 
-      await loadTrade();
-      await loadTemplates();
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tradeId]);
+  // ===== Loaders =====
 
-  useEffect(() => {
-    if (!templateId) return;
-    (async () => {
-      await loadItems(templateId);
-      await loadChecks(tradeId, templateId);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templateId]);
-
-  async function loadTrade() {
+  const loadTrade = useCallback(async () => {
     setMsg('Loading...');
+
     const { data, error } = await supabase
       .from('trades')
       .select(
@@ -178,10 +263,10 @@ export default function TradeReviewPage() {
       return;
     }
 
-    const t = data as Trade;
+    const t = data as unknown as Trade;
     setTrade(t);
 
-    // hydrate UI fields
+    // Hydrate UI fields
     setEntryPrice(t.entry_price?.toString() ?? '');
     setStopLoss(t.stop_loss?.toString() ?? '');
     setTakeProfit(t.take_profit?.toString() ?? '');
@@ -193,12 +278,13 @@ export default function TradeReviewPage() {
     setLessonLearned(t.lesson_learned ?? '');
     setReviewNotes(t.review_notes ?? '');
 
+    // Prefer the trade’s saved template if present.
     if (t.template_id) setTemplateId(t.template_id);
 
     setMsg('');
-  }
+  }, [tradeId]);
 
-  async function loadTemplates() {
+  const loadTemplates = useCallback(async () => {
     const { data, error } = await supabase
       .from('setup_templates')
       .select('id, name, is_default')
@@ -213,13 +299,15 @@ export default function TradeReviewPage() {
     const list = (data || []) as Template[];
     setTemplates(list);
 
-    if (templateId) return;
-    const def = list.find((t) => t.is_default);
-    const pick = def?.id || list[0]?.id || '';
-    setTemplateId(pick);
-  }
+    // Only auto-pick if nothing is selected yet.
+    setTemplateId((current) => {
+      if (current) return current;
+      const def = list.find((t) => t.is_default);
+      return def?.id || list[0]?.id || '';
+    });
+  }, []);
 
-  async function loadItems(tplId: string) {
+  const loadItems = useCallback(async (tplId: string) => {
     const { data, error } = await supabase
       .from('setup_template_items')
       .select('id, label, sort_order, is_active')
@@ -234,9 +322,9 @@ export default function TradeReviewPage() {
     }
 
     setItems((data || []) as Item[]);
-  }
+  }, []);
 
-  async function loadChecks(trId: string, tplId: string) {
+  const loadChecks = useCallback(async (trId: string, tplId: string) => {
     const { data: itemRows, error: itemErr } = await supabase
       .from('setup_template_items')
       .select('id')
@@ -267,7 +355,7 @@ export default function TradeReviewPage() {
       return;
     }
 
-    // default checked=true for everything in review
+    // Default all criteria to true for review, then override with saved DB values.
     const map: Record<string, boolean> = {};
     for (const id of itemIds) map[id] = true;
 
@@ -276,22 +364,63 @@ export default function TradeReviewPage() {
     }
 
     setChecks(map);
-  }
+  }, []);
 
-  function toggleCheck(itemId: string) {
-    setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
-  }
-
-  // Auto sign and preview existing screenshot whenever trade loads/changes
+  // Initial load: ensure session, then fetch trade + templates.
   useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        router.push('/auth');
+        return;
+      }
+      if (cancelled) return;
+
+      await loadTrade();
+      await loadTemplates();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, loadTrade, loadTemplates]);
+
+  // When template changes, refresh items + checks.
+  useEffect(() => {
+    if (!templateId) return;
+
+    let cancelled = false;
+
+    (async () => {
+      await loadItems(templateId);
+      if (cancelled) return;
+      await loadChecks(tradeId, templateId);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [templateId, tradeId, loadItems, loadChecks]);
+
+  // Auto sign and preview existing screenshot whenever trade changes
+  useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       setAfterSignedUrl('');
       if (!trade?.after_trade_screenshot_url) return;
       const url = await signPath(trade.after_trade_screenshot_url, 60 * 10);
-      setAfterSignedUrl(url);
+      if (!cancelled) setAfterSignedUrl(url);
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [trade?.after_trade_screenshot_url]);
 
+  // Upload new AFTER screenshot (if selected) and return storage path for DB. 
   async function uploadAfterScreenshotIfAny(userId: string) {
     if (!afterFile) return trade?.after_trade_screenshot_url ?? null;
 
@@ -304,10 +433,27 @@ export default function TradeReviewPage() {
 
     if (upErr) throw upErr;
 
-    return path; // store path; open via signed URL
+    return path;
   }
 
-  // mark reviewed + go back to dashboard
+  // Open the current AFTER screenshot in a new tab (uses signed URL). 
+  async function openAfterScreenshot() {
+    if (afterSignedUrl) {
+      window.open(afterSignedUrl, '_blank');
+      return;
+    }
+
+    if (!trade?.after_trade_screenshot_url) return;
+
+    const url = await signPath(trade.after_trade_screenshot_url, 60);
+    if (!url) {
+      alert('Could not open screenshot');
+      return;
+    }
+    window.open(url, '_blank');
+  }
+
+  // Save review fields + checklist checks, mark as reviewed, then return to the previous page.
   async function saveAndMarkReviewed() {
     if (!trade) return;
 
@@ -316,9 +462,11 @@ export default function TradeReviewPage() {
 
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user.id;
+
     if (!userId) {
       setSaving(false);
-      return router.push('/auth');
+      router.push('/auth');
+      return;
     }
 
     try {
@@ -329,7 +477,7 @@ export default function TradeReviewPage() {
 
       const afterPath = await uploadAfterScreenshotIfAny(userId);
 
-      const updates: any = {
+      const updates: Record<string, unknown> = {
         template_id: tplId,
         entry_price: safeNum(entryPrice),
         stop_loss: safeNum(stopLoss),
@@ -349,6 +497,7 @@ export default function TradeReviewPage() {
         .from('trades')
         .update(updates)
         .eq('id', trade.id);
+
       if (e1) throw e1;
 
       const rows = activeItems.map((it) => ({
@@ -365,41 +514,14 @@ export default function TradeReviewPage() {
         if (e2) throw e2;
       }
 
-      setMsg('Reviewed successfully. Returning to dashboard...');
-      router.push('/dashboard');
-    } catch (err: any) {
+      setMsg('Reviewed successfully. Returning...');
+      goBack();
+    } catch (err: unknown) {
       console.error('saveAndMarkReviewed error:', err);
       setMsg(`Failed to save: ${formatErr(err)}`);
       setSaving(false);
     }
   }
-
-  // Keep this (open full screen) but now use the signed preview url if it exists
-  async function openAfterScreenshot() {
-    if (afterSignedUrl) {
-      window.open(afterSignedUrl, '_blank');
-      return;
-    }
-
-    if (!trade?.after_trade_screenshot_url) return;
-
-    const url = await signPath(trade.after_trade_screenshot_url, 60);
-    if (!url) {
-      alert('Could not open screenshot');
-      return;
-    }
-    window.open(url, '_blank');
-  }
-
-  useEffect(() => {
-    if (!afterFile) {
-      setAfterPreviewUrl('');
-      return;
-    }
-    const url = URL.createObjectURL(afterFile);
-    setAfterPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [afterFile]);
 
   if (!trade) {
     return <main className='p-6'>{msg || 'Loading...'}</main>;
@@ -418,9 +540,7 @@ export default function TradeReviewPage() {
         </div>
 
         <div className='flex gap-2'>
-          <button
-            className='border rounded-lg px-4 py-2'
-            onClick={() => router.push('/dashboard')}>
+          <button className='border rounded-lg px-4 py-2' onClick={goBack}>
             Back
           </button>
         </div>
@@ -443,7 +563,7 @@ export default function TradeReviewPage() {
             <select
               className='border rounded-lg p-3 w-full'
               value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}>
+              onChange={onTemplateChange}>
               {!templates.length && <option value=''>No templates yet</option>}
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -566,11 +686,10 @@ export default function TradeReviewPage() {
         </div>
       </section>
 
-      {/* Screenshot AFTER trade */}
+      {/* After-trade screenshot */}
       <section className='border rounded-xl p-4 space-y-3'>
         <h2 className='font-semibold'>After-Trade Screenshot</h2>
 
-        {/* Current screenshot preview (auto) */}
         {afterSignedUrl ? (
           <div className='space-y-2'>
             <div className='flex items-center gap-2 flex-wrap'>
@@ -584,10 +703,13 @@ export default function TradeReviewPage() {
               </div>
             </div>
 
-            <img
+            <Image
               src={afterSignedUrl}
               alt='Current after-trade screenshot'
-              className='max-h-64 rounded-lg border cursor-pointer'
+              width={1200}
+              height={700}
+              unoptimized
+              className='max-h-64 w-auto rounded-lg border cursor-pointer'
               onClick={openAfterScreenshot}
               title='Click to view full screen'
             />
@@ -600,22 +722,20 @@ export default function TradeReviewPage() {
           <div className='text-sm opacity-70'>No screenshot uploaded yet.</div>
         )}
 
-        <input
-          type='file'
-          accept='image/*'
-          onChange={(e) => setAfterFile(e.target.files?.[0] ?? null)}
-        />
+        <input type='file' accept='image/*' onChange={onAfterFileChange} />
 
-        {/* New upload preview (replaces current on save) */}
         {afterPreviewUrl && (
           <div className='space-y-2'>
             <div className='text-sm opacity-70'>
               New screenshot preview (will replace on save)
             </div>
-            <img
+            <Image
               src={afterPreviewUrl}
               alt='After screenshot preview'
-              className='max-h-64 rounded-lg border'
+              width={1200}
+              height={700}
+              unoptimized
+              className='max-h-64 w-auto rounded-lg border'
             />
           </div>
         )}
@@ -661,7 +781,6 @@ export default function TradeReviewPage() {
         </Field>
       </section>
 
-      {/* One action only */}
       <section className='flex flex-wrap gap-2 items-center'>
         <button
           className='border rounded-lg px-4 py-2 disabled:opacity-60'

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/src/lib/supabaseClient';
-import { useRouter } from 'next/navigation';
 
 type Template = {
   id: string;
@@ -24,6 +24,7 @@ type DeleteTarget =
   | { kind: 'item'; item: Item }
   | { kind: 'template'; template: Template };
 
+//Lightweight confirmation modal.
 function Modal({
   open,
   title,
@@ -62,61 +63,59 @@ function Modal({
 
 export default function SetupsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
+  // Only allow internal paths (starting with "/") to avoid open-redirect issues.
+  const returnToParam = searchParams.get('returnTo');
+  const returnTo = returnToParam && returnToParam.startsWith('/') ? returnToParam : null;
+
+  function handleBack() {
+    if (returnTo) {
+      router.push(returnTo);
+      return;
+    }
+
+    // Fall back to browser history (acts like a real Back button).
+    router.back();
+  }
+
+  // Data
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [items, setItems] = useState<Item[]>([]);
 
+  // Create inputs
   const [newTemplateName, setNewTemplateName] = useState('');
   const [newItemLabel, setNewItemLabel] = useState('');
 
+  // UI state
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
 
-  // Inline rename template
+  // Rename template (inline)
   const [isRenamingTemplate, setIsRenamingTemplate] = useState(false);
   const [renameTemplateValue, setRenameTemplateValue] = useState('');
 
-  // Inline edit checklist item
+  // Edit item (inline)
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editingItemValue, setEditingItemValue] = useState<string>('');
+  const [editingItemValue, setEditingItemValue] = useState('');
 
-  // Delete confirmation modal
+  // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const selectedTemplate = useMemo(
-    () => templates.find((t) => t.id === selectedTemplateId) || null,
+    () => templates.find((t) => t.id === selectedTemplateId) ?? null,
     [templates, selectedTemplateId]
   );
 
-  const isAnyEditing = editingItemId !== null;
+  // Any inline-edit open? Used to disable actions that would conflict. 
+  const isAnyEditing = editingItemId !== null || isRenamingTemplate;
 
-  useEffect(() => {
-    (async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) return router.push('/auth');
-      await loadTemplates();
-      setLoading(false);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (!selectedTemplateId) return;
-    (async () => {
-      await loadItems(selectedTemplateId);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTemplateId]);
-
-  // keep rename box in sync when switching templates
-  useEffect(() => {
-    if (!selectedTemplate) return;
-    setRenameTemplateValue(selectedTemplate.name);
-    setIsRenamingTemplate(false);
-  }, [selectedTemplate?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
+  /**
+   * Loads setup templates for the signed-in user.
+   * If nothing is selected yet, automatically selects the default template (or first).
+   **/
   async function loadTemplates() {
     const { data, error } = await supabase
       .from('setup_templates')
@@ -126,17 +125,20 @@ export default function SetupsPage() {
     if (error) {
       console.error(error);
       setMsg(error.message);
-      return;
+      return [] as Template[];
     }
 
-    const list = (data || []) as Template[];
+    const list = (data ?? []) as Template[];
     setTemplates(list);
 
     const def = list.find((t) => t.is_default);
-    const pick = def?.id || list[0]?.id || '';
+    const pick = def?.id ?? list[0]?.id ?? '';
     setSelectedTemplateId((prev) => prev || pick);
+
+    return list;
   }
 
+  // Loads checklist items for a single template. 
   async function loadItems(templateId: string) {
     const { data, error } = await supabase
       .from('setup_template_items')
@@ -151,17 +153,69 @@ export default function SetupsPage() {
       return;
     }
 
-    setItems((data || []) as Item[]);
+    setItems((data ?? []) as Item[]);
   }
 
+  // On mount: require a session, then load templates.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        router.push('/auth');
+        return;
+      }
+
+      if (cancelled) return;
+      await loadTemplates();
+      if (!cancelled) setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  // When selecting a template: load its items.
+  useEffect(() => {
+    if (!selectedTemplateId) return;
+
+    let cancelled = false;
+    (async () => {
+      await loadItems(selectedTemplateId);
+      if (cancelled) return;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTemplateId]);
+
+  // Keep the rename input in sync when the selected template changes.
+  useEffect(() => {
+    if (!selectedTemplateId) return;
+
+    const tpl = templates.find((t) => t.id === selectedTemplateId);
+    if (!tpl) return;
+
+    setRenameTemplateValue(tpl.name);
+    setIsRenamingTemplate(false);
+  }, [selectedTemplateId, templates]);
+
+  // Template actions
   async function createTemplate() {
     const name = newTemplateName.trim();
     if (!name) return;
 
     setMsg('Creating template...');
+
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user.id;
-    if (!userId) return router.push('/auth');
+    if (!userId) {
+      router.push('/auth');
+      return;
+    }
 
     const { error } = await supabase.from('setup_templates').insert({
       user_id: userId,
@@ -180,7 +234,6 @@ export default function SetupsPage() {
     setTimeout(() => setMsg(''), 1500);
   }
 
-  // Start/Cancel rename UI
   function startRenameTemplate() {
     if (!selectedTemplate) return;
     setRenameTemplateValue(selectedTemplate.name);
@@ -193,12 +246,12 @@ export default function SetupsPage() {
     setIsRenamingTemplate(false);
   }
 
-  // Save rename (no prompt)
   async function saveRenameTemplate(templateId: string) {
     const name = renameTemplateValue.trim();
     if (!name) return;
 
     setMsg('Renaming...');
+
     const { error } = await supabase
       .from('setup_templates')
       .update({ name })
@@ -220,62 +273,10 @@ export default function SetupsPage() {
     setDeleteTarget({ kind: 'template', template: selectedTemplate });
   }
 
-  function requestDeleteItem(item: Item) {
-    setDeleteTarget({ kind: 'item', item });
-  }
-
-  async function confirmDelete() {
-    if (!deleteTarget) return;
-
-    setDeleting(true);
-    setMsg('Deleting...');
-
-    try {
-      if (deleteTarget.kind === 'template') {
-        const templateId = deleteTarget.template.id;
-
-        const { error } = await supabase
-          .from('setup_templates')
-          .delete()
-          .eq('id', templateId);
-
-        if (error) throw error;
-
-        setMsg('Deleted');
-        setSelectedTemplateId('');
-        setDeleteTarget(null);
-
-        await loadTemplates();
-        setTimeout(() => setMsg(''), 1500);
-        return;
-      }
-
-      if (deleteTarget.kind === 'item') {
-        const item = deleteTarget.item;
-
-        const { error } = await supabase
-          .from('setup_template_items')
-          .delete()
-          .eq('id', item.id);
-
-        if (error) throw error;
-
-        setDeleteTarget(null);
-        await loadItems(item.template_id);
-        setMsg('Deleted');
-        setTimeout(() => setMsg(''), 1200);
-      }
-    } catch (err: any) {
-      console.error(err);
-      setMsg(err?.message ?? 'Delete failed');
-    } finally {
-      setDeleting(false);
-    }
-  }
-
   async function setDefaultTemplate(templateId: string) {
     setMsg('Setting default...');
 
+    // Clear any existing default
     const { error: e1 } = await supabase
       .from('setup_templates')
       .update({ is_default: false })
@@ -285,6 +286,7 @@ export default function SetupsPage() {
       return;
     }
 
+    // Set the selected template as default
     const { error: e2 } = await supabase
       .from('setup_templates')
       .update({ is_default: true })
@@ -299,6 +301,7 @@ export default function SetupsPage() {
     setTimeout(() => setMsg(''), 1500);
   }
 
+  // Item actions
   async function addItem() {
     const label = newItemLabel.trim();
     if (!label || !selectedTemplateId) return;
@@ -307,6 +310,7 @@ export default function SetupsPage() {
       items.length === 0 ? 0 : Math.max(...items.map((i) => i.sort_order)) + 1;
 
     setMsg('Adding item...');
+
     const { error } = await supabase.from('setup_template_items').insert({
       template_id: selectedTemplateId,
       label,
@@ -325,7 +329,6 @@ export default function SetupsPage() {
     setTimeout(() => setMsg(''), 1200);
   }
 
-  // Start/Cancel edit item UI
   function startEditItem(it: Item) {
     setEditingItemId(it.id);
     setEditingItemValue(it.label);
@@ -336,12 +339,12 @@ export default function SetupsPage() {
     setEditingItemValue('');
   }
 
-  // Save item edit
   async function saveEditItem(item: Item) {
     const label = editingItemValue.trim();
     if (!label) return;
 
     setMsg('Saving...');
+
     const { error } = await supabase
       .from('setup_template_items')
       .update({ label })
@@ -375,7 +378,10 @@ export default function SetupsPage() {
     await loadItems(item.template_id);
   }
 
-  // Explicit updates to swap sort_order
+  /**
+   * Reorders items by swapping `sort_order` with the item above/below.
+   * Uses an optimistic UI swap so it feels instant.
+   **/
   async function moveItem(item: Item, direction: 'UP' | 'DOWN') {
     if (isAnyEditing) return;
 
@@ -402,6 +408,7 @@ export default function SetupsPage() {
 
     setMsg('Reordering...');
 
+    // Persist swap in DB
     const { error: e1 } = await supabase
       .from('setup_template_items')
       .update({ sort_order: other.sort_order })
@@ -428,6 +435,62 @@ export default function SetupsPage() {
     setMsg('');
   }
 
+  // Delete flow
+  function requestDeleteItem(item: Item) {
+    setDeleteTarget({ kind: 'item', item });
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+
+    setDeleting(true);
+    setMsg('Deleting...');
+
+    try {
+      if (deleteTarget.kind === 'template') {
+        const templateId = deleteTarget.template.id;
+
+        const { error } = await supabase
+          .from('setup_templates')
+          .delete()
+          .eq('id', templateId);
+
+        if (error) throw error;
+
+        setMsg('Deleted');
+        setSelectedTemplateId('');
+        setDeleteTarget(null);
+
+        await loadTemplates();
+        setTimeout(() => setMsg(''), 1500);
+        return;
+      }
+
+      // item delete
+      const item = deleteTarget.item;
+
+      const { error } = await supabase
+        .from('setup_template_items')
+        .delete()
+        .eq('id', item.id);
+
+      if (error) throw error;
+
+      setDeleteTarget(null);
+      await loadItems(item.template_id);
+      setMsg('Deleted');
+      setTimeout(() => setMsg(''), 1200);
+    } catch (err: unknown) {
+      console.error(err);
+      const message =
+        err instanceof Error ? err.message : 'Delete failed';
+      setMsg(message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  // Render
   if (loading) return <main className='p-6'>Loading...</main>;
 
   const deleteTitle =
@@ -444,7 +507,7 @@ export default function SetupsPage() {
 
   return (
     <main className='p-6 space-y-6'>
-      {/* DELETE MODAL */}
+      {/* Delete confirmation */}
       <Modal
         open={!!deleteTarget}
         title={deleteTitle}
@@ -470,21 +533,20 @@ export default function SetupsPage() {
         <div className='space-y-1'>
           <h1 className='text-2xl font-semibold'>Setups</h1>
           <p className='text-sm opacity-80'>
-            Create your own entry criteria checklists. These appear as
-            checkboxes when you add a trade.
+            Create your own entry criteria checklists. These appear as checkboxes
+            when you add a trade.
           </p>
           {msg && <p className='text-sm opacity-80'>{msg}</p>}
         </div>
 
         <div className='flex gap-2'>
-          <button
-            className='border rounded-lg px-4 py-2'
-            onClick={() => router.push('/dashboard')}>
+          <button className='border rounded-lg px-4 py-2' onClick={handleBack}>
             Back
           </button>
         </div>
       </header>
 
+      {/* Create a new template */}
       <section className='border rounded-xl p-4 space-y-3 max-w-3xl'>
         <h2 className='font-semibold'>Create Setup Template</h2>
         <div className='flex flex-wrap gap-2'>
@@ -504,6 +566,7 @@ export default function SetupsPage() {
         </div>
       </section>
 
+      {/* Template picker + template actions */}
       <section className='border rounded-xl p-4 space-y-3 max-w-3xl'>
         <div className='flex items-center justify-between gap-3'>
           <h2 className='font-semibold'>Your Templates</h2>
@@ -536,13 +599,13 @@ export default function SetupsPage() {
                   <button
                     className='border rounded-lg px-3 py-2 disabled:opacity-60'
                     onClick={() => saveRenameTemplate(selectedTemplate.id)}
-                    disabled={isAnyEditing}>
+                    disabled={editingItemId !== null}>
                     Save
                   </button>
                   <button
                     className='border rounded-lg px-3 py-2 disabled:opacity-60'
                     onClick={cancelRenameTemplate}
-                    disabled={isAnyEditing}>
+                    disabled={editingItemId !== null}>
                     Cancel
                   </button>
                 </>
@@ -572,12 +635,13 @@ export default function SetupsPage() {
               value={renameTemplateValue}
               onChange={(e) => setRenameTemplateValue(e.target.value)}
               placeholder='New template name'
-              disabled={isAnyEditing}
+              disabled={editingItemId !== null}
             />
           </div>
         )}
       </section>
 
+      {/* Items table for the selected template */}
       {selectedTemplateId && (
         <section className='border rounded-xl p-4 space-y-4 max-w-3xl'>
           <div className='space-y-1'>
@@ -628,9 +692,7 @@ export default function SetupsPage() {
                           <input
                             className='border rounded-lg p-2 w-full'
                             value={editingItemValue}
-                            onChange={(e) =>
-                              setEditingItemValue(e.target.value)
-                            }
+                            onChange={(e) => setEditingItemValue(e.target.value)}
                             autoFocus
                           />
                         )}
@@ -651,7 +713,6 @@ export default function SetupsPage() {
                       <td className='p-2'>{it.sort_order}</td>
 
                       <td className='p-2'>
-                        {/* Cleaner UI: when editing, ONLY show Save/Cancel */}
                         {!isEditing ? (
                           <div className='flex flex-wrap gap-2'>
                             <button
@@ -673,7 +734,7 @@ export default function SetupsPage() {
                             <button
                               className='border rounded-lg px-3 py-1 disabled:opacity-60'
                               onClick={() => startEditItem(it)}
-                              disabled={isAnyEditing || isRenamingTemplate}>
+                              disabled={isAnyEditing}>
                               Edit
                             </button>
 
