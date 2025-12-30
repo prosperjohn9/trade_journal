@@ -38,7 +38,7 @@ type Trade = {
   lesson_learned: string | null;
   review_notes: string | null;
 
-  after_trade_screenshot_url: string | null;
+  after_trade_screenshot_url: string | null; // storage path
 };
 
 function toLocalDatetimeValue(dateIso: string | null) {
@@ -83,6 +83,15 @@ function formatErr(err: any) {
   }
 }
 
+async function signPath(path: string, seconds = 60 * 10) {
+  const { data, error } = await supabase.storage
+    .from('trade-screenshots')
+    .createSignedUrl(path, seconds);
+
+  if (error || !data?.signedUrl) return '';
+  return data.signedUrl;
+}
+
 export default function TradeReviewPage() {
   const router = useRouter();
   const params = useParams();
@@ -112,6 +121,9 @@ export default function TradeReviewPage() {
 
   const [afterFile, setAfterFile] = useState<File | null>(null);
   const [afterPreviewUrl, setAfterPreviewUrl] = useState<string>('');
+
+  // Auto-preview current screenshot (signed url)
+  const [afterSignedUrl, setAfterSignedUrl] = useState<string>('');
 
   const activeItems = useMemo(() => items.filter((i) => i.is_active), [items]);
 
@@ -270,6 +282,16 @@ export default function TradeReviewPage() {
     setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
   }
 
+  // Auto sign and preview existing screenshot whenever trade loads/changes
+  useEffect(() => {
+    (async () => {
+      setAfterSignedUrl('');
+      if (!trade?.after_trade_screenshot_url) return;
+      const url = await signPath(trade.after_trade_screenshot_url, 60 * 10);
+      setAfterSignedUrl(url);
+    })();
+  }, [trade?.after_trade_screenshot_url]);
+
   async function uploadAfterScreenshotIfAny(userId: string) {
     if (!afterFile) return trade?.after_trade_screenshot_url ?? null;
 
@@ -320,7 +342,7 @@ export default function TradeReviewPage() {
         lesson_learned: lessonLearned.trim() || null,
         review_notes: reviewNotes.trim() || null,
         after_trade_screenshot_url: afterPath,
-        reviewed_at: new Date().toISOString(), 
+        reviewed_at: new Date().toISOString(),
       };
 
       const { error: e1 } = await supabase
@@ -344,7 +366,7 @@ export default function TradeReviewPage() {
       }
 
       setMsg('Reviewed successfully. Returning to dashboard...');
-      router.push('/dashboard'); 
+      router.push('/dashboard');
     } catch (err: any) {
       console.error('saveAndMarkReviewed error:', err);
       setMsg(`Failed to save: ${formatErr(err)}`);
@@ -352,19 +374,21 @@ export default function TradeReviewPage() {
     }
   }
 
+  // Keep this (open full screen) but now use the signed preview url if it exists
   async function openAfterScreenshot() {
-    if (!trade?.after_trade_screenshot_url) return;
-
-    const { data, error } = await supabase.storage
-      .from('trade-screenshots')
-      .createSignedUrl(trade.after_trade_screenshot_url, 60);
-
-    if (error || !data?.signedUrl) {
-      alert(formatErr(error) || 'Could not open screenshot');
+    if (afterSignedUrl) {
+      window.open(afterSignedUrl, '_blank');
       return;
     }
 
-    window.open(data.signedUrl, '_blank');
+    if (!trade?.after_trade_screenshot_url) return;
+
+    const url = await signPath(trade.after_trade_screenshot_url, 60);
+    if (!url) {
+      alert('Could not open screenshot');
+      return;
+    }
+    window.open(url, '_blank');
   }
 
   useEffect(() => {
@@ -546,16 +570,31 @@ export default function TradeReviewPage() {
       <section className='border rounded-xl p-4 space-y-3'>
         <h2 className='font-semibold'>After-Trade Screenshot</h2>
 
-        {trade.after_trade_screenshot_url ? (
-          <div className='flex items-center gap-2 flex-wrap'>
-            <button
-              className='border rounded-lg px-4 py-2'
-              onClick={openAfterScreenshot}>
-              View current
-            </button>
-            <div className='text-sm opacity-70'>
-              Upload a new one to replace it.
+        {/* Current screenshot preview (auto) */}
+        {afterSignedUrl ? (
+          <div className='space-y-2'>
+            <div className='flex items-center gap-2 flex-wrap'>
+              <button
+                className='border rounded-lg px-4 py-2'
+                onClick={openAfterScreenshot}>
+                View current
+              </button>
+              <div className='text-sm opacity-70'>
+                Upload a new one to replace it.
+              </div>
             </div>
+
+            <img
+              src={afterSignedUrl}
+              alt='Current after-trade screenshot'
+              className='max-h-64 rounded-lg border cursor-pointer'
+              onClick={openAfterScreenshot}
+              title='Click to view full screen'
+            />
+          </div>
+        ) : trade.after_trade_screenshot_url ? (
+          <div className='text-sm opacity-70'>
+            Screenshot exists, but preview could not be loaded.
           </div>
         ) : (
           <div className='text-sm opacity-70'>No screenshot uploaded yet.</div>
@@ -567,12 +606,18 @@ export default function TradeReviewPage() {
           onChange={(e) => setAfterFile(e.target.files?.[0] ?? null)}
         />
 
+        {/* New upload preview (replaces current on save) */}
         {afterPreviewUrl && (
-          <img
-            src={afterPreviewUrl}
-            alt='After screenshot preview'
-            className='max-h-64 rounded-lg border'
-          />
+          <div className='space-y-2'>
+            <div className='text-sm opacity-70'>
+              New screenshot preview (will replace on save)
+            </div>
+            <img
+              src={afterPreviewUrl}
+              alt='After screenshot preview'
+              className='max-h-64 rounded-lg border'
+            />
+          </div>
         )}
       </section>
 
