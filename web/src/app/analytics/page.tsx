@@ -973,6 +973,38 @@ export default function AnalyticsPage() {
     }));
   }, [filteredTrades]);
 
+  const sessionPerf = useMemo(() => {
+    const init: Record<Session, { session: Session; trades: number; pnl: number; wins: number; losses: number; be: number }> = {
+      ASIA: { session: 'ASIA', trades: 0, pnl: 0, wins: 0, losses: 0, be: 0 },
+      LONDON: { session: 'LONDON', trades: 0, pnl: 0, wins: 0, losses: 0, be: 0 },
+      OVERLAP: { session: 'OVERLAP', trades: 0, pnl: 0, wins: 0, losses: 0, be: 0 },
+      NEW_YORK: { session: 'NEW_YORK', trades: 0, pnl: 0, wins: 0, losses: 0, be: 0 },
+    };
+
+    for (const t of filteredTrades) {
+      const s = getSessionUTC(t.opened_at);
+      init[s].trades += 1;
+      init[s].pnl += calcNetPnl(t);
+      if (t.outcome === 'WIN') init[s].wins += 1;
+      else if (t.outcome === 'LOSS') init[s].losses += 1;
+      else init[s].be += 1;
+    }
+
+    const order: Session[] = ['ASIA', 'LONDON', 'OVERLAP', 'NEW_YORK'];
+    return order.map((s) => {
+      const r = init[s];
+      return {
+        ...r,
+        winRate: r.trades ? (r.wins / r.trades) * 100 : 0,
+      };
+    });
+  }, [filteredTrades]);
+
+  const sessionPnlBars = useMemo(
+    () => sessionPerf.map((r) => ({ xLabel: sessionLabel(r.session), y: r.pnl })),
+    [sessionPerf]
+  );
+
   const calendarValueByDay = useMemo(() => {
     const byDay: Record<string, number> = {};
     for (const t of filteredTrades) {
@@ -1360,6 +1392,53 @@ export default function AnalyticsPage() {
           bars={hourBars}
           yFormatter={(y) => formatMoney(y, currency)}
         />
+      </section>
+
+      {/* Session performance */}
+      <section className='grid grid-cols-1 lg:grid-cols-2 gap-3'>
+        <SvgBarChart
+          title='Performance by Session (UTC)'
+          subtitle='Net PnL by trading session'
+          bars={sessionPnlBars}
+          yFormatter={(y) => formatMoney(y, currency)}
+        />
+
+        <div className='border rounded-xl p-4'>
+          <div className='flex items-center justify-between gap-3'>
+            <div>
+              <div className='font-semibold'>Session summary</div>
+              <div className='text-xs opacity-70 mt-1'>Trades, win rate, and net PnL</div>
+            </div>
+          </div>
+
+          <div className='mt-3 space-y-2 text-sm'>
+            {sessionPerf.map((s) => (
+              <div key={s.session} className='border rounded-lg p-3'>
+                <div className='flex items-center justify-between gap-3'>
+                  <div className='font-semibold'>{sessionLabel(s.session)}</div>
+                  <div className={cx('font-semibold', signColor(s.pnl))}>
+                    {formatMoney(s.pnl, currency)}
+                  </div>
+                </div>
+                <div className='text-xs opacity-70 mt-1'>
+                  Trades: <span className='font-semibold'>{s.trades}</span> • Win rate:{' '}
+                  <span className='font-semibold'>{formatPercent(s.winRate, 0)}</span> •
+                  Wins: <span className='font-semibold'>{s.wins}</span> • Losses:{' '}
+                  <span className='font-semibold'>{s.losses}</span> • BE:{' '}
+                  <span className='font-semibold'>{s.be}</span>
+                </div>
+              </div>
+            ))}
+
+            {!sessionPerf.some((s) => s.trades > 0) && (
+              <div className='text-sm opacity-70'>No data.</div>
+            )}
+          </div>
+
+          <div className='mt-3 text-xs opacity-70'>
+            Sessions are computed from <span className='font-semibold'>opened_at</span> using UTC hours.
+          </div>
+        </div>
       </section>
 
       {/* Direction + streaks + symbols */}
