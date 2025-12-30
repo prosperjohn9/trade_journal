@@ -362,12 +362,12 @@ export default function DashboardPage() {
     }
   }
 
-  // NEW: open modal instead of confirm()
+  // Open modal instead of confirm()
   function requestDeleteTrade(t: Trade) {
     setDeleteTradeTarget(t);
   }
 
-  // NEW: confirm delete inside modal
+  // Confirm delete inside modal
   async function confirmDeleteTrade() {
     if (!deleteTradeTarget) return;
 

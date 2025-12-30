@@ -63,6 +63,12 @@ export default function EditTradePage() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
 
+  // Separate "entry saved" feedback that appears near the Save Entry button
+  const [entryMsg, setEntryMsg] = useState('');
+  const [entryMsgTone, setEntryMsgTone] = useState<
+    'success' | 'error' | 'info'
+  >('info');
+
   // ========= ENTRY FIELDS =========
   const [openedAt, setOpenedAt] = useState<string>('');
   const [instrument, setInstrument] = useState('EURUSD');
@@ -144,6 +150,17 @@ export default function EditTradePage() {
 
   function toggleCheck(itemId: string) {
     setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
+  }
+
+  function setEntryFeedback(
+    text: string,
+    tone: 'success' | 'error' | 'info' = 'info'
+  ) {
+    setEntryMsg(text);
+    setEntryMsgTone(tone);
+    if (tone === 'success') {
+      window.setTimeout(() => setEntryMsg(''), 2500);
+    }
   }
 
   // Shared "go back" helper (same behavior for Cancel + Save Review)
@@ -388,7 +405,9 @@ export default function EditTradePage() {
   // ====== SAVE ENTRY (includes checklist + before screenshot) ======
   async function saveEntry(e: React.FormEvent) {
     e.preventDefault();
-    setMsg('Saving entry...');
+
+    setMsg(''); // keep header msg for other stuff
+    setEntryFeedback('Saving entry...', 'info');
 
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user.id;
@@ -398,7 +417,7 @@ export default function EditTradePage() {
     const pnlPercentNum = Number(pnlPercent);
 
     if (Number.isNaN(pnlAmountNum) || Number.isNaN(pnlPercentNum)) {
-      setMsg('Please enter valid P&L values.');
+      setEntryFeedback('Please enter valid P&L values.', 'error');
       return;
     }
 
@@ -439,7 +458,7 @@ export default function EditTradePage() {
         .eq('id', id);
 
       if (error) {
-        setMsg(error.message);
+        setEntryFeedback(error.message, 'error');
         return;
       }
 
@@ -450,10 +469,10 @@ export default function EditTradePage() {
         setBeforePath(newBeforePath);
       setBeforeFile(null);
 
-      setMsg('Entry saved successfully.');
+      setEntryFeedback('Entry saved successfully.', 'success');
     } catch (err: any) {
       console.error(err);
-      setMsg(err?.message ?? 'Failed to save entry');
+      setEntryFeedback(err?.message ?? 'Failed to save entry', 'error');
     }
   }
 
@@ -516,7 +535,7 @@ export default function EditTradePage() {
 
       setMsg('Review saved successfully.');
 
-      // ✅ GO BACK (same behavior as Cancel)
+      // GO BACK (same behavior as Cancel)
       goBackSafe();
     } catch (err: any) {
       console.error(err);
@@ -531,6 +550,13 @@ export default function EditTradePage() {
       </main>
     );
   }
+
+  const entryMsgClasses =
+    entryMsgTone === 'success'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+      : entryMsgTone === 'error'
+      ? 'border-rose-200 bg-rose-50 text-rose-800'
+      : 'border-slate-200 bg-slate-50 text-slate-800';
 
   return (
     <main className='p-6 max-w-2xl space-y-6'>
@@ -750,6 +776,13 @@ export default function EditTradePage() {
         </Field>
 
         <button className='w-full border rounded-lg p-3'>Save Entry</button>
+
+        {/* feedback right under Save Entry */}
+        {entryMsg && (
+          <div className={`text-sm border rounded-lg p-3 ${entryMsgClasses}`}>
+            {entryMsg}
+          </div>
+        )}
       </form>
 
       {/* ===== REVIEW SECTION (BOTTOM, SAME PAGE) ===== */}

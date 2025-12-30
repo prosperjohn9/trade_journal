@@ -160,7 +160,7 @@ export function filterTrades(trades: TradeRow[], f: AnalyticsFilters) {
 export function computeReport(params: {
   trades: TradeRow[];
   startingBalance: number; // from profiles.starting_balance
-  timeZone?: string; // defaults to browser tz at callsite; fallback UTC
+  timeZone?: string; // defaults to browser tz at call site; fallback UTC
 }): CoreReport {
   const timeZone = params.timeZone || 'UTC';
   const startingBalance = n(params.startingBalance, 0);

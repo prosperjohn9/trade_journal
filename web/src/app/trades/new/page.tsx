@@ -264,7 +264,7 @@ export default function NewTradePage() {
         }
       }
 
-      // 3) upload BEFORE screenshot (optional)
+      // 3) upload BEFORE screenshot if any
       if (beforeFile) {
         setMsg('Uploading screenshot...');
         const path = await uploadBeforeScreenshot({
