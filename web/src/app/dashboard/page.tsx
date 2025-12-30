@@ -164,6 +164,10 @@ export default function DashboardPage() {
   );
   const [deletingTrade, setDeletingTrade] = useState(false);
 
+  // ✅ LOGOUT MODAL STATE
+  const [showLogout, setShowLogout] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
   // Load session + profile
   useEffect(() => {
     (async () => {
@@ -326,9 +330,23 @@ export default function DashboardPage() {
 
   const currency = (profile as any)?.base_currency || 'USD';
 
-  async function logout() {
-    await supabase.auth.signOut();
-    router.push('/auth');
+  // ✅ open logout confirmation modal
+  function requestLogout() {
+    setShowLogout(true);
+  }
+
+  // ✅ confirm logout inside modal
+  async function confirmLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+
+    try {
+      await supabase.auth.signOut();
+      setShowLogout(false);
+      router.push('/auth');
+    } finally {
+      setLoggingOut(false);
+    }
   }
 
   async function saveProfile() {
@@ -394,6 +412,29 @@ export default function DashboardPage() {
 
   return (
     <main className='p-6 space-y-6'>
+      {/* ✅ LOGOUT MODAL */}
+      <Modal
+        open={showLogout}
+        title='Log out?'
+        onClose={() => (loggingOut ? null : setShowLogout(false))}>
+        <p className='text-sm opacity-80'>Are you sure you want to log out?</p>
+
+        <div className='mt-4 flex gap-2 justify-end'>
+          <button
+            className='border rounded-lg px-4 py-2 disabled:opacity-60'
+            onClick={() => setShowLogout(false)}
+            disabled={loggingOut}>
+            Cancel
+          </button>
+          <button
+            className='border rounded-lg px-4 py-2 disabled:opacity-60'
+            onClick={confirmLogout}
+            disabled={loggingOut}>
+            {loggingOut ? 'Logging out...' : 'Log out'}
+          </button>
+        </div>
+      </Modal>
+
       {/* DELETE MODAL */}
       <Modal
         open={!!deleteTradeTarget}
@@ -473,7 +514,10 @@ export default function DashboardPage() {
             + Add Trade
           </button>
 
-          <button className='border rounded-lg px-4 py-2' onClick={logout}>
+          {/* ✅ Logout now asks for confirmation */}
+          <button
+            className='border rounded-lg px-4 py-2'
+            onClick={requestLogout}>
             Logout
           </button>
         </div>
