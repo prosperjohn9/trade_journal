@@ -8,6 +8,31 @@ import { getOrCreateProfile, type Profile } from '@/src/lib/profile';
 type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
 type Direction = 'BUY' | 'SELL';
 
+type Session = 'ASIA' | 'LONDON' | 'NEW_YORK' | 'OVERLAP';
+
+/**
+ * Session buckets using UTC hours (consistent across users):
+ * - ASIA: 21:00–06:59 UTC
+ * - LONDON: 07:00–11:59 UTC
+ * - OVERLAP: 12:00–15:59 UTC (London–NY overlap)
+ * - NEW_YORK: 16:00–20:59 UTC
+ */
+function getSessionUTC(iso: string): Session {
+  const h = new Date(iso).getUTCHours();
+
+  if (h >= 21 || h <= 6) return 'ASIA';
+  if (h >= 7 && h <= 11) return 'LONDON';
+  if (h >= 12 && h <= 15) return 'OVERLAP';
+  return 'NEW_YORK';
+}
+
+function sessionLabel(s: Session) {
+  if (s === 'ASIA') return 'Asia';
+  if (s === 'LONDON') return 'London';
+  if (s === 'OVERLAP') return 'London–NY Overlap';
+  return 'New York';
+}
+
 type Trade = {
   id: string;
   opened_at: string;
@@ -515,6 +540,7 @@ export default function AnalyticsPage() {
   const [reviewedFilter, setReviewedFilter] = useState<
     '' | 'REVIEWED' | 'NOT_REVIEWED'
   >('');
+  const [sessionFilter, setSessionFilter] = useState<'' | Session>('');
 
   // Setup filter
   const [setupTemplates, setSetupTemplates] = useState<SetupTemplate[]>([]);
@@ -539,6 +565,7 @@ export default function AnalyticsPage() {
     if (outcomeFilter) c++;
     if (reviewedFilter) c++;
     if (setupFilter) c++;
+    if (sessionFilter) c++;
     return c;
   }, [
     instrumentQuery,
@@ -546,6 +573,7 @@ export default function AnalyticsPage() {
     outcomeFilter,
     reviewedFilter,
     setupFilter,
+    sessionFilter,
   ]);
 
   const filtersSummary = useMemo(() => {
@@ -555,6 +583,7 @@ export default function AnalyticsPage() {
     if (instrumentQuery.trim())
       bits.push(`Instrument: ${instrumentQuery.trim().toUpperCase()}`);
     if (directionFilter) bits.push(`Dir: ${directionFilter}`);
+    if (sessionFilter) bits.push(`Session: ${sessionLabel(sessionFilter)}`);
     if (outcomeFilter) bits.push(`Outcome: ${outcomeFilter}`);
     if (reviewedFilter === 'REVIEWED') bits.push(`Reviewed`);
     if (reviewedFilter === 'NOT_REVIEWED') bits.push(`Not reviewed`);
@@ -571,6 +600,7 @@ export default function AnalyticsPage() {
     rangeEnd,
     instrumentQuery,
     directionFilter,
+    sessionFilter,
     outcomeFilter,
     reviewedFilter,
     setupFilter,
@@ -657,6 +687,7 @@ export default function AnalyticsPage() {
     return trades.filter((t) => {
       if (q && !t.instrument?.toUpperCase().includes(q)) return false;
       if (directionFilter && t.direction !== directionFilter) return false;
+      if (sessionFilter && getSessionUTC(t.opened_at) !== sessionFilter) return false;
       if (outcomeFilter && t.outcome !== outcomeFilter) return false;
       if (reviewedFilter === 'REVIEWED' && !t.reviewed_at) return false;
       if (reviewedFilter === 'NOT_REVIEWED' && !!t.reviewed_at) return false;
@@ -679,6 +710,7 @@ export default function AnalyticsPage() {
     trades,
     instrumentQuery,
     directionFilter,
+    sessionFilter,
     outcomeFilter,
     reviewedFilter,
     setupFilter,
@@ -1057,6 +1089,19 @@ export default function AnalyticsPage() {
                 </select>
               </Field>
 
+              <Field label='Session (UTC)'>
+                <select
+                  className='w-full border rounded-lg p-3'
+                  value={sessionFilter}
+                  onChange={(e) => setSessionFilter(e.target.value as any)}>
+                  <option value=''>All</option>
+                  <option value='ASIA'>Asia</option>
+                  <option value='LONDON'>London</option>
+                  <option value='OVERLAP'>London–NY Overlap</option>
+                  <option value='NEW_YORK'>New York</option>
+                </select>
+              </Field>
+
               <Field label='Setup'>
                 <select
                   className='w-full border rounded-lg p-3'
@@ -1091,6 +1136,7 @@ export default function AnalyticsPage() {
                   onClick={() => {
                     setInstrumentQuery('');
                     setDirectionFilter('');
+                    setSessionFilter('');
                     setOutcomeFilter('');
                     setReviewedFilter('');
                     setSetupFilter('');
@@ -1413,6 +1459,7 @@ export default function AnalyticsPage() {
                 <th className='p-2'>Date</th>
                 <th className='p-2'>Instrument</th>
                 <th className='p-2'>Dir</th>
+                <th className='p-2'>Session</th>
                 <th className='p-2'>Outcome</th>
                 <th className='p-2'>Net PnL</th>
                 <th className='p-2'>PnL (%)</th>
@@ -1436,6 +1483,7 @@ export default function AnalyticsPage() {
                     </td>
                     <td className='p-2'>{t.instrument}</td>
                     <td className='p-2'>{t.direction}</td>
+                    <td className='p-2'>{sessionLabel(getSessionUTC(t.opened_at))}</td>
                     <td className='p-2'>{t.outcome}</td>
                     <td className={cx('p-2 font-medium', signColor(net))}>
                       {formatMoney(net, currency)}
@@ -1451,7 +1499,7 @@ export default function AnalyticsPage() {
 
               {!filteredTrades.length && (
                 <tr>
-                  <td colSpan={8} className='p-2 opacity-70'>
+                  <td colSpan={9} className='p-2 opacity-70'>
                     No trades for selected filters.
                   </td>
                 </tr>
