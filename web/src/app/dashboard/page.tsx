@@ -98,6 +98,43 @@ function reviewedBadge(reviewedAt: string | null) {
   );
 }
 
+/** Simple modal (same style as Setups modal) */
+function Modal({
+  open,
+  title,
+  children,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div
+      className='fixed inset-0 z-50 flex items-center justify-center p-4'
+      aria-modal='true'
+      role='dialog'>
+      <button
+        className='absolute inset-0 bg-black/40'
+        onClick={onClose}
+        aria-label='Close modal'
+      />
+      <div className='relative w-full max-w-md rounded-xl border bg-white p-4 shadow-lg'>
+        <div className='flex items-start justify-between gap-3'>
+          <div className='text-lg font-semibold'>{title}</div>
+          <button className='border rounded-lg px-3 py-1' onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <div className='mt-3'>{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
 
@@ -120,6 +157,12 @@ export default function DashboardPage() {
   const [checklistScoreByTrade, setChecklistScoreByTrade] = useState<
     Record<string, number | null>
   >({});
+
+  // DELETE MODAL STATE
+  const [deleteTradeTarget, setDeleteTradeTarget] = useState<Trade | null>(
+    null
+  );
+  const [deletingTrade, setDeletingTrade] = useState(false);
 
   // Load session + profile
   useEffect(() => {
@@ -319,17 +362,29 @@ export default function DashboardPage() {
     }
   }
 
-  async function deleteTrade(id: string) {
-    const ok = confirm('Delete this trade? This cannot be undone.');
-    if (!ok) return;
+  // NEW: open modal instead of confirm()
+  function requestDeleteTrade(t: Trade) {
+    setDeleteTradeTarget(t);
+  }
 
+  // NEW: confirm delete inside modal
+  async function confirmDeleteTrade() {
+    if (!deleteTradeTarget) return;
+
+    setDeletingTrade(true);
+
+    const id = deleteTradeTarget.id;
     const { error } = await supabase.from('trades').delete().eq('id', id);
+
     if (error) {
       alert(error.message);
+      setDeletingTrade(false);
       return;
     }
 
     setTrades((prev) => prev.filter((t) => t.id !== id));
+    setDeleteTradeTarget(null);
+    setDeletingTrade(false);
   }
 
   const displayName =
@@ -339,6 +394,45 @@ export default function DashboardPage() {
 
   return (
     <main className='p-6 space-y-6'>
+      {/* DELETE MODAL */}
+      <Modal
+        open={!!deleteTradeTarget}
+        title='Delete trade?'
+        onClose={() => (deletingTrade ? null : setDeleteTradeTarget(null))}>
+        <p className='text-sm opacity-80'>
+          This will permanently delete this trade. This cannot be undone.
+        </p>
+
+        {deleteTradeTarget && (
+          <div className='mt-3 text-sm'>
+            <div className='opacity-80'>
+              <span className='font-semibold'>
+                {deleteTradeTarget.instrument}
+              </span>{' '}
+              • {deleteTradeTarget.direction} • {deleteTradeTarget.outcome}
+            </div>
+            <div className='opacity-70'>
+              {new Date(deleteTradeTarget.opened_at).toLocaleString()}
+            </div>
+          </div>
+        )}
+
+        <div className='mt-4 flex gap-2 justify-end'>
+          <button
+            className='border rounded-lg px-4 py-2 disabled:opacity-60'
+            onClick={() => setDeleteTradeTarget(null)}
+            disabled={deletingTrade}>
+            Cancel
+          </button>
+          <button
+            className='border rounded-lg px-4 py-2 disabled:opacity-60'
+            onClick={confirmDeleteTrade}
+            disabled={deletingTrade}>
+            {deletingTrade ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </Modal>
+
       <header className='flex items-start justify-between gap-4'>
         <div className='space-y-1'>
           <h1 className='text-2xl font-semibold'>Dashboard</h1>
@@ -562,7 +656,7 @@ export default function DashboardPage() {
 
                         <button
                           className='border rounded-lg px-3 py-1'
-                          onClick={() => deleteTrade(t.id)}>
+                          onClick={() => requestDeleteTrade(t)}>
                           Delete
                         </button>
                       </div>
