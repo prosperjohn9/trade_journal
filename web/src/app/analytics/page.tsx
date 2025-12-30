@@ -175,6 +175,24 @@ function SvgLineChart({
   const width = 820;
   const pad = 30;
 
+  if (!points.length) {
+    return (
+      <div className='border rounded-xl p-4'>
+        <div className='flex items-start justify-between gap-3'>
+          <div>
+            <div className='font-semibold'>{title}</div>
+            {subtitle && <div className='text-xs opacity-70'>{subtitle}</div>}
+          </div>
+          <div className='text-xs opacity-70'>—</div>
+        </div>
+
+        <div className='mt-6 border rounded-lg p-6 text-center text-sm opacity-70 bg-slate-50'>
+          No data for selected filters.
+        </div>
+      </div>
+    );
+  }
+
   const ys = points.map((p) => p.y);
   const minY = ys.length ? Math.min(...ys) : 0;
   const maxY = ys.length ? Math.max(...ys) : 1;
@@ -308,6 +326,24 @@ function SvgBarChart({
 }) {
   const width = 820;
   const pad = 30;
+
+  if (!bars.length) {
+    return (
+      <div className='border rounded-xl p-4'>
+        <div className='flex items-start justify-between gap-3'>
+          <div>
+            <div className='font-semibold'>{title}</div>
+            {subtitle && <div className='text-xs opacity-70'>{subtitle}</div>}
+          </div>
+          <div className='text-xs opacity-70'>—</div>
+        </div>
+
+        <div className='mt-6 border rounded-lg p-6 text-center text-sm opacity-70 bg-slate-50'>
+          No data for selected filters.
+        </div>
+      </div>
+    );
+  }
 
   const ys = bars.map((b) => b.y);
   const minY = ys.length ? Math.min(...ys, 0) : 0;
