@@ -146,13 +146,18 @@ export default function EditTradePage() {
     setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
   }
 
-  // Cancel should return to previous page or trade view
-  function onCancel() {
+  // Shared "go back" helper (same behavior for Cancel + Save Review)
+  function goBackSafe() {
     if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back();
       return;
     }
     router.push(`/trades/${id}`);
+  }
+
+  // Cancel should return to previous page or trade view
+  function onCancel() {
+    goBackSafe();
   }
 
   // ====== local file previews ======
@@ -510,7 +515,9 @@ export default function EditTradePage() {
       if (!reviewedAt) setReviewedAt(reviewedAtIso);
 
       setMsg('Review saved successfully.');
-      router.push(`/trades/${id}`);
+
+      // ✅ GO BACK (same behavior as Cancel)
+      goBackSafe();
     } catch (err: any) {
       console.error(err);
       setMsg(err?.message ?? 'Failed to save review');
