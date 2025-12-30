@@ -631,6 +631,16 @@ export default function AnalyticsPage() {
 
   const hasUnsavedChanges = useMemo(() => !filtersEqual(draft, applied), [draft, applied]);
 
+  // Memoized instrument options for autocomplete
+  const instrumentOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of trades) {
+      const s = (t.instrument || '').trim();
+      if (s) set.add(s.toUpperCase());
+    }
+    return Array.from(set).sort();
+  }, [trades]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -1285,10 +1295,21 @@ export default function AnalyticsPage() {
               <Field label='Instrument'>
                 <input
                   className='w-full border rounded-lg p-3'
-                  placeholder='e.g. EURUSD'
+                  placeholder='Select or type…'
+                  list='instrument-options'
                   value={draft.instrumentQuery}
-                  onChange={(e) => setDraft((p) => ({ ...p, instrumentQuery: e.target.value }))}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, instrumentQuery: e.target.value }))
+                  }
                 />
+                <datalist id='instrument-options'>
+                  {instrumentOptions.map((sym) => (
+                    <option key={sym} value={sym} />
+                  ))}
+                </datalist>
+                <div className='mt-1 text-[11px] opacity-70'>
+                  Suggestions are pulled from instruments in the loaded date range.
+                </div>
               </Field>
 
               <Field label='Reviewed'>
