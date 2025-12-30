@@ -96,7 +96,7 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
-function toNumberSafe(v: any) {
+function toNumberSafe(v: unknown) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
@@ -550,8 +550,17 @@ export default function AnalyticsPage() {
   const router = useRouter();
 
   const [profile, setProfile] = useState<Profile | null>(null);
-  const currency = (profile as any)?.base_currency || 'USD';
-  const startingBalanceRaw = (profile as any)?.starting_balance;
+
+  // Some fields may not be present on the generated Profile type.
+  type ProfileExtras = {
+    base_currency?: string | null;
+    starting_balance?: number | string | null;
+  };
+
+  const profileExtras = (profile ?? null) as unknown as ProfileExtras | null;
+
+  const currency = profileExtras?.base_currency ?? 'USD';
+  const startingBalanceRaw = profileExtras?.starting_balance;
   const hasStartingBalance =
     startingBalanceRaw !== null && startingBalanceRaw !== undefined;
   const startingBalance = hasStartingBalance
@@ -855,13 +864,18 @@ export default function AnalyticsPage() {
     }
 
     const days = Object.keys(byDay).sort();
-    let cum = 0;
 
-    return days.map((d) => {
-      cum += byDay[d];
-      const y = hasStartingBalance ? startingBalance + cum : cum;
-      return { xLabel: d, y };
-    });
+    const res = days.reduce(
+      (acc, d) => {
+        acc.cum += byDay[d] || 0;
+        const y = hasStartingBalance ? startingBalance + acc.cum : acc.cum;
+        acc.series.push({ xLabel: d, y });
+        return acc;
+      },
+      { cum: 0, series: [] as Array<{ xLabel: string; y: number }> }
+    );
+
+    return res.series;
   }, [filteredTrades, hasStartingBalance, startingBalance]);
 
   const dailyNetSeries = useMemo(() => {
@@ -959,7 +973,7 @@ export default function AnalyticsPage() {
       if (t.outcome === 'LOSS') by[t.direction].losses += 1;
     }
 
-    return (Object.values(by) as any[]).map((r) => ({
+    return Object.values(by).map((r) => ({
       ...r,
       winRate: r.trades ? (r.wins / r.trades) * 100 : 0,
     }));
@@ -1104,7 +1118,12 @@ export default function AnalyticsPage() {
                 <select
                   className='w-full border rounded-lg p-3'
                   value={draft.reviewedFilter}
-                  onChange={(e) => setDraft((p) => ({ ...p, reviewedFilter: e.target.value as any }))}>
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      reviewedFilter: e.target.value as Filters['reviewedFilter'],
+                    }))
+                  }>
                   <option value=''>All</option>
                   <option value='REVIEWED'>Reviewed</option>
                   <option value='NOT_REVIEWED'>Not reviewed</option>
@@ -1115,7 +1134,12 @@ export default function AnalyticsPage() {
                 <select
                   className='w-full border rounded-lg p-3'
                   value={draft.directionFilter}
-                  onChange={(e) => setDraft((p) => ({ ...p, directionFilter: e.target.value as any }))}>
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      directionFilter: e.target.value as Filters['directionFilter'],
+                    }))
+                  }>
                   <option value=''>All</option>
                   <option value='BUY'>BUY</option>
                   <option value='SELL'>SELL</option>
@@ -1126,7 +1150,12 @@ export default function AnalyticsPage() {
                 <select
                   className='w-full border rounded-lg p-3'
                   value={draft.sessionFilter}
-                  onChange={(e) => setDraft((p) => ({ ...p, sessionFilter: e.target.value as any }))}>
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      sessionFilter: e.target.value as Filters['sessionFilter'],
+                    }))
+                  }>
                   <option value=''>All</option>
                   <option value='ASIA'>Asia</option>
                   <option value='LONDON'>London</option>
@@ -1139,7 +1168,12 @@ export default function AnalyticsPage() {
                 <select
                   className='w-full border rounded-lg p-3'
                   value={draft.setupFilter}
-                  onChange={(e) => setDraft((p) => ({ ...p, setupFilter: e.target.value as any }))}>
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      setupFilter: e.target.value as Filters['setupFilter'],
+                    }))
+                  }>
                   <option value=''>All</option>
                   <option value='NO_SETUP'>No setup</option>
                   {setupTemplates.map((s) => (
@@ -1154,7 +1188,12 @@ export default function AnalyticsPage() {
                 <select
                   className='w-full border rounded-lg p-3'
                   value={draft.outcomeFilter}
-                  onChange={(e) => setDraft((p) => ({ ...p, outcomeFilter: e.target.value as any }))}>
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      outcomeFilter: e.target.value as Filters['outcomeFilter'],
+                    }))
+                  }>
                   <option value=''>All</option>
                   <option value='WIN'>WIN</option>
                   <option value='LOSS'>LOSS</option>
@@ -1455,7 +1494,9 @@ export default function AnalyticsPage() {
             <select
               className='border rounded-lg p-2'
               value={calendarMode}
-              onChange={(e) => setCalendarMode(e.target.value as any)}>
+              onChange={(e) =>
+                setCalendarMode(e.target.value as 'PNL_PERCENT' | 'PNL_DOLLAR')
+              }>
               <option value='PNL_PERCENT'>Daily PnL %</option>
               <option value='PNL_DOLLAR'>Daily Net PnL ($)</option>
             </select>
@@ -1556,7 +1597,7 @@ function Card({
   valueClassName,
 }: {
   title: string;
-  value: any;
+  value: React.ReactNode;
   valueClassName?: string;
 }) {
   return (
