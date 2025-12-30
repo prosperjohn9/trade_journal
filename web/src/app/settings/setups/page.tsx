@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/src/lib/supabaseClient';
 
@@ -61,7 +61,7 @@ function Modal({
   );
 }
 
-export default function SetupsPage() {
+function SetupsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -777,5 +777,13 @@ export default function SetupsPage() {
         </section>
       )}
     </main>
+  );
+}
+
+export default function SetupsPage() {
+  return (
+    <Suspense fallback={<main className='p-6'>Loading...</main>}>
+      <SetupsPageInner />
+    </Suspense>
   );
 }
