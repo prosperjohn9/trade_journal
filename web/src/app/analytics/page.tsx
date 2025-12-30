@@ -173,7 +173,12 @@ function SvgLineChart({
   yFormatter: (y: number) => string;
 }) {
   const width = 820;
-  const pad = 30;
+
+  // Padding tuned to prevent Y-axis value labels (which can be long) from colliding with X-axis date labels.
+  const padL = 96; // left space for money labels (supports large values)
+  const padR = 24;
+  const padT = 24;
+  const padB = 44; // extra bottom space for dates
 
   if (!points.length) {
     return (
@@ -198,10 +203,11 @@ function SvgLineChart({
   const maxY = ys.length ? Math.max(...ys) : 1;
   const range = maxY - minY || 1;
 
-  const xStep = points.length > 1 ? (width - pad * 2) / (points.length - 1) : 0;
-  const toX = (i: number) => pad + i * xStep;
+  const xStep =
+    points.length > 1 ? (width - padL - padR) / (points.length - 1) : 0;
+  const toX = (i: number) => padL + i * xStep;
   const toY = (y: number) =>
-    pad + (height - pad * 2) * (1 - (y - minY) / range);
+    padT + (height - padT - padB) * (1 - (y - minY) / range);
 
   const path = points
     .map(
@@ -211,7 +217,7 @@ function SvgLineChart({
     .join(' ');
 
   const y0 = toY(0);
-  const axisY = clamp(y0, pad, height - pad);
+  const axisY = clamp(y0, padT, height - padB);
 
   const ticks = 4;
   const tickVals = Array.from(
@@ -246,13 +252,13 @@ function SvgLineChart({
             return (
               <g key={i}>
                 <line
-                  x1={pad}
+                  x1={padL}
                   y1={y}
-                  x2={width - pad}
+                  x2={width - padR}
                   y2={y}
                   stroke='rgba(0,0,0,0.08)'
                 />
-                <text x={6} y={y + 4} fontSize='10' fill='rgba(0,0,0,0.55)'>
+                <text x={10} y={y + 4} fontSize='10' fill='rgba(0,0,0,0.55)'>
                   {yFormatter(v)}
                 </text>
               </g>
@@ -260,9 +266,9 @@ function SvgLineChart({
           })}
 
           <line
-            x1={pad}
+            x1={padL}
             y1={axisY}
-            x2={width - pad}
+            x2={width - padR}
             y2={axisY}
             stroke='rgba(0,0,0,0.18)'
           />
@@ -295,7 +301,7 @@ function SvgLineChart({
               <text
                 key={i}
                 x={toX(i)}
-                y={height - 8}
+                y={height - 12}
                 fontSize='10'
                 fill='rgba(0,0,0,0.55)'
                 textAnchor='middle'>
@@ -325,7 +331,12 @@ function SvgBarChart({
   xLabelFormatter?: (x: string) => string;
 }) {
   const width = 820;
-  const pad = 30;
+
+  // Padding tuned to prevent Y-axis value labels from colliding with X-axis category labels.
+  const padL = 96;
+  const padR = 24;
+  const padT = 24;
+  const padB = 44;
 
   if (!bars.length) {
     return (
@@ -350,13 +361,13 @@ function SvgBarChart({
   const maxY = ys.length ? Math.max(...ys, 0) : 1;
   const range = maxY - minY || 1;
 
-  const plotW = width - pad * 2;
+  const plotW = width - padL - padR;
   const barW = bars.length ? plotW / bars.length : plotW;
   const gap = Math.min(10, barW * 0.2);
   const innerW = Math.max(2, barW - gap);
 
   const toY = (y: number) =>
-    pad + (height - pad * 2) * (1 - (y - minY) / range);
+    padT + (height - padT - padB) * (1 - (y - minY) / range);
   const y0 = toY(0);
 
   const ticks = 4;
@@ -392,13 +403,13 @@ function SvgBarChart({
             return (
               <g key={i}>
                 <line
-                  x1={pad}
+                  x1={padL}
                   y1={y}
-                  x2={width - pad}
+                  x2={width - padR}
                   y2={y}
                   stroke='rgba(0,0,0,0.08)'
                 />
-                <text x={6} y={y + 4} fontSize='10' fill='rgba(0,0,0,0.55)'>
+                <text x={10} y={y + 4} fontSize='10' fill='rgba(0,0,0,0.55)'>
                   {yFormatter(v)}
                 </text>
               </g>
@@ -406,15 +417,15 @@ function SvgBarChart({
           })}
 
           <line
-            x1={pad}
+            x1={padL}
             y1={y0}
-            x2={width - pad}
+            x2={width - padR}
             y2={y0}
             stroke='rgba(0,0,0,0.18)'
           />
 
           {bars.map((b, i) => {
-            const x = pad + i * barW + gap / 2;
+            const x = padL + i * barW + gap / 2;
             const yPos = toY(Math.max(b.y, 0));
             const yNeg = toY(Math.min(b.y, 0));
             const h = Math.abs(yNeg - yPos);
@@ -434,7 +445,7 @@ function SvgBarChart({
                 />
                 <text
                   x={x + innerW / 2}
-                  y={height - 8}
+                  y={height - 12}
                   fontSize='10'
                   fill='rgba(0,0,0,0.55)'
                   textAnchor='middle'>
