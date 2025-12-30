@@ -33,10 +33,20 @@ export default function SetupsPage() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
 
+  // Inline rename template
+  const [isRenamingTemplate, setIsRenamingTemplate] = useState(false);
+  const [renameTemplateValue, setRenameTemplateValue] = useState('');
+
+  // Inline edit checklist item
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingItemValue, setEditingItemValue] = useState<string>('');
+
   const selectedTemplate = useMemo(
     () => templates.find((t) => t.id === selectedTemplateId) || null,
     [templates, selectedTemplateId]
   );
+
+  const isAnyEditing = editingItemId !== null;
 
   useEffect(() => {
     (async () => {
@@ -55,6 +65,13 @@ export default function SetupsPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTemplateId]);
+
+  // keep rename box in sync when switching templates
+  useEffect(() => {
+    if (!selectedTemplate) return;
+    setRenameTemplateValue(selectedTemplate.name);
+    setIsRenamingTemplate(false);
+  }, [selectedTemplate?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadTemplates() {
     const { data, error } = await supabase
@@ -119,14 +136,28 @@ export default function SetupsPage() {
     setTimeout(() => setMsg(''), 1500);
   }
 
-  async function renameTemplate(templateId: string) {
-    const name = prompt('New template name:', selectedTemplate?.name || '');
+  // Start/Cancel rename UI
+  function startRenameTemplate() {
+    if (!selectedTemplate) return;
+    setRenameTemplateValue(selectedTemplate.name);
+    setIsRenamingTemplate(true);
+  }
+
+  function cancelRenameTemplate() {
+    if (!selectedTemplate) return;
+    setRenameTemplateValue(selectedTemplate.name);
+    setIsRenamingTemplate(false);
+  }
+
+  // Save rename (no prompt)
+  async function saveRenameTemplate(templateId: string) {
+    const name = renameTemplateValue.trim();
     if (!name) return;
 
     setMsg('Renaming...');
     const { error } = await supabase
       .from('setup_templates')
-      .update({ name: name.trim() })
+      .update({ name })
       .eq('id', templateId);
 
     if (error) {
@@ -136,6 +167,7 @@ export default function SetupsPage() {
 
     await loadTemplates();
     setMsg('Renamed');
+    setIsRenamingTemplate(false);
     setTimeout(() => setMsg(''), 1500);
   }
 
@@ -214,14 +246,26 @@ export default function SetupsPage() {
     setTimeout(() => setMsg(''), 1200);
   }
 
-  async function editItem(item: Item) {
-    const label = prompt('Edit item label:', item.label);
+  // Start/Cancel edit item UI
+  function startEditItem(it: Item) {
+    setEditingItemId(it.id);
+    setEditingItemValue(it.label);
+  }
+
+  function cancelEditItem() {
+    setEditingItemId(null);
+    setEditingItemValue('');
+  }
+
+  // Save item edit (no prompt)
+  async function saveEditItem(item: Item) {
+    const label = editingItemValue.trim();
     if (!label) return;
 
     setMsg('Saving...');
     const { error } = await supabase
       .from('setup_template_items')
-      .update({ label: label.trim() })
+      .update({ label })
       .eq('id', item.id);
 
     if (error) {
@@ -231,22 +275,28 @@ export default function SetupsPage() {
 
     await loadItems(item.template_id);
     setMsg('Saved');
+    setEditingItemId(null);
+    setEditingItemValue('');
     setTimeout(() => setMsg(''), 1200);
   }
 
   async function toggleItemActive(item: Item) {
+    if (isAnyEditing) return; // Prevent while editing
     const { error } = await supabase
       .from('setup_template_items')
       .update({ is_active: !item.is_active })
       .eq('id', item.id);
+
     if (error) {
       setMsg(error.message);
       return;
     }
+
     await loadItems(item.template_id);
   }
 
   async function deleteItem(item: Item) {
+    if (isAnyEditing) return; // Prevent while editing
     const ok = confirm('Delete this checklist item?');
     if (!ok) return;
 
@@ -254,6 +304,7 @@ export default function SetupsPage() {
       .from('setup_template_items')
       .delete()
       .eq('id', item.id);
+
     if (error) {
       setMsg(error.message);
       return;
@@ -262,7 +313,10 @@ export default function SetupsPage() {
     await loadItems(item.template_id);
   }
 
+  // Explicit updates to swap sort_order (more reliable than upsert)
   async function moveItem(item: Item, direction: 'UP' | 'DOWN') {
+    if (isAnyEditing) return; // Prevent while editing
+
     const idx = items.findIndex((i) => i.id === item.id);
     if (idx === -1) return;
 
@@ -271,17 +325,47 @@ export default function SetupsPage() {
 
     const other = items[swapWith];
 
-    const { error } = await supabase.from('setup_template_items').upsert([
-      { id: item.id, sort_order: other.sort_order },
-      { id: other.id, sort_order: item.sort_order },
-    ]);
+    // Optimistic UI swap (instant feedback)
+    setItems((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], sort_order: other.sort_order };
+      copy[swapWith] = { ...copy[swapWith], sort_order: item.sort_order };
+      // keep display order consistent after swap
+      copy.sort(
+        (a, b) =>
+          a.sort_order - b.sort_order ||
+          a.created_at.localeCompare(b.created_at)
+      );
+      return copy;
+    });
 
-    if (error) {
-      setMsg(error.message);
+    setMsg('Reordering...');
+
+    // Swap in DB
+    const { error: e1 } = await supabase
+      .from('setup_template_items')
+      .update({ sort_order: other.sort_order })
+      .eq('id', item.id);
+
+    if (e1) {
+      setMsg(e1.message);
+      await loadItems(item.template_id); // revert from DB state
+      return;
+    }
+
+    const { error: e2 } = await supabase
+      .from('setup_template_items')
+      .update({ sort_order: item.sort_order })
+      .eq('id', other.id);
+
+    if (e2) {
+      setMsg(e2.message);
+      await loadItems(item.template_id); // revert from DB state
       return;
     }
 
     await loadItems(item.template_id);
+    setMsg('');
   }
 
   if (loading) return <main className='p-6'>Loading...</main>;
@@ -330,21 +414,38 @@ export default function SetupsPage() {
 
           {selectedTemplate && (
             <div className='flex flex-wrap gap-2'>
-              <button
-                className='border rounded-lg px-3 py-2'
-                onClick={() => renameTemplate(selectedTemplate.id)}>
-                Rename
-              </button>
-              <button
-                className='border rounded-lg px-3 py-2'
-                onClick={() => setDefaultTemplate(selectedTemplate.id)}>
-                Set Default
-              </button>
-              <button
-                className='border rounded-lg px-3 py-2'
-                onClick={() => deleteTemplate(selectedTemplate.id)}>
-                Delete
-              </button>
+              {!isRenamingTemplate ? (
+                <>
+                  <button
+                    className='border rounded-lg px-3 py-2'
+                    onClick={startRenameTemplate}>
+                    Rename
+                  </button>
+                  <button
+                    className='border rounded-lg px-3 py-2'
+                    onClick={() => setDefaultTemplate(selectedTemplate.id)}>
+                    Set Default
+                  </button>
+                  <button
+                    className='border rounded-lg px-3 py-2'
+                    onClick={() => deleteTemplate(selectedTemplate.id)}>
+                    Delete
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className='border rounded-lg px-3 py-2'
+                    onClick={() => saveRenameTemplate(selectedTemplate.id)}>
+                    Save
+                  </button>
+                  <button
+                    className='border rounded-lg px-3 py-2'
+                    onClick={cancelRenameTemplate}>
+                    Cancel
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -361,6 +462,17 @@ export default function SetupsPage() {
             </option>
           ))}
         </select>
+
+        {selectedTemplate && isRenamingTemplate && (
+          <div className='flex flex-wrap gap-2'>
+            <input
+              className='border rounded-lg p-3 flex-1 min-w-[260px]'
+              value={renameTemplateValue}
+              onChange={(e) => setRenameTemplateValue(e.target.value)}
+              placeholder='New template name'
+            />
+          </div>
+        )}
       </section>
 
       {selectedTemplateId && (
@@ -378,8 +490,12 @@ export default function SetupsPage() {
               placeholder='Add a checklist item (e.g., HTF trend aligned)'
               value={newItemLabel}
               onChange={(e) => setNewItemLabel(e.target.value)}
+              disabled={isAnyEditing}
             />
-            <button className='border rounded-lg px-4 py-2' onClick={addItem}>
+            <button
+              className='border rounded-lg px-4 py-2 disabled:opacity-60'
+              onClick={addItem}
+              disabled={isAnyEditing}>
               Add
             </button>
           </div>
@@ -395,43 +511,116 @@ export default function SetupsPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((it) => (
-                  <tr key={it.id} className='border-b'>
-                    <td className='p-2'>{it.label}</td>
-                    <td className='p-2'>
-                      <button
-                        className='border rounded-lg px-3 py-1'
-                        onClick={() => toggleItemActive(it)}>
-                        {it.is_active ? 'Yes' : 'No'}
-                      </button>
-                    </td>
-                    <td className='p-2'>{it.sort_order}</td>
-                    <td className='p-2'>
-                      <div className='flex flex-wrap gap-2'>
+                {items.map((it, index) => {
+                  const isEditing = editingItemId === it.id;
+                  const disableRowActions = isAnyEditing && !isEditing; // lock other rows too
+
+                  const isFirst = index === 0;
+                  const isLast = index === items.length - 1;
+
+                  return (
+                    <tr key={it.id} className='border-b align-top'>
+                      <td className='p-2'>
+                        {!isEditing ? (
+                          it.label
+                        ) : (
+                          <input
+                            className='border rounded-lg p-2 w-full'
+                            value={editingItemValue}
+                            onChange={(e) =>
+                              setEditingItemValue(e.target.value)
+                            }
+                          />
+                        )}
+                      </td>
+
+                      <td className='p-2'>
                         <button
-                          className='border rounded-lg px-3 py-1'
-                          onClick={() => moveItem(it, 'UP')}>
-                          Up
+                          className='border rounded-lg px-3 py-1 disabled:opacity-60'
+                          onClick={() => toggleItemActive(it)}
+                          disabled={isAnyEditing}
+                          title={
+                            isAnyEditing ? 'Finish editing before toggling' : ''
+                          }>
+                          {it.is_active ? 'Yes' : 'No'}
                         </button>
-                        <button
-                          className='border rounded-lg px-3 py-1'
-                          onClick={() => moveItem(it, 'DOWN')}>
-                          Down
-                        </button>
-                        <button
-                          className='border rounded-lg px-3 py-1'
-                          onClick={() => editItem(it)}>
-                          Edit
-                        </button>
-                        <button
-                          className='border rounded-lg px-3 py-1'
-                          onClick={() => deleteItem(it)}>
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+
+                      <td className='p-2'>{it.sort_order}</td>
+
+                      <td className='p-2'>
+                        <div className='flex flex-wrap gap-2'>
+                          <button
+                            className='border rounded-lg px-3 py-1 disabled:opacity-60'
+                            onClick={() => moveItem(it, 'UP')}
+                            disabled={isAnyEditing || isFirst}
+                            title={
+                              isAnyEditing
+                                ? 'Finish editing before reordering'
+                                : isFirst
+                                ? 'Already at top'
+                                : ''
+                            }>
+                            Up
+                          </button>
+
+                          <button
+                            className='border rounded-lg px-3 py-1 disabled:opacity-60'
+                            onClick={() => moveItem(it, 'DOWN')}
+                            disabled={isAnyEditing || isLast}
+                            title={
+                              isAnyEditing
+                                ? 'Finish editing before reordering'
+                                : isLast
+                                ? 'Already at bottom'
+                                : ''
+                            }>
+                            Down
+                          </button>
+
+                          {!isEditing ? (
+                            <button
+                              className='border rounded-lg px-3 py-1 disabled:opacity-60'
+                              onClick={() => startEditItem(it)}
+                              disabled={disableRowActions || isRenamingTemplate}
+                              title={
+                                disableRowActions
+                                  ? 'Finish editing the current row first'
+                                  : ''
+                              }>
+                              Edit
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                className='border rounded-lg px-3 py-1'
+                                onClick={() => saveEditItem(it)}>
+                                Save
+                              </button>
+                              <button
+                                className='border rounded-lg px-3 py-1'
+                                onClick={cancelEditItem}>
+                                Cancel
+                              </button>
+                            </>
+                          )}
+
+                          <button
+                            className='border rounded-lg px-3 py-1 disabled:opacity-60'
+                            onClick={() => deleteItem(it)}
+                            disabled={isAnyEditing}
+                            title={
+                              isAnyEditing
+                                ? 'Finish editing before deleting'
+                                : ''
+                            }>
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
 
                 {!items.length && (
                   <tr>
