@@ -33,6 +33,39 @@ function sessionLabel(s: Session) {
   return 'New York';
 }
 
+type Filters = {
+  rangeStart: string;
+  rangeEnd: string;
+  instrumentQuery: string;
+  directionFilter: '' | Direction;
+  sessionFilter: '' | Session;
+  outcomeFilter: '' | Outcome;
+  reviewedFilter: '' | 'REVIEWED' | 'NOT_REVIEWED';
+  setupFilter: '' | 'NO_SETUP' | string;
+};
+
+function normalizeFilters(f: Filters): Filters {
+  return {
+    ...f,
+    instrumentQuery: f.instrumentQuery.trim(),
+  };
+}
+
+function filtersEqual(a: Filters, b: Filters) {
+  const A = normalizeFilters(a);
+  const B = normalizeFilters(b);
+  return (
+    A.rangeStart === B.rangeStart &&
+    A.rangeEnd === B.rangeEnd &&
+    A.instrumentQuery === B.instrumentQuery &&
+    A.directionFilter === B.directionFilter &&
+    A.sessionFilter === B.sessionFilter &&
+    A.outcomeFilter === B.outcomeFilter &&
+    A.reviewedFilter === B.reviewedFilter &&
+    A.setupFilter === B.setupFilter
+  );
+}
+
 type Trade = {
   id: string;
   opened_at: string;
@@ -529,22 +562,27 @@ export default function AnalyticsPage() {
   const [msg, setMsg] = useState('');
 
   const today = useMemo(() => new Date(), []);
-  const [rangeStart, setRangeStart] = useState(() =>
-    yyyyMmDd(addDays(today, -90).toISOString())
-  );
-  const [rangeEnd, setRangeEnd] = useState(() => yyyyMmDd(today.toISOString()));
 
-  const [instrumentQuery, setInstrumentQuery] = useState('');
-  const [directionFilter, setDirectionFilter] = useState<'' | Direction>('');
-  const [outcomeFilter, setOutcomeFilter] = useState<'' | Outcome>('');
-  const [reviewedFilter, setReviewedFilter] = useState<
-    '' | 'REVIEWED' | 'NOT_REVIEWED'
-  >('');
-  const [sessionFilter, setSessionFilter] = useState<'' | Session>('');
+  const initialFilters = useMemo<Filters>(() => {
+    return {
+      rangeStart: yyyyMmDd(addDays(today, -90).toISOString()),
+      rangeEnd: yyyyMmDd(today.toISOString()),
+      instrumentQuery: '',
+      directionFilter: '',
+      sessionFilter: '',
+      outcomeFilter: '',
+      reviewedFilter: '',
+      setupFilter: '',
+    };
+  }, [today]);
+
+  // Draft filters are what the panel edits
+  const [draft, setDraft] = useState<Filters>(() => initialFilters);
+  // Applied filters drive stats/charts/table
+  const [applied, setApplied] = useState<Filters>(() => initialFilters);
 
   // Setup filter
   const [setupTemplates, setSetupTemplates] = useState<SetupTemplate[]>([]);
-  const [setupFilter, setSetupFilter] = useState<'' | 'NO_SETUP' | string>('');
 
   const [calendarMonth, setCalendarMonth] = useState(() =>
     yyyyMm(today.toISOString())
@@ -560,52 +598,38 @@ export default function AnalyticsPage() {
 
   const activeFilterCount = useMemo(() => {
     let c = 0;
-    if (instrumentQuery.trim()) c++;
-    if (directionFilter) c++;
-    if (outcomeFilter) c++;
-    if (reviewedFilter) c++;
-    if (setupFilter) c++;
-    if (sessionFilter) c++;
+    if (applied.instrumentQuery.trim()) c++;
+    if (applied.directionFilter) c++;
+    if (applied.outcomeFilter) c++;
+    if (applied.reviewedFilter) c++;
+    if (applied.setupFilter) c++;
+    if (applied.sessionFilter) c++;
     return c;
-  }, [
-    instrumentQuery,
-    directionFilter,
-    outcomeFilter,
-    reviewedFilter,
-    setupFilter,
-    sessionFilter,
-  ]);
+  }, [applied]);
 
   const filtersSummary = useMemo(() => {
     const bits: string[] = [];
-    bits.push(`${rangeStart} → ${rangeEnd}`);
+    bits.push(`${applied.rangeStart} → ${applied.rangeEnd}`);
 
-    if (instrumentQuery.trim())
-      bits.push(`Instrument: ${instrumentQuery.trim().toUpperCase()}`);
-    if (directionFilter) bits.push(`Dir: ${directionFilter}`);
-    if (sessionFilter) bits.push(`Session: ${sessionLabel(sessionFilter)}`);
-    if (outcomeFilter) bits.push(`Outcome: ${outcomeFilter}`);
-    if (reviewedFilter === 'REVIEWED') bits.push(`Reviewed`);
-    if (reviewedFilter === 'NOT_REVIEWED') bits.push(`Not reviewed`);
+    if (applied.instrumentQuery.trim())
+      bits.push(`Instrument: ${applied.instrumentQuery.trim().toUpperCase()}`);
+    if (applied.directionFilter) bits.push(`Dir: ${applied.directionFilter}`);
+    if (applied.sessionFilter)
+      bits.push(`Session: ${sessionLabel(applied.sessionFilter)}`);
+    if (applied.outcomeFilter) bits.push(`Outcome: ${applied.outcomeFilter}`);
+    if (applied.reviewedFilter === 'REVIEWED') bits.push(`Reviewed`);
+    if (applied.reviewedFilter === 'NOT_REVIEWED') bits.push(`Not reviewed`);
 
-    if (setupFilter === 'NO_SETUP') bits.push('Setup: none');
-    else if (setupFilter) {
-      const name = setupTemplates.find((s) => s.id === setupFilter)?.name;
+    if (applied.setupFilter === 'NO_SETUP') bits.push('Setup: none');
+    else if (applied.setupFilter) {
+      const name = setupTemplates.find((s) => s.id === applied.setupFilter)?.name;
       bits.push(`Setup: ${name || 'Selected'}`);
     }
 
     return bits.join(' • ');
-  }, [
-    rangeStart,
-    rangeEnd,
-    instrumentQuery,
-    directionFilter,
-    sessionFilter,
-    outcomeFilter,
-    reviewedFilter,
-    setupFilter,
-    setupTemplates,
-  ]);
+  }, [applied, setupTemplates]);
+
+  const hasUnsavedChanges = useMemo(() => !filtersEqual(draft, applied), [draft, applied]);
 
   useEffect(() => {
     (async () => {
@@ -651,8 +675,8 @@ export default function AnalyticsPage() {
       const user = sessionData.session?.user;
       if (!user) return router.push('/auth');
 
-      const start = startOfDay(new Date(`${rangeStart}T00:00:00`));
-      const end = endOfDay(new Date(`${rangeEnd}T00:00:00`));
+      const start = startOfDay(new Date(`${applied.rangeStart}T00:00:00`));
+      const end = endOfDay(new Date(`${applied.rangeEnd}T00:00:00`));
 
       const { data, error } = await supabase
         .from('trades')
@@ -678,43 +702,35 @@ export default function AnalyticsPage() {
       setTrades((data || []) as Trade[]);
       setLoading(false);
     })();
-  }, [rangeStart, rangeEnd, router]);
+  }, [applied.rangeStart, applied.rangeEnd, router]);
 
   // Apply all filters
   const filteredTrades = useMemo(() => {
-    const q = instrumentQuery.trim().toUpperCase();
+    const q = applied.instrumentQuery.trim().toUpperCase();
 
     return trades.filter((t) => {
       if (q && !t.instrument?.toUpperCase().includes(q)) return false;
-      if (directionFilter && t.direction !== directionFilter) return false;
-      if (sessionFilter && getSessionUTC(t.opened_at) !== sessionFilter) return false;
-      if (outcomeFilter && t.outcome !== outcomeFilter) return false;
-      if (reviewedFilter === 'REVIEWED' && !t.reviewed_at) return false;
-      if (reviewedFilter === 'NOT_REVIEWED' && !!t.reviewed_at) return false;
+      if (applied.directionFilter && t.direction !== applied.directionFilter) return false;
+      if (applied.sessionFilter && getSessionUTC(t.opened_at) !== applied.sessionFilter) return false;
+      if (applied.outcomeFilter && t.outcome !== applied.outcomeFilter) return false;
+      if (applied.reviewedFilter === 'REVIEWED' && !t.reviewed_at) return false;
+      if (applied.reviewedFilter === 'NOT_REVIEWED' && !!t.reviewed_at) return false;
 
       // setup filter:
       // - '' => all
       // - 'NO_SETUP' => template_id is null
       // - template id => match template_id
-      if (setupFilter === 'NO_SETUP' && t.template_id !== null) return false;
+      if (applied.setupFilter === 'NO_SETUP' && t.template_id !== null) return false;
       if (
-        setupFilter &&
-        setupFilter !== 'NO_SETUP' &&
-        t.template_id !== setupFilter
+        applied.setupFilter &&
+        applied.setupFilter !== 'NO_SETUP' &&
+        t.template_id !== applied.setupFilter
       )
         return false;
 
       return true;
     });
-  }, [
-    trades,
-    instrumentQuery,
-    directionFilter,
-    sessionFilter,
-    outcomeFilter,
-    reviewedFilter,
-    setupFilter,
-  ]);
+  }, [trades, applied]);
 
   const stats = useMemo(() => {
     const list = filteredTrades;
@@ -1021,12 +1037,29 @@ export default function AnalyticsPage() {
             <div className='text-xs opacity-70 mt-1'>{filtersSummary}</div>
           </div>
 
-          <div className='flex gap-2 items-center'>
+          <div className='flex gap-2 items-center flex-wrap'>
             {activeFilterCount > 0 && (
               <span className='text-xs border rounded-full px-2 py-1 bg-slate-50'>
                 {activeFilterCount} active
               </span>
             )}
+
+            {hasUnsavedChanges && (
+              <span className='text-xs border rounded-full px-2 py-1 bg-amber-50 border-amber-200 text-amber-900'>
+                Unsaved changes
+              </span>
+            )}
+
+            <button
+              type='button'
+              className={cx(
+                'border rounded-lg px-4 py-2',
+                hasUnsavedChanges ? 'bg-slate-900 text-white border-slate-900' : 'opacity-50 cursor-not-allowed'
+              )}
+              disabled={!hasUnsavedChanges}
+              onClick={() => setApplied(normalizeFilters(draft))}>
+              Apply filters
+            </button>
 
             <button
               type='button'
@@ -1044,8 +1077,8 @@ export default function AnalyticsPage() {
                 <input
                   className='w-full border rounded-lg p-3'
                   type='date'
-                  value={rangeStart}
-                  onChange={(e) => setRangeStart(e.target.value)}
+                  value={draft.rangeStart}
+                  onChange={(e) => setDraft((p) => ({ ...p, rangeStart: e.target.value }))}
                 />
               </Field>
 
@@ -1053,8 +1086,8 @@ export default function AnalyticsPage() {
                 <input
                   className='w-full border rounded-lg p-3'
                   type='date'
-                  value={rangeEnd}
-                  onChange={(e) => setRangeEnd(e.target.value)}
+                  value={draft.rangeEnd}
+                  onChange={(e) => setDraft((p) => ({ ...p, rangeEnd: e.target.value }))}
                 />
               </Field>
 
@@ -1062,16 +1095,16 @@ export default function AnalyticsPage() {
                 <input
                   className='w-full border rounded-lg p-3'
                   placeholder='e.g. EURUSD'
-                  value={instrumentQuery}
-                  onChange={(e) => setInstrumentQuery(e.target.value)}
+                  value={draft.instrumentQuery}
+                  onChange={(e) => setDraft((p) => ({ ...p, instrumentQuery: e.target.value }))}
                 />
               </Field>
 
               <Field label='Reviewed'>
                 <select
                   className='w-full border rounded-lg p-3'
-                  value={reviewedFilter}
-                  onChange={(e) => setReviewedFilter(e.target.value as any)}>
+                  value={draft.reviewedFilter}
+                  onChange={(e) => setDraft((p) => ({ ...p, reviewedFilter: e.target.value as any }))}>
                   <option value=''>All</option>
                   <option value='REVIEWED'>Reviewed</option>
                   <option value='NOT_REVIEWED'>Not reviewed</option>
@@ -1081,8 +1114,8 @@ export default function AnalyticsPage() {
               <Field label='Direction'>
                 <select
                   className='w-full border rounded-lg p-3'
-                  value={directionFilter}
-                  onChange={(e) => setDirectionFilter(e.target.value as any)}>
+                  value={draft.directionFilter}
+                  onChange={(e) => setDraft((p) => ({ ...p, directionFilter: e.target.value as any }))}>
                   <option value=''>All</option>
                   <option value='BUY'>BUY</option>
                   <option value='SELL'>SELL</option>
@@ -1092,8 +1125,8 @@ export default function AnalyticsPage() {
               <Field label='Session (UTC)'>
                 <select
                   className='w-full border rounded-lg p-3'
-                  value={sessionFilter}
-                  onChange={(e) => setSessionFilter(e.target.value as any)}>
+                  value={draft.sessionFilter}
+                  onChange={(e) => setDraft((p) => ({ ...p, sessionFilter: e.target.value as any }))}>
                   <option value=''>All</option>
                   <option value='ASIA'>Asia</option>
                   <option value='LONDON'>London</option>
@@ -1105,8 +1138,8 @@ export default function AnalyticsPage() {
               <Field label='Setup'>
                 <select
                   className='w-full border rounded-lg p-3'
-                  value={setupFilter}
-                  onChange={(e) => setSetupFilter(e.target.value as any)}>
+                  value={draft.setupFilter}
+                  onChange={(e) => setDraft((p) => ({ ...p, setupFilter: e.target.value as any }))}>
                   <option value=''>All</option>
                   <option value='NO_SETUP'>No setup</option>
                   {setupTemplates.map((s) => (
@@ -1120,8 +1153,8 @@ export default function AnalyticsPage() {
               <Field label='Outcome'>
                 <select
                   className='w-full border rounded-lg p-3'
-                  value={outcomeFilter}
-                  onChange={(e) => setOutcomeFilter(e.target.value as any)}>
+                  value={draft.outcomeFilter}
+                  onChange={(e) => setDraft((p) => ({ ...p, outcomeFilter: e.target.value as any }))}>
                   <option value=''>All</option>
                   <option value='WIN'>WIN</option>
                   <option value='LOSS'>LOSS</option>
@@ -1134,12 +1167,17 @@ export default function AnalyticsPage() {
                   className='border rounded-lg px-4 py-3 w-full'
                   type='button'
                   onClick={() => {
-                    setInstrumentQuery('');
-                    setDirectionFilter('');
-                    setSessionFilter('');
-                    setOutcomeFilter('');
-                    setReviewedFilter('');
-                    setSetupFilter('');
+                    const cleared: Filters = {
+                      ...draft,
+                      instrumentQuery: '',
+                      directionFilter: '',
+                      sessionFilter: '',
+                      outcomeFilter: '',
+                      reviewedFilter: '',
+                      setupFilter: '',
+                    };
+                    setDraft(cleared);
+                    setApplied(normalizeFilters(cleared));
                   }}>
                   Clear filters
                 </button>
