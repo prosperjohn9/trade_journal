@@ -166,6 +166,9 @@ export default function DashboardPage() {
   const [showProfile, setShowProfile] = useState(false);
 
   const [trades, setTrades] = useState<Trade[]>([]);
+  // Sum of P&L ($) from all trades strictly BEFORE the selected month.
+  const [priorPnlDollar, setPriorPnlDollar] = useState(0);
+  const [loadingPriorPnl, setLoadingPriorPnl] = useState(false);
 
   // Selected month controls the table/stats range.
   const [month, setMonth] = useState(() => {
@@ -240,6 +243,46 @@ export default function DashboardPage() {
       setTrades((data || []) as Trade[]);
     })();
   }, [month]);
+
+  // --- Prior P&L (all trades before selected month) ---
+  // Used to roll forward equity: previous month ending equity becomes this month's starting balance.
+  useEffect(() => {
+    (async () => {
+      if (!hasStartingBalance) {
+        setPriorPnlDollar(0);
+        return;
+      }
+
+      setLoadingPriorPnl(true);
+      try {
+        const start = new Date(`${month}-01T00:00:00`);
+
+        // Fetch only pnl_amount for trades before this month and sum client-side.
+        const { data, error } = await supabase
+          .from('trades')
+          .select('pnl_amount')
+          .lt('opened_at', start.toISOString());
+
+        if (error) {
+          console.error(error);
+          setPriorPnlDollar(0);
+          return;
+        }
+
+        const sum = (data || []).reduce(
+          (acc, row) => acc + Number((row as { pnl_amount?: unknown }).pnl_amount ?? 0),
+          0
+        );
+
+        setPriorPnlDollar(sum);
+      } catch (err: unknown) {
+        console.error(err);
+        setPriorPnlDollar(0);
+      } finally {
+        setLoadingPriorPnl(false);
+      }
+    })();
+  }, [month, hasStartingBalance]);
 
   // --- Checklist scores ---
   // Score is computed from: checked items / active items for the trade's setup template.
@@ -348,14 +391,18 @@ export default function DashboardPage() {
     return { total, wins, losses, be, pnlDollar, pnlPct, winRate };
   }, [trades]);
 
-  // Equity is only meaningful if starting balance is set.
-  const equity = hasStartingBalance ? startingBalance + stats.pnlDollar : null;
+  // Month starting balance is the ending equity of the previous month.
+  // = profile starting_balance + sum(P&L of all trades before this month)
+  const monthStartingBalance = hasStartingBalance ? startingBalance + priorPnlDollar : null;
+
+  // Equity for the selected month.
+  const equity = monthStartingBalance === null ? null : monthStartingBalance + stats.pnlDollar;
 
   const displayName =
     profile?.display_name?.trim() || profile?.display_name || 'Trader';
 
-  const equityUp = equity !== null && equity >= startingBalance;
-  const equityDown = equity !== null && equity < startingBalance;
+  const equityUp = equity !== null && monthStartingBalance !== null && equity >= monthStartingBalance;
+  const equityDown = equity !== null && monthStartingBalance !== null && equity < monthStartingBalance;
 
   function requestLogout() {
     setShowLogout(true);
@@ -571,7 +618,7 @@ export default function DashboardPage() {
                 placeholder='e.g., 100000'
               />
               <div className='text-xs opacity-60'>
-                Used for equity curve & drawdown in Monthly Reports.
+                Used as your initial balance. Each new month starts at the previous month’s ending equity.
               </div>
             </label>
           </div>
@@ -602,7 +649,13 @@ export default function DashboardPage() {
           <>
             <Card
               title='Starting Balance'
-              value={formatMoney(startingBalance, currency)}
+              value={
+                monthStartingBalance === null
+                  ? '—'
+                  : loadingPriorPnl
+                  ? '…'
+                  : formatMoney(monthStartingBalance, currency)
+              }
               valueClassName='text-slate-900'
             />
             <Card
