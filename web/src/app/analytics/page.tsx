@@ -1621,12 +1621,12 @@ export default function AnalyticsPage() {
             const lines = [
               `Date: ${p.xLabel}`,
               equityLabel,
-              `Day Net PnL: ${formatMoney(dayNet, currency)}`,
+              `Day Net: ${formatMoney(dayNet, currency)}`,
             ];
 
             // When equity is shown, also show cumulative net PnL since start.
             if (hasStartingBalance) {
-              lines.push(`Cum Net PnL: ${formatMoney(cumNet, currency)}`);
+              lines.push(`Cum Net: ${formatMoney(cumNet, currency)}`);
             }
 
             return lines.join('\n');
@@ -1637,7 +1637,7 @@ export default function AnalyticsPage() {
       {/* Summary cards */}
       <section className='grid grid-cols-2 md:grid-cols-4 gap-3'>
         <Card
-          title='Total PnL'
+          title='Total Net PnL'
           value={formatMoney(stats.totalPnl, currency)}
           valueClassName={signColor(stats.totalPnl)}
         />
@@ -1675,13 +1675,13 @@ export default function AnalyticsPage() {
           }
         />
         <Card
-          title='Expectancy / trade'
+          title='Expectancy / Trade'
           value={formatMoney(stats.expectancy, currency)}
           valueClassName={signColor(stats.expectancy)}
         />
 
         <Card
-          title='Sharpe (daily)'
+          title='Sharpe Ratio (daily)'
           value={sharpe === null ? '—' : formatNumber(sharpe, 2)}
         />
         <Card
@@ -1751,7 +1751,7 @@ export default function AnalyticsPage() {
                 <th className='p-2'>Trades</th>
                 <th className='p-2'>Win %</th>
                 <th className='p-2'>RRR</th>
-                <th className='p-2'>Expectancy / trade</th>
+                <th className='p-2'>Expectancy / Trade</th>
                 <th className='p-2'>Avg Duration</th>
                 <th className='p-2'>Active Days</th>
                 <th className='p-2'>Net PnL</th>
@@ -1795,14 +1795,14 @@ export default function AnalyticsPage() {
         </div>
 
         <div className='mt-3 text-xs opacity-70'>
-          Avg duration uses only trades with <span className='font-semibold'>closed_at</span>. Active Days counts distinct trade days.
+          Avg duration uses only trades with <span className='font-semibold'>exit date/time</span>. Active Days counts distinct trade days.
         </div>
       </section>
 
       <section className='grid grid-cols-1 gap-3'>
         <SvgBarChart
           title='Performance by Time'
-          subtitle='Net PnL by hour (based on trade opened_at local time)'
+          subtitle='Net PnL by hour (based on trade entry date/time)'
           bars={hourBars}
           yFormatter={(y) => formatMoney(y, currency)}
         />
@@ -1850,7 +1850,7 @@ export default function AnalyticsPage() {
           </div>
 
           <div className='mt-3 text-xs opacity-70'>
-            Sessions are computed from <span className='font-semibold'>opened_at</span> using UTC hours.
+            Sessions are computed from <span className='font-semibold'>entry date/time</span> using UTC hours.
           </div>
         </div>
       </section>
@@ -1953,7 +1953,7 @@ export default function AnalyticsPage() {
                 </div>
 
                 <div className='mt-3 text-xs opacity-70'>
-                  Avg duration uses only trades with <span className='font-semibold'>closed_at</span>.
+                  Avg duration uses only trades with <span className='font-semibold'>exit date/time</span>.
                 </div>
               </div>
 

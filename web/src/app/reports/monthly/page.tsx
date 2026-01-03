@@ -280,9 +280,9 @@ export default function MonthlyReportPage() {
           <section className='grid grid-cols-2 md:grid-cols-4 gap-3'>
             <Card title='Average Profit' value={report.avgWin.toFixed(2)} />
             <Card title='Average Loss' value={report.avgLoss.toFixed(2)} />
-            <Card title='RRR (AvgWin/|AvgLoss|)' value={report.rrr.toFixed(2)} />
+            <Card title='RRR' value={report.rrr.toFixed(2)} />
             <Card
-              title='Expectancy / trade'
+              title='Expectancy / Trade'
               value={report.expectancy.toFixed(2)}
             />
             <Card
@@ -297,7 +297,7 @@ export default function MonthlyReportPage() {
 
             {/* These are computed from the (net) pnl_amount values, so they represent NET profit/loss totals. */}
             <Card title='Net Profit' value={report.grossProfit.toFixed(2)} />
-            <Card title='Net Loss (abs)' value={report.grossLossAbs.toFixed(2)} />
+            <Card title='Net Loss' value={report.grossLossAbs.toFixed(2)} />
           </section>
 
           {/* Best / Worst Day */}
