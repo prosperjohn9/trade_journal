@@ -41,10 +41,7 @@ type CheckRow = {
   checked: boolean;
 };
 
-/**
- * Convert an ISO datetime string to the format required by <input type="datetime-local" />.
- * Note: datetime-local is interpreted in the user's local timezone.
- **/
+// Convert an ISO datetime string to the format required by <input type="datetime-local" />.
 function toDatetimeLocalValue(dateIso: string) {
   const d = new Date(dateIso);
   const pad = (n: number) => String(n).padStart(2, '0');

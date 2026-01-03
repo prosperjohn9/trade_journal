@@ -5,10 +5,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { supabase } from '@/src/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 
-/**
- * Returns current local time in the format required by <input type="datetime-local" />.
- * Note: This is local time (no timezone offset in the string).
- **/
+// Returns current local time in the format required by <input type="datetime-local" />.
 function nowLocalDatetimeValue() {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -22,7 +19,7 @@ function nowLocalDatetimeValue() {
   return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
 }
 
-// Select value types (keeps the <select> handlers type-safe without `any`).
+// Select value types
 type Direction = 'BUY' | 'SELL';
 type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
 
@@ -433,7 +430,7 @@ export default function NewTradePage() {
         <section className='border rounded-xl p-4 space-y-2'>
           <div className='font-semibold'>Before-Trade Screenshot</div>
           <div className='text-sm opacity-70'>
-            Upload your setup screenshot (before you enter). Optional.
+            Upload your setup screenshot.
           </div>
 
           <input
@@ -518,7 +515,7 @@ export default function NewTradePage() {
         </div>
 
         <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
-          <Field label='Risk ($) — for R multiple'>
+          <Field label='Risk ($) — Necessary for R multiple'>
             <input
               className='w-full border rounded-lg p-3'
               type='number'

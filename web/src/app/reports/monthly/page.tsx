@@ -6,7 +6,7 @@ import { supabase } from '@/src/lib/supabaseClient';
 import { getOrCreateProfile, type Profile } from '@/src/lib/profile';
 import { computeReport, monthToRange, type TradeRow } from '@/src/lib/analytics';
 
-//** Returns the current month in YYYY-MM format for the <input type="month" /> control. */
+// Returns the current month in YYYY-MM format for the <input type="month" /> control.
 function getDefaultMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -21,11 +21,34 @@ function toNumberSafe(value: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-//Some profile fields might not exist on the generated `Profile` type.
+// Some profile fields might not exist on the generated `Profile` type.
 type ProfileExtras = {
   starting_balance?: number | string | null;
   base_currency?: string | null;
 };
+
+type TradeNetFields = {
+  pnl_amount?: unknown;
+  pnl_percent?: unknown;
+  commission?: unknown;
+  net_pnl?: unknown;
+};
+
+function calcNetPnl(row: TradeNetFields): { netPnl: number; netPct: number } {
+  const gross = Number(row.pnl_amount ?? 0);
+  const grossPct = Number(row.pnl_percent ?? 0);
+
+  const commissionVal = Number(row.commission ?? 0);
+  const commission = Number.isFinite(commissionVal) ? commissionVal : 0;
+
+  const netVal = Number(row.net_pnl);
+  const netPnl = Number.isFinite(netVal) ? netVal : gross - commission;
+
+  // Keep percent consistent with the P&L amount being shown.
+  const netPct = gross !== 0 && Number.isFinite(grossPct) ? (grossPct * netPnl) / gross : grossPct;
+
+  return { netPnl: Number.isFinite(netPnl) ? netPnl : 0, netPct: Number.isFinite(netPct) ? netPct : 0 };
+}
 
 export default function MonthlyReportPage() {
   const router = useRouter();
@@ -33,8 +56,14 @@ export default function MonthlyReportPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [month, setMonth] = useState<string>(getDefaultMonth);
   const [trades, setTrades] = useState<TradeRow[]>([]);
+
   const [loading, setLoading] = useState<boolean>(true);
   const [msg, setMsg] = useState<string>('');
+
+  // Sum of NET P&L from all trades strictly BEFORE the selected month.
+  // Used so this month starts at the previous month’s ending equity.
+  const [priorNetPnl, setPriorNetPnl] = useState<number>(0);
+  const [loadingPrior, setLoadingPrior] = useState<boolean>(false);
 
   // Use the browser timezone for daily grouping (matches what the user sees locally).
   const localTimeZone = useMemo(
@@ -42,10 +71,17 @@ export default function MonthlyReportPage() {
     []
   );
 
-  /**
-   * Load profile + monthly trades when the selected month changes.
-   * Note: filter by opened_at within the month range.
-   **/
+  // Read optional fields safely.
+  const profileExtras = (profile ?? null) as unknown as ProfileExtras | null;
+  const baseCurrency = profileExtras?.base_currency ?? 'USD';
+
+  const baseStartingBalanceRaw = profileExtras?.starting_balance;
+  const hasStartingBalance =
+    baseStartingBalanceRaw !== null && baseStartingBalanceRaw !== undefined;
+
+  const baseStartingBalance = toNumberSafe(baseStartingBalanceRaw, 0);
+
+  //** Load profile + trades in the selected month.
   useEffect(() => {
     let cancelled = false;
 
@@ -67,7 +103,7 @@ export default function MonthlyReportPage() {
         const { data, error } = await supabase
           .from('trades')
           .select(
-            'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, risk_amount, r_multiple'
+            'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, risk_amount, r_multiple, commission, net_pnl'
           )
           .gte('opened_at', startIso)
           .lt('opened_at', endIso)
@@ -82,10 +118,23 @@ export default function MonthlyReportPage() {
           return;
         }
 
-        setTrades((data ?? []) as TradeRow[]);
+        const rows = (data ?? []) as Array<TradeRow & TradeNetFields>;
+
+        // Map pnl_amount/pnl_percent to NET equivalents so computeReport operates on net.
+        const mapped: TradeRow[] = rows.map((r) => {
+          const { netPnl, netPct } = calcNetPnl(r);
+          return {
+            ...r,
+            pnl_amount: netPnl,
+            pnl_percent: netPct,
+          } as TradeRow;
+        });
+
+        setTrades(mapped);
       } catch (err: unknown) {
         console.error(err);
-        const message = err instanceof Error ? err.message : 'Failed to load monthly report';
+        const message =
+          err instanceof Error ? err.message : 'Failed to load monthly report';
         if (!cancelled) setMsg(message);
       } finally {
         if (!cancelled) setLoading(false);
@@ -97,22 +146,69 @@ export default function MonthlyReportPage() {
     };
   }, [month, router]);
 
-  // Read optional fields safely 
-  const profileExtras = (profile ?? null) as unknown as ProfileExtras | null;
-  const baseCurrency = profileExtras?.base_currency ?? 'USD';
-  const startingBalance = toNumberSafe(profileExtras?.starting_balance, 0);
-
   /**
-   * Compute all report metrics from the raw trade rows.
-   * Keeping this in useMemo prevents unnecessary re-computation.
+   *  Load NET P&L from all trades strictly BEFORE this month.
+   * This makes the equity curve start at the previous month’s ending equity.
    **/
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (!hasStartingBalance) {
+        if (!cancelled) setPriorNetPnl(0);
+        return;
+      }
+
+      setLoadingPrior(true);
+      try {
+        const { startIso } = monthToRange(month);
+
+        const { data, error } = await supabase
+          .from('trades')
+          .select('pnl_amount, pnl_percent, commission, net_pnl')
+          .lt('opened_at', startIso);
+
+        if (cancelled) return;
+
+        if (error) {
+          console.error(error);
+          setPriorNetPnl(0);
+          return;
+        }
+
+        const sum = (data ?? []).reduce((acc, row) => {
+          const { netPnl } = calcNetPnl(row as TradeNetFields);
+          return acc + netPnl;
+        }, 0);
+
+        setPriorNetPnl(sum);
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) setPriorNetPnl(0);
+      } finally {
+        if (!cancelled) setLoadingPrior(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [month, hasStartingBalance]);
+
+  // Start-of-month balance = profile starting balance + net P&L from all prior trades.
+  // If starting balance isn’t set, this will just start at 0.
+  const monthStartingBalance = hasStartingBalance
+    ? baseStartingBalance + priorNetPnl
+    : baseStartingBalance;
+
+  // Compute all report metrics from the net-mapped trade rows.
   const report = useMemo(() => {
     return computeReport({
       trades,
-      startingBalance,
+      startingBalance: monthStartingBalance,
       timeZone: localTimeZone,
     });
-  }, [trades, startingBalance, localTimeZone]);
+  }, [trades, monthStartingBalance, localTimeZone]);
 
   return (
     <main className='p-6 space-y-6'>
@@ -152,17 +248,17 @@ export default function MonthlyReportPage() {
             <div className='flex items-center justify-between gap-4'>
               <h2 className='font-semibold'>Equity Curve</h2>
               <div className='text-sm opacity-70'>
-                Start: {report.startingBalance.toFixed(2)} {baseCurrency} • End:{' '}
-                {report.endingBalance.toFixed(2)} {baseCurrency}
+                Start:{' '}
+                {loadingPrior
+                  ? '…'
+                  : `${report.startingBalance.toFixed(2)} ${baseCurrency}`}
+                {' '}• End: {report.endingBalance.toFixed(2)} {baseCurrency}
               </div>
             </div>
 
             {/* Minimal in-page chart for portability (no chart libs) */}
             <LineChart
-              values={[
-                report.startingBalance,
-                ...report.daily.map((p) => p.equity),
-              ]}
+              values={[report.startingBalance, ...report.daily.map((p) => p.equity)]}
               labels={['Start', ...report.daily.map((p) => p.dateLabel)]}
             />
 
@@ -185,7 +281,10 @@ export default function MonthlyReportPage() {
             <Card title='Average Profit' value={report.avgWin.toFixed(2)} />
             <Card title='Average Loss' value={report.avgLoss.toFixed(2)} />
             <Card title='RRR (AvgWin/|AvgLoss|)' value={report.rrr.toFixed(2)} />
-            <Card title='Expectancy / trade' value={report.expectancy.toFixed(2)} />
+            <Card
+              title='Expectancy / trade'
+              value={report.expectancy.toFixed(2)}
+            />
             <Card
               title='Profit Factor'
               value={
@@ -195,8 +294,10 @@ export default function MonthlyReportPage() {
               }
             />
             <Card title='Sharpe Ratio' value={report.sharpe.toFixed(2)} />
-            <Card title='Gross Profit' value={report.grossProfit.toFixed(2)} />
-            <Card title='Gross Loss (abs)' value={report.grossLossAbs.toFixed(2)} />
+
+            {/* These are computed from the (net) pnl_amount values, so they represent NET profit/loss totals. */}
+            <Card title='Net Profit' value={report.grossProfit.toFixed(2)} />
+            <Card title='Net Loss (abs)' value={report.grossLossAbs.toFixed(2)} />
           </section>
 
           {/* Best / Worst Day */}
@@ -336,15 +437,17 @@ function LineChart({ values, labels }: { values: number[]; labels: string[] }) {
   });
 
   const d = points
-    .map(
-      (p, i) =>
-        `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`
-    )
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
     .join(' ');
 
   return (
     <div className='w-full overflow-x-auto'>
-      <svg width={width} height={height} className='block' role='img' aria-label='Equity curve'>
+      <svg
+        width={width}
+        height={height}
+        className='block'
+        role='img'
+        aria-label='Equity curve'>
         <line
           x1={pad}
           y1={height - pad}

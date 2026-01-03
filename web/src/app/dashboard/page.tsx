@@ -20,6 +20,8 @@ type Trade = {
   outcome: Outcome;
   pnl_amount: number;
   pnl_percent: number;
+  commission: number | null;
+  net_pnl: number | null;
   r_multiple: number | null;
   template_id: string | null;
   reviewed_at: string | null;
@@ -166,7 +168,9 @@ export default function DashboardPage() {
   const [showProfile, setShowProfile] = useState(false);
 
   const [trades, setTrades] = useState<Trade[]>([]);
-  // Sum of P&L ($) from all trades strictly BEFORE the selected month.
+  
+  // Sum of GROSS P&L ($) from all trades strictly BEFORE the selected month.
+  // (Gross = pnl_amount as stored on the trade; commission is NOT subtracted here.)
   const [priorPnlDollar, setPriorPnlDollar] = useState(0);
   const [loadingPriorPnl, setLoadingPriorPnl] = useState(false);
 
@@ -228,7 +232,7 @@ export default function DashboardPage() {
       const { data, error } = await supabase
         .from('trades')
         .select(
-          'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, r_multiple, template_id, reviewed_at'
+          'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, commission, net_pnl, r_multiple, template_id, reviewed_at'
         )
         .gte('opened_at', start.toISOString())
         .lt('opened_at', end.toISOString())
@@ -244,8 +248,8 @@ export default function DashboardPage() {
     })();
   }, [month]);
 
-  // --- Prior P&L (all trades before selected month) ---
-  // Used to roll forward equity: previous month ending equity becomes this month's starting balance.
+  // --- Prior GROSS P&L (all trades before selected month) ---
+  // Used to roll forward equity (gross-based): previous month ending equity becomes this month's starting balance.
   useEffect(() => {
     (async () => {
       if (!hasStartingBalance) {
@@ -257,10 +261,10 @@ export default function DashboardPage() {
       try {
         const start = new Date(`${month}-01T00:00:00`);
 
-        // Fetch only pnl_amount for trades before this month and sum client-side.
+        // Fetch net_pnl, pnl_amount, commission for trades before this month and sum client-side.
         const { data, error } = await supabase
           .from('trades')
-          .select('pnl_amount')
+          .select('net_pnl, pnl_amount, commission')
           .lt('opened_at', start.toISOString());
 
         if (error) {
@@ -269,10 +273,20 @@ export default function DashboardPage() {
           return;
         }
 
-        const sum = (data || []).reduce(
-          (acc, row) => acc + Number((row as { pnl_amount?: unknown }).pnl_amount ?? 0),
-          0
-        );
+        const sum = (data || []).reduce((acc, row) => {
+          const r = row as {
+            net_pnl?: unknown;
+            pnl_amount?: unknown;
+            commission?: unknown;
+          };
+
+          const net = Number(r.net_pnl);
+          if (Number.isFinite(net)) return acc + net;
+
+          const gross = Number(r.pnl_amount ?? 0);
+          const comm = Number(r.commission ?? 0);
+          return acc + (Number.isFinite(gross) ? gross : 0) - (Number.isFinite(comm) ? comm : 0);
+        }, 0);
 
         setPriorPnlDollar(sum);
       } catch (err: unknown) {
@@ -376,26 +390,35 @@ export default function DashboardPage() {
     })();
   }, [trades]);
 
-  // --- Summary stats for the selected month ---
+  // --- Summary stats for the selected month (NET P&L based) ---
   const stats = useMemo(() => {
     const total = trades.length;
     const wins = trades.filter((t) => t.outcome === 'WIN').length;
     const losses = trades.filter((t) => t.outcome === 'LOSS').length;
     const be = trades.filter((t) => t.outcome === 'BREAKEVEN').length;
 
-    const pnlDollar = trades.reduce((s, t) => s + Number(t.pnl_amount || 0), 0);
-    const pnlPct = trades.reduce((s, t) => s + Number(t.pnl_percent || 0), 0);
+    // Net $ P&L: prefer stored net_pnl; fallback to gross - commission.
+    const pnlDollar = trades.reduce((s, t) => {
+      const net = Number(t.net_pnl);
+      if (Number.isFinite(net)) return s + net;
+      const gross = Number(t.pnl_amount ?? 0);
+      const comm = Number(t.commission ?? 0);
+      return s + (Number.isFinite(gross) ? gross : 0) - (Number.isFinite(comm) ? comm : 0);
+    }, 0);
 
+    // Win rate uses trade outcomes.
     const winRate = total ? (wins / total) * 100 : 0;
 
-    return { total, wins, losses, be, pnlDollar, pnlPct, winRate };
+    return { total, wins, losses, be, pnlDollar, winRate };
   }, [trades]);
 
-  // Month starting balance is the ending equity of the previous month.
-  // = profile starting_balance + sum(P&L of all trades before this month)
+  // Month starting balance is the ending equity of the previous month (gross-based).
+  // = profile starting_balance + sum(gross P&L of all trades before this month)
   const monthStartingBalance = hasStartingBalance ? startingBalance + priorPnlDollar : null;
 
-  // Equity for the selected month.
+  const monthPnlPct = monthStartingBalance ? (stats.pnlDollar / monthStartingBalance) * 100 : 0;
+
+  // Equity for the selected month (gross-based).
   const equity = monthStartingBalance === null ? null : monthStartingBalance + stats.pnlDollar;
 
   const displayName =
@@ -678,8 +701,8 @@ export default function DashboardPage() {
         />
         <Card
           title='P&L (%)'
-          value={formatPercent(stats.pnlPct, 2)}
-          valueClassName={signColor(stats.pnlPct)}
+          value={formatPercent(monthPnlPct, 2)}
+          valueClassName={signColor(monthPnlPct)}
         />
         <Card title='Wins' value={stats.wins} />
         <Card title='Losses' value={stats.losses} />
@@ -708,8 +731,13 @@ export default function DashboardPage() {
 
             <tbody>
               {trades.map((t) => {
-                const pnlAmt = Number(t.pnl_amount || 0);
-                const pnlPct = Number(t.pnl_percent || 0);
+                const pnlAmt = Number.isFinite(Number(t.net_pnl))
+                  ? Number(t.net_pnl)
+                  : Number(t.pnl_amount || 0) - Number(t.commission || 0);
+
+                const pnlPct = monthStartingBalance
+                  ? (pnlAmt / monthStartingBalance) * 100
+                  : 0;
                 const score = checklistScoreByTrade[t.id] ?? null;
 
                 return (

@@ -51,10 +51,7 @@ type Trade = {
   after_trade_screenshot_url: string | null; // storage path
 };
 
-/**
- * Convert ISO datetime to <input type="datetime-local" /> format.
- * Note: datetime-local is displayed in the user's local timezone.
- **/
+//Convert ISO datetime to <input type="datetime-local" /> format./
 function toLocalDatetimeValue(dateIso: string | null) {
   if (!dateIso) return '';
   const d = new Date(dateIso);
