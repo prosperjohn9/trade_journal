@@ -109,6 +109,22 @@ function reviewedBadge(reviewedAt: string | null) {
   );
 }
 
+// P&L logic:
+// - If trade is NOT reviewed, treat net_pnl as unavailable and fall back to gross pnl_amount.
+// - If reviewed, prefer stored net_pnl, else fall back to (gross - commission).
+function calcDisplayPnl(t: Trade): number {
+  const gross = Number(t.pnl_amount ?? 0);
+
+  // Not reviewed => use gross only (do not subtract commission)
+  if (!t.reviewed_at) return Number.isFinite(gross) ? gross : 0;
+
+  const net = Number(t.net_pnl);
+  if (Number.isFinite(net)) return net;
+
+  const comm = Number(t.commission ?? 0);
+  return (Number.isFinite(gross) ? gross : 0) - (Number.isFinite(comm) ? comm : 0);
+}
+
 // Minimal modal used for logout/delete confirmations. 
 function Modal({
   open,
@@ -261,10 +277,10 @@ export default function DashboardPage() {
       try {
         const start = new Date(`${month}-01T00:00:00`);
 
-        // Fetch net_pnl, pnl_amount, commission for trades before this month and sum client-side.
+        // Fetch net_pnl, pnl_amount, commission, reviewed_at for trades before this month and sum client-side.
         const { data, error } = await supabase
           .from('trades')
-          .select('net_pnl, pnl_amount, commission')
+          .select('net_pnl, pnl_amount, commission, reviewed_at')
           .lt('opened_at', start.toISOString());
 
         if (error) {
@@ -278,13 +294,20 @@ export default function DashboardPage() {
             net_pnl?: unknown;
             pnl_amount?: unknown;
             commission?: unknown;
+            reviewed_at?: unknown;
           };
-
-          const net = Number(r.net_pnl);
-          if (Number.isFinite(net)) return acc + net;
 
           const gross = Number(r.pnl_amount ?? 0);
           const comm = Number(r.commission ?? 0);
+          const reviewedAt = (r.reviewed_at as string | null) ?? null;
+
+          // Not reviewed => gross only
+          if (!reviewedAt) return acc + (Number.isFinite(gross) ? gross : 0);
+
+          // Reviewed => prefer stored net, else gross - commission
+          const net = Number(r.net_pnl);
+          if (Number.isFinite(net)) return acc + net;
+
           return acc + (Number.isFinite(gross) ? gross : 0) - (Number.isFinite(comm) ? comm : 0);
         }, 0);
 
@@ -397,14 +420,8 @@ export default function DashboardPage() {
     const losses = trades.filter((t) => t.outcome === 'LOSS').length;
     const be = trades.filter((t) => t.outcome === 'BREAKEVEN').length;
 
-    // Net $ P&L: prefer stored net_pnl; fallback to gross - commission.
-    const pnlDollar = trades.reduce((s, t) => {
-      const net = Number(t.net_pnl);
-      if (Number.isFinite(net)) return s + net;
-      const gross = Number(t.pnl_amount ?? 0);
-      const comm = Number(t.commission ?? 0);
-      return s + (Number.isFinite(gross) ? gross : 0) - (Number.isFinite(comm) ? comm : 0);
-    }, 0);
+    // Net $ P&L: use calcDisplayPnl logic.
+    const pnlDollar = trades.reduce((s, t) => s + calcDisplayPnl(t), 0);
 
     // Win rate uses trade outcomes.
     const winRate = total ? (wins / total) * 100 : 0;
@@ -731,9 +748,7 @@ export default function DashboardPage() {
 
             <tbody>
               {trades.map((t) => {
-                const pnlAmt = Number.isFinite(Number(t.net_pnl))
-                  ? Number(t.net_pnl)
-                  : Number(t.pnl_amount || 0) - Number(t.commission || 0);
+                const pnlAmt = calcDisplayPnl(t);
 
                 const pnlPct = monthStartingBalance
                   ? (pnlAmt / monthStartingBalance) * 100

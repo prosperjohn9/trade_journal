@@ -15,7 +15,7 @@ function getDefaultMonth(): string {
 /**
  * Converts an unknown value to a finite number.
  * Used for optional profile fields (e.g., starting_balance) that may be null/string/number.
- **/
+**/
 function toNumberSafe(value: unknown, fallback = 0): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -32,22 +32,37 @@ type TradeNetFields = {
   pnl_percent?: unknown;
   commission?: unknown;
   net_pnl?: unknown;
+  reviewed_at?: unknown;
 };
 
 function calcNetPnl(row: TradeNetFields): { netPnl: number; netPct: number } {
   const gross = Number(row.pnl_amount ?? 0);
   const grossPct = Number(row.pnl_percent ?? 0);
 
+  const isReviewed = !!row.reviewed_at;
+
+  // If not reviewed, treat net_pnl as unavailable and fall back to gross PnL.
+  if (!isReviewed) {
+    const grossSafe = Number.isFinite(gross) ? gross : 0;
+    const pctSafe = Number.isFinite(grossPct) ? grossPct : 0;
+    return { netPnl: grossSafe, netPct: pctSafe };
+  }
+
   const commissionVal = Number(row.commission ?? 0);
   const commission = Number.isFinite(commissionVal) ? commissionVal : 0;
 
   const netVal = Number(row.net_pnl);
-  const netPnl = Number.isFinite(netVal) ? netVal : gross - commission;
+  const netPnl = Number.isFinite(netVal) ? netVal : (Number.isFinite(gross) ? gross : 0) - commission;
 
   // Keep percent consistent with the P&L amount being shown.
-  const netPct = gross !== 0 && Number.isFinite(grossPct) ? (grossPct * netPnl) / gross : grossPct;
+  const netPct = gross !== 0 && Number.isFinite(grossPct)
+    ? (grossPct * netPnl) / gross
+    : grossPct;
 
-  return { netPnl: Number.isFinite(netPnl) ? netPnl : 0, netPct: Number.isFinite(netPct) ? netPct : 0 };
+  return {
+    netPnl: Number.isFinite(netPnl) ? netPnl : 0,
+    netPct: Number.isFinite(netPct) ? netPct : 0,
+  };
 }
 
 export default function MonthlyReportPage() {
@@ -81,7 +96,7 @@ export default function MonthlyReportPage() {
 
   const baseStartingBalance = toNumberSafe(baseStartingBalanceRaw, 0);
 
-  //** Load profile + trades in the selected month.
+  // Load profile + trades in the selected month.
   useEffect(() => {
     let cancelled = false;
 
@@ -103,7 +118,7 @@ export default function MonthlyReportPage() {
         const { data, error } = await supabase
           .from('trades')
           .select(
-            'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, risk_amount, r_multiple, commission, net_pnl'
+            'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, risk_amount, r_multiple, commission, net_pnl, reviewed_at'
           )
           .gte('opened_at', startIso)
           .lt('opened_at', endIso)
@@ -149,7 +164,7 @@ export default function MonthlyReportPage() {
   /**
    *  Load NET P&L from all trades strictly BEFORE this month.
    * This makes the equity curve start at the previous month’s ending equity.
-   **/
+  **/
   useEffect(() => {
     let cancelled = false;
 
@@ -165,7 +180,7 @@ export default function MonthlyReportPage() {
 
         const { data, error } = await supabase
           .from('trades')
-          .select('pnl_amount, pnl_percent, commission, net_pnl')
+          .select('pnl_amount, pnl_percent, commission, net_pnl, reviewed_at')
           .lt('opened_at', startIso);
 
         if (cancelled) return;
@@ -420,7 +435,7 @@ function Card({ title, value }: { title: string; value: React.ReactNode }) {
 /**
  * Minimal SVG line chart (no libraries).
  * Renders only an axis + a line and highlights the latest point.
- **/
+**/
 function LineChart({ values, labels }: { values: number[]; labels: string[] }) {
   const width = 900;
   const height = 220;
