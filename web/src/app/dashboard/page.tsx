@@ -423,10 +423,16 @@ export default function DashboardPage() {
     // Net $ P&L: use calcDisplayPnl logic.
     const pnlDollar = trades.reduce((s, t) => s + calcDisplayPnl(t), 0);
 
+    // Total commissions paid this month (sum of positive commission values; displayed as a negative cost).
+    const commissionsPaid = trades.reduce((acc, t) => {
+      const c = Number(t.commission ?? 0);
+      return acc + (Number.isFinite(c) ? c : 0);
+    }, 0);
+
     // Win rate uses trade outcomes.
     const winRate = total ? (wins / total) * 100 : 0;
 
-    return { total, wins, losses, be, pnlDollar, winRate };
+    return { total, wins, losses, be, pnlDollar, winRate, commissionsPaid };
   }, [trades]);
 
   // Month starting balance is the ending equity of the previous month (gross-based).
@@ -720,6 +726,11 @@ export default function DashboardPage() {
           title='P&L (%)'
           value={formatPercent(monthPnlPct, 2)}
           valueClassName={signColor(monthPnlPct)}
+        />
+        <Card
+          title='Commissions'
+          value={formatMoney(-Math.abs(stats.commissionsPaid), currency)}
+          valueClassName='text-rose-600'
         />
         <Card title='Wins' value={stats.wins} />
         <Card title='Losses' value={stats.losses} />
