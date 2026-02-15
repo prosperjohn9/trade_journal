@@ -14,6 +14,7 @@ type Direction = 'BUY' | 'SELL';
 
 type Trade = {
   id: string;
+  account_id: string;
   opened_at: string;
   instrument: string;
   direction: Direction;
@@ -25,6 +26,13 @@ type Trade = {
   r_multiple: number | null;
   template_id: string | null;
   reviewed_at: string | null;
+};
+
+type Account = {
+  id: string;
+  name: string;
+  starting_balance: number | null;
+  is_default?: boolean | null;
 };
 
 type CriteriaCheckRow = {
@@ -41,16 +49,8 @@ type TemplateItemRow = {
 
 type UpdateProfileInput = {
   display_name: string | null;
-  starting_balance: number | null;
 };
 
-// Parse a numeric input from an <input> value. Empty/invalid => null.
-function numOrNull(v: string): number | null {
-  const t = v.trim();
-  if (!t) return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
-}
 
 // Coerce unknown values to a finite number (otherwise 0).
 function toNumberSafe(v: unknown): number {
@@ -167,24 +167,33 @@ function Modal({
 export default function DashboardPage() {
   const router = useRouter();
 
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  // account filter: a specific account id, or 'all' for combined view
+  const [accountId, setAccountId] = useState<string>('all');
+
+  const selectedAccount = useMemo(
+    () => accounts.find((a) => a.id === accountId) ?? null,
+    [accounts, accountId],
+  );
+
   const [profile, setProfile] = useState<Profile | null>(null);
 
   // Some fields may not be present on the generated Profile type.
   type ProfileExtras = {
     base_currency?: string | null;
-    starting_balance?: number | string | null;
   };
   const profileExtras = (profile ?? null) as unknown as ProfileExtras | null;
 
   const [displayNameDraft, setDisplayNameDraft] = useState('');
-  const [startingBalanceDraft, setStartingBalanceDraft] = useState('');
 
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState('');
   const [showProfile, setShowProfile] = useState(false);
 
   const [trades, setTrades] = useState<Trade[]>([]);
-  
+
   // Sum of GROSS P&L ($) from all trades strictly BEFORE the selected month.
   // (Gross = pnl_amount as stored on the trade; commission is NOT subtracted here.)
   const [priorPnlDollar, setPriorPnlDollar] = useState(0);
@@ -202,7 +211,9 @@ export default function DashboardPage() {
   >({});
 
   // Delete confirmation modal state.
-  const [deleteTradeTarget, setDeleteTradeTarget] = useState<Trade | null>(null);
+  const [deleteTradeTarget, setDeleteTradeTarget] = useState<Trade | null>(
+    null,
+  );
   const [deletingTrade, setDeletingTrade] = useState(false);
 
   // Logout confirmation modal state.
@@ -211,10 +222,12 @@ export default function DashboardPage() {
 
   const currency = profileExtras?.base_currency ?? 'USD';
 
-  const startingBalanceRaw = profileExtras?.starting_balance;
+  const startingBalanceRaw = selectedAccount?.starting_balance;
   const hasStartingBalance =
     startingBalanceRaw !== null && startingBalanceRaw !== undefined;
-  const startingBalance = hasStartingBalance ? toNumberSafe(startingBalanceRaw) : 0;
+  const startingBalance = hasStartingBalance
+    ? toNumberSafe(startingBalanceRaw)
+    : 0;
 
   // --- Auth + profile ---
   useEffect(() => {
@@ -226,17 +239,46 @@ export default function DashboardPage() {
           return;
         }
 
+        setUserId(user.id);
         setProfile(profile);
         setDisplayNameDraft(profile?.display_name ?? '');
-
-        const sb = (profile as unknown as ProfileExtras)?.starting_balance;
-        setStartingBalanceDraft(sb === null || sb === undefined ? '' : String(sb));
       } catch (err: unknown) {
         console.error(err);
         router.push('/auth');
       }
     })();
   }, [router]);
+
+  // --- Accounts ---
+  useEffect(() => {
+    (async () => {
+      if (!userId) return;
+
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('id, name, starting_balance, is_default')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error(error);
+        setAccounts([]);
+        return;
+      }
+
+      const rows = (data || []) as Account[];
+      setAccounts(rows);
+
+      // Pick default account if available, otherwise first account.
+      if (rows.length) {
+        const defaultAcc = rows.find((a) => !!a.is_default) ?? rows[0];
+        setAccountId((prev) => {
+          if (prev !== 'all' && rows.some((a) => a.id === prev)) return prev;
+          return defaultAcc.id;
+        });
+      }
+    })();
+  }, [userId]);
 
   // --- Trades (selected month) ---
   useEffect(() => {
@@ -245,14 +287,21 @@ export default function DashboardPage() {
       const end = new Date(start);
       end.setMonth(end.getMonth() + 1);
 
-      const { data, error } = await supabase
+      let q = supabase
         .from('trades')
         .select(
-          'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, commission, net_pnl, r_multiple, template_id, reviewed_at'
+          'id, account_id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, commission, net_pnl, r_multiple, template_id, reviewed_at',
         )
         .gte('opened_at', start.toISOString())
-        .lt('opened_at', end.toISOString())
-        .order('opened_at', { ascending: true });
+        .lt('opened_at', end.toISOString());
+
+      if (accountId !== 'all') {
+        q = q.eq('account_id', accountId);
+      }
+
+      const { data, error } = await q.order('opened_at', {
+        ascending: true,
+      });
 
       if (error) {
         console.error(error);
@@ -262,7 +311,7 @@ export default function DashboardPage() {
 
       setTrades((data || []) as Trade[]);
     })();
-  }, [month]);
+  }, [month, accountId]);
 
   // --- Prior GROSS P&L (all trades before selected month) ---
   // Used to roll forward equity (gross-based): previous month ending equity becomes this month's starting balance.
@@ -278,10 +327,16 @@ export default function DashboardPage() {
         const start = new Date(`${month}-01T00:00:00`);
 
         // Fetch net_pnl, pnl_amount, commission, reviewed_at for trades before this month and sum client-side.
-        const { data, error } = await supabase
+        let q = supabase
           .from('trades')
           .select('net_pnl, pnl_amount, commission, reviewed_at')
           .lt('opened_at', start.toISOString());
+
+        if (accountId !== 'all') {
+          q = q.eq('account_id', accountId);
+        }
+
+        const { data, error } = await q;
 
         if (error) {
           console.error(error);
@@ -308,7 +363,11 @@ export default function DashboardPage() {
           const net = Number(r.net_pnl);
           if (Number.isFinite(net)) return acc + net;
 
-          return acc + (Number.isFinite(gross) ? gross : 0) - (Number.isFinite(comm) ? comm : 0);
+          return (
+            acc +
+            (Number.isFinite(gross) ? gross : 0) -
+            (Number.isFinite(comm) ? comm : 0)
+          );
         }, 0);
 
         setPriorPnlDollar(sum);
@@ -319,7 +378,7 @@ export default function DashboardPage() {
         setLoadingPriorPnl(false);
       }
     })();
-  }, [month, hasStartingBalance]);
+  }, [month, hasStartingBalance, accountId]);
 
   // --- Checklist scores ---
   // Score is computed from: checked items / active items for the trade's setup template.
@@ -330,7 +389,7 @@ export default function DashboardPage() {
 
       const tradeIds = trades.map((t) => t.id);
       const templateIds = Array.from(
-        new Set(trades.map((t) => t.template_id).filter(Boolean))
+        new Set(trades.map((t) => t.template_id).filter(Boolean)),
       ) as string[];
 
       // Default: no checklist available.
@@ -360,7 +419,8 @@ export default function DashboardPage() {
       const activeItemIds = activeItems.map((i) => i.id);
 
       for (const it of activeItems) {
-        denomByTemplate[it.template_id] = (denomByTemplate[it.template_id] || 0) + 1;
+        denomByTemplate[it.template_id] =
+          (denomByTemplate[it.template_id] || 0) + 1;
       }
 
       if (!activeItemIds.length) {
@@ -386,7 +446,8 @@ export default function DashboardPage() {
 
       for (const row of checks) {
         if (row.checked) {
-          checkedTrueByTrade[row.trade_id] = (checkedTrueByTrade[row.trade_id] || 0) + 1;
+          checkedTrueByTrade[row.trade_id] =
+            (checkedTrueByTrade[row.trade_id] || 0) + 1;
         }
       }
 
@@ -437,18 +498,39 @@ export default function DashboardPage() {
 
   // Month starting balance is the ending equity of the previous month (gross-based).
   // = profile starting_balance + sum(gross P&L of all trades before this month)
-  const monthStartingBalance = hasStartingBalance ? startingBalance + priorPnlDollar : null;
+    const allAccountsStartingBalance = useMemo(
+    () => accounts.reduce((acc, a) => acc + toNumberSafe(a.starting_balance), 0),
+    [accounts]
+  );
 
-  const monthPnlPct = monthStartingBalance ? (stats.pnlDollar / monthStartingBalance) * 100 : 0;
+  const monthStartingBalance =
+    accountId === 'all'
+      ? allAccountsStartingBalance + priorPnlDollar
+      : hasStartingBalance
+        ? startingBalance + priorPnlDollar
+        : null;
+
+  const monthPnlPct = monthStartingBalance
+    ? (stats.pnlDollar / monthStartingBalance) * 100
+    : 0;
 
   // Equity for the selected month (gross-based).
-  const equity = monthStartingBalance === null ? null : monthStartingBalance + stats.pnlDollar;
+  const equity =
+    monthStartingBalance === null
+      ? null
+      : monthStartingBalance + stats.pnlDollar;
 
   const displayName =
     profile?.display_name?.trim() || profile?.display_name || 'Trader';
 
-  const equityUp = equity !== null && monthStartingBalance !== null && equity >= monthStartingBalance;
-  const equityDown = equity !== null && monthStartingBalance !== null && equity < monthStartingBalance;
+  const equityUp =
+    equity !== null &&
+    monthStartingBalance !== null &&
+    equity >= monthStartingBalance;
+  const equityDown =
+    equity !== null &&
+    monthStartingBalance !== null &&
+    equity < monthStartingBalance;
 
   function requestLogout() {
     setShowLogout(true);
@@ -474,16 +556,14 @@ export default function DashboardPage() {
     try {
       const payload: UpdateProfileInput = {
         display_name: displayNameDraft.trim() || null,
-        starting_balance: numOrNull(startingBalanceDraft),
       };
 
-      const updated = await updateProfile(payload as unknown as Partial<Profile>);
+      const updated = await updateProfile(
+        payload as unknown as Partial<Profile>,
+      );
 
       setProfile(updated);
       setDisplayNameDraft(updated.display_name ?? '');
-
-      const sb = (updated as unknown as ProfileExtras)?.starting_balance;
-      setStartingBalanceDraft(sb === null || sb === undefined ? '' : String(sb));
 
       setProfileMsg('Saved');
       setShowProfile(false);
@@ -560,8 +640,10 @@ export default function DashboardPage() {
         {deleteTradeTarget && (
           <div className='mt-3 text-sm'>
             <div className='opacity-80'>
-              <span className='font-semibold'>{deleteTradeTarget.instrument}</span> •{' '}
-              {deleteTradeTarget.direction} • {deleteTradeTarget.outcome}
+              <span className='font-semibold'>
+                {deleteTradeTarget.instrument}
+              </span>{' '}
+              • {deleteTradeTarget.direction} • {deleteTradeTarget.outcome}
             </div>
             <div className='opacity-70'>
               {new Date(deleteTradeTarget.opened_at).toLocaleString()}
@@ -592,14 +674,11 @@ export default function DashboardPage() {
             Signed in as <span className='font-semibold'>{displayName}</span>
           </div>
 
-          {!hasStartingBalance && (
+          {accountId !== 'all' && !hasStartingBalance && (
             <div className='text-sm opacity-80'>
-              <span className='font-semibold'>Tip:</span> Set your{' '}
-              <span className='font-semibold'>Starting Balance</span> to make your equity
-              curve and drawdown meaningful.
-              <button className='ml-2 underline' onClick={() => setShowProfile(true)}>
-                Set now
-              </button>
+              <span className='font-semibold'>Tip:</span> Set a{' '}
+              <span className='font-semibold'>Starting Balance</span> for this
+              account to make your equity curve and drawdown meaningful.
             </div>
           )}
         </div>
@@ -619,6 +698,12 @@ export default function DashboardPage() {
 
           <button
             className='border rounded-lg px-4 py-2'
+            onClick={() => router.push('/settings/accounts')}>
+            Accounts
+          </button>
+
+          <button
+            className='border rounded-lg px-4 py-2'
             onClick={() => setShowProfile((v) => !v)}>
             {showProfile ? 'Close' : 'Edit Profile'}
           </button>
@@ -626,10 +711,12 @@ export default function DashboardPage() {
           <button
             className='border rounded-lg px-4 py-2'
             onClick={() => router.push('/trades/new')}>
-            + Add Trade
+            Add Trade
           </button>
 
-          <button className='border rounded-lg px-4 py-2' onClick={requestLogout}>
+          <button
+            className='border rounded-lg px-4 py-2'
+            onClick={requestLogout}>
             Logout
           </button>
         </div>
@@ -639,10 +726,12 @@ export default function DashboardPage() {
         <section className='border rounded-xl p-4 max-w-3xl space-y-3'>
           <div className='flex items-center justify-between gap-3'>
             <h2 className='font-semibold'>Profile</h2>
-            {profileMsg && <span className='text-sm opacity-80'>{profileMsg}</span>}
+            {profileMsg && (
+              <span className='text-sm opacity-80'>{profileMsg}</span>
+            )}
           </div>
 
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+          <div className='grid grid-cols-1 md:grid-cols-1 gap-3'>
             <label className='space-y-1 block'>
               <div className='text-sm opacity-70'>Username</div>
               <input
@@ -651,21 +740,6 @@ export default function DashboardPage() {
                 onChange={(e) => setDisplayNameDraft(e.target.value)}
                 placeholder='e.g., Prosper'
               />
-            </label>
-
-            <label className='space-y-1 block'>
-              <div className='text-sm opacity-70'>Starting Balance</div>
-              <input
-                className='w-full border rounded-lg p-3'
-                type='number'
-                step='0.01'
-                value={startingBalanceDraft}
-                onChange={(e) => setStartingBalanceDraft(e.target.value)}
-                placeholder='e.g., 100000'
-              />
-              <div className='text-xs opacity-60'>
-                Used as your initial balance. Each new month starts at the previous month’s ending equity.
-              </div>
             </label>
           </div>
 
@@ -680,18 +754,37 @@ export default function DashboardPage() {
         </section>
       )}
 
-      <section className='flex items-center gap-3'>
-        <label className='text-sm opacity-80'>Month:</label>
-        <input
-          className='border rounded-lg p-2'
-          type='month'
-          value={month}
-          onChange={(e) => setMonth(e.target.value)}
-        />
+      <section className='flex flex-col md:flex-row md:items-center gap-3'>
+        <div className='flex items-center gap-3'>
+          <label className='text-sm opacity-80'>Account:</label>
+          <select
+            className='border rounded-lg p-2'
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            disabled={!accounts.length}
+            aria-label='Account selector'>
+            <option value='all'>All accounts</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className='flex items-center gap-3'>
+          <label className='text-sm opacity-80'>Month:</label>
+          <input
+            className='border rounded-lg p-2'
+            type='month'
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+          />
+        </div>
       </section>
 
       <section className='grid grid-cols-2 md:grid-cols-4 gap-3'>
-        {hasStartingBalance && (
+        {monthStartingBalance !== null && (
           <>
             <Card
               title='Starting Balance'
@@ -699,8 +792,8 @@ export default function DashboardPage() {
                 monthStartingBalance === null
                   ? '—'
                   : loadingPriorPnl
-                  ? '…'
-                  : formatMoney(monthStartingBalance, currency)
+                    ? '…'
+                    : formatMoney(monthStartingBalance, currency)
               }
               valueClassName='text-slate-900'
             />
@@ -709,7 +802,7 @@ export default function DashboardPage() {
               value={equity === null ? '—' : formatMoney(equity, currency)}
               valueClassName={cx(
                 equityUp && 'text-emerald-700',
-                equityDown && 'text-rose-700'
+                equityDown && 'text-rose-700',
               )}
             />
           </>
@@ -768,7 +861,9 @@ export default function DashboardPage() {
 
                 return (
                   <tr key={t.id} className='border-b'>
-                    <td className='p-2'>{new Date(t.opened_at).toLocaleString()}</td>
+                    <td className='p-2'>
+                      {new Date(t.opened_at).toLocaleString()}
+                    </td>
                     <td className='p-2'>{t.instrument}</td>
                     <td className='p-2'>{t.direction}</td>
 
@@ -776,7 +871,7 @@ export default function DashboardPage() {
                       <span
                         className={cx(
                           'inline-flex items-center px-2 py-1 rounded-full border text-xs font-semibold',
-                          badgeClasses(t.outcome)
+                          badgeClasses(t.outcome),
                         )}>
                         {t.outcome}
                       </span>
