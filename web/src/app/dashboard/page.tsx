@@ -1,75 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/src/lib/supabaseClient';
-import {
-  getOrCreateProfile,
-  updateProfile,
-  type Profile,
-} from '@/src/lib/profile';
-
-type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
-type Direction = 'BUY' | 'SELL';
-
-type Trade = {
-  id: string;
-  account_id: string;
-  opened_at: string;
-  instrument: string;
-  direction: Direction;
-  outcome: Outcome;
-  pnl_amount: number;
-  pnl_percent: number;
-  commission: number | null;
-  net_pnl: number | null;
-  r_multiple: number | null;
-  template_id: string | null;
-  reviewed_at: string | null;
-};
-
-type Account = {
-  id: string;
-  name: string;
-  starting_balance: number | null;
-  is_default?: boolean | null;
-};
-
-type CriteriaCheckRow = {
-  trade_id: string;
-  item_id: string;
-  checked: boolean;
-};
-
-type TemplateItemRow = {
-  id: string;
-  template_id: string;
-  is_active: boolean;
-};
-
-type UpdateProfileInput = {
-  display_name: string | null;
-};
-
-
-// Coerce unknown values to a finite number (otherwise 0).
-function toNumberSafe(v: unknown): number {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function formatMoney(amount: number, currency = 'USD'): string {
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
+import { Modal } from '@/src/components/ui/Modal';
+import { formatMoney } from '@/src/lib/format';
+import { useDashboard } from '@/src/hooks/useDashboard';
+import type { Outcome } from '@/src/lib/dashboard';
 
 function formatNumber(amount: number, maxDigits = 2): string {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: maxDigits }).format(
-    amount
-  );
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: maxDigits,
+  }).format(amount);
 }
 
 function formatPercent(amount: number, maxDigits = 2): string {
@@ -109,544 +50,76 @@ function reviewedBadge(reviewedAt: string | null) {
   );
 }
 
-// P&L logic:
-// - If trade is NOT reviewed, treat net_pnl as unavailable and fall back to gross pnl_amount.
-// - If reviewed, prefer stored net_pnl, else fall back to (gross - commission).
-function calcDisplayPnl(t: Trade): number {
-  const gross = Number(t.pnl_amount ?? 0);
-
-  // Not reviewed => use gross only (do not subtract commission)
-  if (!t.reviewed_at) return Number.isFinite(gross) ? gross : 0;
-
-  const net = Number(t.net_pnl);
-  if (Number.isFinite(net)) return net;
-
-  const comm = Number(t.commission ?? 0);
-  return (Number.isFinite(gross) ? gross : 0) - (Number.isFinite(comm) ? comm : 0);
-}
-
-// Minimal modal used for logout/delete confirmations. 
-function Modal({
-  open,
-  title,
-  children,
-  onClose,
-}: {
-  open: boolean;
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  if (!open) return null;
-
-  return (
-    <div
-      className='fixed inset-0 z-50 flex items-center justify-center p-4'
-      aria-modal='true'
-      role='dialog'>
-      {/* Backdrop */}
-      <button
-        className='absolute inset-0 bg-black/40'
-        onClick={onClose}
-        aria-label='Close modal'
-      />
-
-      <div className='relative w-full max-w-md rounded-xl border bg-white p-4 shadow-lg'>
-        <div className='flex items-start justify-between gap-3'>
-          <div className='text-lg font-semibold'>{title}</div>
-          <button className='border rounded-lg px-3 py-1' onClick={onClose}>
-            ✕
-          </button>
-        </div>
-        <div className='mt-3'>{children}</div>
-      </div>
-    </div>
-  );
-}
-
 export default function DashboardPage() {
   const router = useRouter();
-
-  const [userId, setUserId] = useState<string | null>(null);
-
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  // account filter: a specific account id, or 'all' for combined view
-  const [accountId, setAccountId] = useState<string>('all');
-
-  const selectedAccount = useMemo(
-    () => accounts.find((a) => a.id === accountId) ?? null,
-    [accounts, accountId],
-  );
-
-  const [profile, setProfile] = useState<Profile | null>(null);
-
-  // Some fields may not be present on the generated Profile type.
-  type ProfileExtras = {
-    base_currency?: string | null;
-  };
-  const profileExtras = (profile ?? null) as unknown as ProfileExtras | null;
-
-  const [displayNameDraft, setDisplayNameDraft] = useState('');
-
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [profileMsg, setProfileMsg] = useState('');
-  const [showProfile, setShowProfile] = useState(false);
-
-  const [trades, setTrades] = useState<Trade[]>([]);
-
-  // Sum of GROSS P&L ($) from all trades strictly BEFORE the selected month.
-  // (Gross = pnl_amount as stored on the trade; commission is NOT subtracted here.)
-  const [priorPnlDollar, setPriorPnlDollar] = useState(0);
-  const [loadingPriorPnl, setLoadingPriorPnl] = useState(false);
-
-  // Selected month controls the table/stats range.
-  const [month, setMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
-
-  // Checklist score per trade (0–100). null => no checklist available for this trade.
-  const [checklistScoreByTrade, setChecklistScoreByTrade] = useState<
-    Record<string, number | null>
-  >({});
-
-  // Delete confirmation modal state.
-  const [deleteTradeTarget, setDeleteTradeTarget] = useState<Trade | null>(
-    null,
-  );
-  const [deletingTrade, setDeletingTrade] = useState(false);
-
-  // Logout confirmation modal state.
-  const [showLogout, setShowLogout] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
-
-  const currency = profileExtras?.base_currency ?? 'USD';
-
-  const startingBalanceRaw = selectedAccount?.starting_balance;
-  const hasStartingBalance =
-    startingBalanceRaw !== null && startingBalanceRaw !== undefined;
-  const startingBalance = hasStartingBalance
-    ? toNumberSafe(startingBalanceRaw)
-    : 0;
-
-  // --- Auth + profile ---
-  useEffect(() => {
-    (async () => {
-      try {
-        const { profile, user } = await getOrCreateProfile();
-        if (!user) {
-          router.push('/auth');
-          return;
-        }
-
-        setUserId(user.id);
-        setProfile(profile);
-        setDisplayNameDraft(profile?.display_name ?? '');
-      } catch (err: unknown) {
-        console.error(err);
-        router.push('/auth');
-      }
-    })();
-  }, [router]);
-
-  // --- Accounts ---
-  useEffect(() => {
-    (async () => {
-      if (!userId) return;
-
-      const { data, error } = await supabase
-        .from('accounts')
-        .select('id, name, starting_balance, is_default')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error(error);
-        setAccounts([]);
-        return;
-      }
-
-      const rows = (data || []) as Account[];
-      setAccounts(rows);
-
-      // Pick default account if available, otherwise first account.
-      if (rows.length) {
-        const defaultAcc = rows.find((a) => !!a.is_default) ?? rows[0];
-        setAccountId((prev) => {
-          if (prev !== 'all' && rows.some((a) => a.id === prev)) return prev;
-          return defaultAcc.id;
-        });
-      }
-    })();
-  }, [userId]);
-
-  // --- Trades (selected month) ---
-  useEffect(() => {
-    (async () => {
-      const start = new Date(`${month}-01T00:00:00`);
-      const end = new Date(start);
-      end.setMonth(end.getMonth() + 1);
-
-      let q = supabase
-        .from('trades')
-        .select(
-          'id, account_id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, commission, net_pnl, r_multiple, template_id, reviewed_at',
-        )
-        .gte('opened_at', start.toISOString())
-        .lt('opened_at', end.toISOString());
-
-      if (accountId !== 'all') {
-        q = q.eq('account_id', accountId);
-      }
-
-      const { data, error } = await q.order('opened_at', {
-        ascending: true,
-      });
-
-      if (error) {
-        console.error(error);
-        setTrades([]);
-        return;
-      }
-
-      setTrades((data || []) as Trade[]);
-    })();
-  }, [month, accountId]);
-
-  // --- Prior GROSS P&L (all trades before selected month) ---
-  // Used to roll forward equity (gross-based): previous month ending equity becomes this month's starting balance.
-  useEffect(() => {
-    (async () => {
-      if (!hasStartingBalance) {
-        setPriorPnlDollar(0);
-        return;
-      }
-
-      setLoadingPriorPnl(true);
-      try {
-        const start = new Date(`${month}-01T00:00:00`);
-
-        // Fetch net_pnl, pnl_amount, commission, reviewed_at for trades before this month and sum client-side.
-        let q = supabase
-          .from('trades')
-          .select('net_pnl, pnl_amount, commission, reviewed_at')
-          .lt('opened_at', start.toISOString());
-
-        if (accountId !== 'all') {
-          q = q.eq('account_id', accountId);
-        }
-
-        const { data, error } = await q;
-
-        if (error) {
-          console.error(error);
-          setPriorPnlDollar(0);
-          return;
-        }
-
-        const sum = (data || []).reduce((acc, row) => {
-          const r = row as {
-            net_pnl?: unknown;
-            pnl_amount?: unknown;
-            commission?: unknown;
-            reviewed_at?: unknown;
-          };
-
-          const gross = Number(r.pnl_amount ?? 0);
-          const comm = Number(r.commission ?? 0);
-          const reviewedAt = (r.reviewed_at as string | null) ?? null;
-
-          // Not reviewed => gross only
-          if (!reviewedAt) return acc + (Number.isFinite(gross) ? gross : 0);
-
-          // Reviewed => prefer stored net, else gross - commission
-          const net = Number(r.net_pnl);
-          if (Number.isFinite(net)) return acc + net;
-
-          return (
-            acc +
-            (Number.isFinite(gross) ? gross : 0) -
-            (Number.isFinite(comm) ? comm : 0)
-          );
-        }, 0);
-
-        setPriorPnlDollar(sum);
-      } catch (err: unknown) {
-        console.error(err);
-        setPriorPnlDollar(0);
-      } finally {
-        setLoadingPriorPnl(false);
-      }
-    })();
-  }, [month, hasStartingBalance, accountId]);
-
-  // --- Checklist scores ---
-  // Score is computed from: checked items / active items for the trade's setup template.
-  useEffect(() => {
-    (async () => {
-      setChecklistScoreByTrade({});
-      if (!trades.length) return;
-
-      const tradeIds = trades.map((t) => t.id);
-      const templateIds = Array.from(
-        new Set(trades.map((t) => t.template_id).filter(Boolean)),
-      ) as string[];
-
-      // Default: no checklist available.
-      const baseScores: Record<string, number | null> = {};
-      for (const t of trades) baseScores[t.id] = null;
-
-      if (!templateIds.length) {
-        setChecklistScoreByTrade(baseScores);
-        return;
-      }
-
-      // 1) Denominator: number of active items per template.
-      const { data: itemsData, error: itemsErr } = await supabase
-        .from('setup_template_items')
-        .select('id, template_id, is_active')
-        .in('template_id', templateIds)
-        .eq('is_active', true);
-
-      if (itemsErr) {
-        console.error(itemsErr);
-        setChecklistScoreByTrade(baseScores);
-        return;
-      }
-
-      const activeItems = (itemsData || []) as TemplateItemRow[];
-      const denomByTemplate: Record<string, number> = {};
-      const activeItemIds = activeItems.map((i) => i.id);
-
-      for (const it of activeItems) {
-        denomByTemplate[it.template_id] =
-          (denomByTemplate[it.template_id] || 0) + 1;
-      }
-
-      if (!activeItemIds.length) {
-        setChecklistScoreByTrade(baseScores);
-        return;
-      }
-
-      // 2) Numerator: number of checked=true rows per trade (restricted to active items).
-      const { data: checksData, error: checksErr } = await supabase
-        .from('trade_criteria_checks')
-        .select('trade_id, item_id, checked')
-        .in('trade_id', tradeIds)
-        .in('item_id', activeItemIds);
-
-      if (checksErr) {
-        console.error(checksErr);
-        setChecklistScoreByTrade(baseScores);
-        return;
-      }
-
-      const checks = (checksData || []) as CriteriaCheckRow[];
-      const checkedTrueByTrade: Record<string, number> = {};
-
-      for (const row of checks) {
-        if (row.checked) {
-          checkedTrueByTrade[row.trade_id] =
-            (checkedTrueByTrade[row.trade_id] || 0) + 1;
-        }
-      }
-
-      // 3) Final scores.
-      const scores: Record<string, number | null> = { ...baseScores };
-
-      for (const t of trades) {
-        if (!t.template_id) {
-          scores[t.id] = null;
-          continue;
-        }
-
-        const denom = denomByTemplate[t.template_id] || 0;
-        if (!denom) {
-          scores[t.id] = null;
-          continue;
-        }
-
-        const num = checkedTrueByTrade[t.id] || 0;
-        scores[t.id] = (num / denom) * 100;
-      }
-
-      setChecklistScoreByTrade(scores);
-    })();
-  }, [trades]);
-
-  // --- Summary stats for the selected month (NET P&L based) ---
-  const stats = useMemo(() => {
-    const total = trades.length;
-    const wins = trades.filter((t) => t.outcome === 'WIN').length;
-    const losses = trades.filter((t) => t.outcome === 'LOSS').length;
-    const be = trades.filter((t) => t.outcome === 'BREAKEVEN').length;
-
-    // Net $ P&L: use calcDisplayPnl logic.
-    const pnlDollar = trades.reduce((s, t) => s + calcDisplayPnl(t), 0);
-
-    // Total commissions paid this month (sum of positive commission values; displayed as a negative cost).
-    const commissionsPaid = trades.reduce((acc, t) => {
-      const c = Number(t.commission ?? 0);
-      return acc + (Number.isFinite(c) ? c : 0);
-    }, 0);
-
-    // Win rate uses trade outcomes.
-    const winRate = total ? (wins / total) * 100 : 0;
-
-    return { total, wins, losses, be, pnlDollar, winRate, commissionsPaid };
-  }, [trades]);
-
-  // Month starting balance is the ending equity of the previous month (gross-based).
-  // = profile starting_balance + sum(gross P&L of all trades before this month)
-    const allAccountsStartingBalance = useMemo(
-    () => accounts.reduce((acc, a) => acc + toNumberSafe(a.starting_balance), 0),
-    [accounts]
-  );
-
-  const monthStartingBalance =
-    accountId === 'all'
-      ? allAccountsStartingBalance + priorPnlDollar
-      : hasStartingBalance
-        ? startingBalance + priorPnlDollar
-        : null;
-
-  const monthPnlPct = monthStartingBalance
-    ? (stats.pnlDollar / monthStartingBalance) * 100
-    : 0;
-
-  // Equity for the selected month (gross-based).
-  const equity =
-    monthStartingBalance === null
-      ? null
-      : monthStartingBalance + stats.pnlDollar;
-
-  const displayName =
-    profile?.display_name?.trim() || profile?.display_name || 'Trader';
+  const s = useDashboard();
 
   const equityUp =
-    equity !== null &&
-    monthStartingBalance !== null &&
-    equity >= monthStartingBalance;
+    s.equity !== null &&
+    s.monthStartingBalance !== null &&
+    s.equity >= s.monthStartingBalance;
+
   const equityDown =
-    equity !== null &&
-    monthStartingBalance !== null &&
-    equity < monthStartingBalance;
+    s.equity !== null &&
+    s.monthStartingBalance !== null &&
+    s.equity < s.monthStartingBalance;
 
-  function requestLogout() {
-    setShowLogout(true);
-  }
+  const canShowEquityCards = s.monthStartingBalance !== null;
 
-  async function confirmLogout() {
-    if (loggingOut) return;
-    setLoggingOut(true);
-
-    try {
-      await supabase.auth.signOut();
-      setShowLogout(false);
-      router.push('/auth');
-    } finally {
-      setLoggingOut(false);
-    }
-  }
-
-  async function saveProfile() {
-    setSavingProfile(true);
-    setProfileMsg('Saving...');
-
-    try {
-      const payload: UpdateProfileInput = {
-        display_name: displayNameDraft.trim() || null,
-      };
-
-      const updated = await updateProfile(
-        payload as unknown as Partial<Profile>,
-      );
-
-      setProfile(updated);
-      setDisplayNameDraft(updated.display_name ?? '');
-
-      setProfileMsg('Saved');
-      setShowProfile(false);
-    } catch (err: unknown) {
-      console.error(err);
-      setProfileMsg(err instanceof Error ? err.message : 'Failed to save');
-    } finally {
-      setSavingProfile(false);
-      setTimeout(() => setProfileMsg(''), 2000);
-    }
-  }
-
-  function requestDeleteTrade(t: Trade) {
-    setDeleteTradeTarget(t);
-  }
-
-  async function confirmDeleteTrade() {
-    if (!deleteTradeTarget) return;
-
-    setDeletingTrade(true);
-
-    const id = deleteTradeTarget.id;
-    const { error } = await supabase.from('trades').delete().eq('id', id);
-
-    if (error) {
-      alert(error.message);
-      setDeletingTrade(false);
-      return;
-    }
-
-    setTrades((prev) => prev.filter((t) => t.id !== id));
-    setDeleteTradeTarget(null);
-    setDeletingTrade(false);
-  }
+  const checklistHint = useMemo(
+    () =>
+      'Checklist score is based on what you checked when you added the trade.',
+    [],
+  );
 
   return (
     <main className='p-6 space-y-6'>
       {/* Logout confirmation */}
       <Modal
-        open={showLogout}
+        open={s.showLogout}
         title='Log out?'
         onClose={() => {
-          if (!loggingOut) setShowLogout(false);
+          if (!s.loggingOut) s.setShowLogout(false);
         }}>
         <p className='text-sm opacity-80'>Are you sure you want to log out?</p>
 
         <div className='mt-4 flex gap-2 justify-end'>
           <button
             className='border rounded-lg px-4 py-2 disabled:opacity-60'
-            onClick={() => setShowLogout(false)}
-            disabled={loggingOut}>
+            onClick={() => s.setShowLogout(false)}
+            disabled={s.loggingOut}>
             Cancel
           </button>
           <button
             className='border rounded-lg px-4 py-2 disabled:opacity-60'
-            onClick={confirmLogout}
-            disabled={loggingOut}>
-            {loggingOut ? 'Logging out...' : 'Log out'}
+            onClick={s.confirmLogout}
+            disabled={s.loggingOut}>
+            {s.loggingOut ? 'Logging out...' : 'Log out'}
           </button>
         </div>
       </Modal>
 
-      {/* Delete confirmation */}
+      {/* Delete trade confirmation */}
       <Modal
-        open={!!deleteTradeTarget}
+        open={!!s.deleteTradeTarget}
         title='Delete trade?'
         onClose={() => {
-          if (!deletingTrade) setDeleteTradeTarget(null);
+          if (!s.deletingTrade) s.setDeleteTradeTarget(null);
         }}>
         <p className='text-sm opacity-80'>
           This will permanently delete this trade. This cannot be undone.
         </p>
 
-        {deleteTradeTarget && (
+        {s.deleteTradeTarget && (
           <div className='mt-3 text-sm'>
             <div className='opacity-80'>
               <span className='font-semibold'>
-                {deleteTradeTarget.instrument}
+                {s.deleteTradeTarget.instrument}
               </span>{' '}
-              • {deleteTradeTarget.direction} • {deleteTradeTarget.outcome}
+              • {s.deleteTradeTarget.direction} • {s.deleteTradeTarget.outcome}
             </div>
             <div className='opacity-70'>
-              {new Date(deleteTradeTarget.opened_at).toLocaleString()}
+              {new Date(s.deleteTradeTarget.opened_at).toLocaleString()}
             </div>
           </div>
         )}
@@ -654,15 +127,15 @@ export default function DashboardPage() {
         <div className='mt-4 flex gap-2 justify-end'>
           <button
             className='border rounded-lg px-4 py-2 disabled:opacity-60'
-            onClick={() => setDeleteTradeTarget(null)}
-            disabled={deletingTrade}>
+            onClick={() => s.setDeleteTradeTarget(null)}
+            disabled={s.deletingTrade}>
             Cancel
           </button>
           <button
             className='border rounded-lg px-4 py-2 disabled:opacity-60'
-            onClick={confirmDeleteTrade}
-            disabled={deletingTrade}>
-            {deletingTrade ? 'Deleting...' : 'Delete'}
+            onClick={s.confirmDeleteTrade}
+            disabled={s.deletingTrade}>
+            {s.deletingTrade ? 'Deleting...' : 'Delete'}
           </button>
         </div>
       </Modal>
@@ -671,10 +144,10 @@ export default function DashboardPage() {
         <div className='space-y-1'>
           <h1 className='text-2xl font-semibold'>Dashboard</h1>
           <div className='text-sm opacity-80'>
-            Signed in as <span className='font-semibold'>{displayName}</span>
+            Signed in as <span className='font-semibold'>{s.displayName}</span>
           </div>
 
-          {accountId !== 'all' && !hasStartingBalance && (
+          {s.accountId !== 'all' && !s.hasStartingBalance && (
             <div className='text-sm opacity-80'>
               <span className='font-semibold'>Tip:</span> Set a{' '}
               <span className='font-semibold'>Starting Balance</span> for this
@@ -704,8 +177,8 @@ export default function DashboardPage() {
 
           <button
             className='border rounded-lg px-4 py-2'
-            onClick={() => setShowProfile((v) => !v)}>
-            {showProfile ? 'Close' : 'Edit Profile'}
+            onClick={() => s.setShowProfile((v) => !v)}>
+            {s.showProfile ? 'Close' : 'Edit Profile'}
           </button>
 
           <button
@@ -716,28 +189,28 @@ export default function DashboardPage() {
 
           <button
             className='border rounded-lg px-4 py-2'
-            onClick={requestLogout}>
+            onClick={s.requestLogout}>
             Logout
           </button>
         </div>
       </header>
 
-      {profile && showProfile && (
+      {s.profile && s.showProfile && (
         <section className='border rounded-xl p-4 max-w-3xl space-y-3'>
           <div className='flex items-center justify-between gap-3'>
             <h2 className='font-semibold'>Profile</h2>
-            {profileMsg && (
-              <span className='text-sm opacity-80'>{profileMsg}</span>
+            {s.profileMsg && (
+              <span className='text-sm opacity-80'>{s.profileMsg}</span>
             )}
           </div>
 
-          <div className='grid grid-cols-1 md:grid-cols-1 gap-3'>
+          <div className='grid grid-cols-1 gap-3'>
             <label className='space-y-1 block'>
               <div className='text-sm opacity-70'>Username</div>
               <input
                 className='w-full border rounded-lg p-3'
-                value={displayNameDraft}
-                onChange={(e) => setDisplayNameDraft(e.target.value)}
+                value={s.displayNameDraft}
+                onChange={(e) => s.setDisplayNameDraft(e.target.value)}
                 placeholder='e.g., Prosper'
               />
             </label>
@@ -746,8 +219,8 @@ export default function DashboardPage() {
           <div className='flex flex-wrap gap-2'>
             <button
               className='border rounded-lg px-4 py-2 disabled:opacity-60'
-              onClick={saveProfile}
-              disabled={savingProfile}>
+              onClick={s.saveProfile}
+              disabled={s.savingProfile}>
               Save Profile
             </button>
           </div>
@@ -759,12 +232,12 @@ export default function DashboardPage() {
           <label className='text-sm opacity-80'>Account:</label>
           <select
             className='border rounded-lg p-2'
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            disabled={!accounts.length}
+            value={s.accountId}
+            onChange={(e) => s.setAccountId(e.target.value)}
+            disabled={!s.accounts.length}
             aria-label='Account selector'>
             <option value='all'>All accounts</option>
-            {accounts.map((a) => (
+            {s.accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
               </option>
@@ -777,29 +250,29 @@ export default function DashboardPage() {
           <input
             className='border rounded-lg p-2'
             type='month'
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
+            value={s.month}
+            onChange={(e) => s.setMonth(e.target.value)}
           />
         </div>
       </section>
 
       <section className='grid grid-cols-2 md:grid-cols-4 gap-3'>
-        {monthStartingBalance !== null && (
+        {canShowEquityCards && (
           <>
             <Card
               title='Starting Balance'
               value={
-                monthStartingBalance === null
-                  ? '—'
-                  : loadingPriorPnl
-                    ? '…'
-                    : formatMoney(monthStartingBalance, currency)
+                s.loadingPriorPnl
+                  ? '…'
+                  : formatMoney(s.monthStartingBalance ?? 0, s.currency)
               }
               valueClassName='text-slate-900'
             />
             <Card
               title='Equity'
-              value={equity === null ? '—' : formatMoney(equity, currency)}
+              value={
+                s.equity === null ? '—' : formatMoney(s.equity, s.currency)
+              }
               valueClassName={cx(
                 equityUp && 'text-emerald-700',
                 equityDown && 'text-rose-700',
@@ -808,26 +281,26 @@ export default function DashboardPage() {
           </>
         )}
 
-        <Card title='Trades' value={stats.total} />
-        <Card title='Win Rate' value={formatPercent(stats.winRate, 0)} />
+        <Card title='Trades' value={s.stats.total} />
+        <Card title='Win Rate' value={formatPercent(s.stats.winRate, 0)} />
         <Card
           title='P&L ($)'
-          value={formatMoney(stats.pnlDollar, currency)}
-          valueClassName={signColor(stats.pnlDollar)}
+          value={formatMoney(s.stats.pnlDollar, s.currency)}
+          valueClassName={signColor(s.stats.pnlDollar)}
         />
         <Card
           title='P&L (%)'
-          value={formatPercent(monthPnlPct, 2)}
-          valueClassName={signColor(monthPnlPct)}
+          value={formatPercent(s.monthPnlPct, 2)}
+          valueClassName={signColor(s.monthPnlPct)}
         />
         <Card
           title='Commissions'
-          value={formatMoney(-Math.abs(stats.commissionsPaid), currency)}
+          value={formatMoney(-Math.abs(s.stats.commissionsPaid), s.currency)}
           valueClassName='text-rose-600'
         />
-        <Card title='Wins' value={stats.wins} />
-        <Card title='Losses' value={stats.losses} />
-        <Card title='Breakeven' value={stats.be} />
+        <Card title='Wins' value={s.stats.wins} />
+        <Card title='Losses' value={s.stats.losses} />
+        <Card title='Breakeven' value={s.stats.be} />
       </section>
 
       <section className='border rounded-xl p-4'>
@@ -851,13 +324,14 @@ export default function DashboardPage() {
             </thead>
 
             <tbody>
-              {trades.map((t) => {
-                const pnlAmt = calcDisplayPnl(t);
+              {s.trades.map((t) => {
+                const pnlAmt = s.calcDisplayPnl(t);
 
-                const pnlPct = monthStartingBalance
-                  ? (pnlAmt / monthStartingBalance) * 100
+                const pnlPct = s.monthStartingBalance
+                  ? (pnlAmt / s.monthStartingBalance) * 100
                   : 0;
-                const score = checklistScoreByTrade[t.id] ?? null;
+
+                const score = s.checklistScoreByTrade[t.id] ?? null;
 
                 return (
                   <tr key={t.id} className='border-b'>
@@ -878,8 +352,9 @@ export default function DashboardPage() {
                     </td>
 
                     <td className={cx('p-2 font-medium', signColor(pnlAmt))}>
-                      {formatMoney(pnlAmt, currency)}
+                      {formatMoney(pnlAmt, s.currency)}
                     </td>
+
                     <td className={cx('p-2 font-medium', signColor(pnlPct))}>
                       {formatPercent(pnlPct, 2)}
                     </td>
@@ -918,7 +393,7 @@ export default function DashboardPage() {
 
                         <button
                           className='border rounded-lg px-3 py-1'
-                          onClick={() => requestDeleteTrade(t)}>
+                          onClick={() => s.requestDeleteTrade(t)}>
                           Delete
                         </button>
                       </div>
@@ -927,7 +402,7 @@ export default function DashboardPage() {
                 );
               })}
 
-              {!trades.length && (
+              {!s.trades.length && (
                 <tr>
                   <td className='p-2 opacity-70' colSpan={10}>
                     No trades for this month.
@@ -938,9 +413,7 @@ export default function DashboardPage() {
           </table>
         </div>
 
-        <div className='text-xs opacity-70 mt-3'>
-          Checklist score is based on what you checked when you added the trade.
-        </div>
+        <div className='text-xs opacity-70 mt-3'>{checklistHint}</div>
       </section>
     </main>
   );
