@@ -34,6 +34,7 @@ export function TradeViewClient() {
           <div className='text-sm opacity-80'>
             {t.instrument} • {t.direction} • {t.outcome} •{' '}
             {new Date(t.opened_at).toLocaleString()}
+            {t.account?.name ? ` • ${t.account.name}` : ''}
           </div>
 
           {s.isReviewed && t.reviewed_at && (
@@ -63,6 +64,7 @@ export function TradeViewClient() {
         <h2 className='font-semibold'>Entry</h2>
 
         <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+          <Row label='Account' value={t.account?.name ?? '—'} />
           <Row label='P&L ($)' value={Number(t.pnl_amount).toFixed(2)} />
           <Row label='P&L (%)' value={`${Number(t.pnl_percent).toFixed(2)}%`} />
           <Row

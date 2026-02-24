@@ -40,6 +40,8 @@ export type TradeView = {
 
   before_screenshot_path: string | null;
   after_trade_screenshot_url: string | null;
+  account_id: string | null;
+  account: { id: string; name: string } | null;
 };
 
 export type TradeChecklistItem = {

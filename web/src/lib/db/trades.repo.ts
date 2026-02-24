@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { supabase } from '@/src/lib/supabase/client';
 import { monthToRange } from '@/src/lib/analytics/core';
 
@@ -35,7 +36,7 @@ export async function fetchTradesForMonth(params: {
   month: string;
   accountId?: string | 'all';
 }): Promise<TradeDbRow[]> {
-  const { month, accountId } = params;
+  const { userId: _userId, month, accountId } = params;
   const { startIso, endIso } = monthToRange(month);
 
   let q = supabase
@@ -46,7 +47,9 @@ export async function fetchTradesForMonth(params: {
     .gte('opened_at', startIso)
     .lt('opened_at', endIso);
 
-  if (accountId && accountId !== 'all') q = q.eq('account_id', accountId);
+  if (accountId && accountId !== 'all') {
+    q = q.eq('account_id', accountId);
+  }
 
   const { data, error } = await q.order('opened_at', { ascending: true });
   if (error) throw error;
@@ -59,7 +62,7 @@ export async function fetchTradesBeforeMonth(params: {
   month: string;
   accountId?: string | 'all';
 }): Promise<TradeNetLiteRow[]> {
-  const { month, accountId } = params;
+  const { userId: _userId, month, accountId } = params;
   const { startIso } = monthToRange(month);
 
   let q = supabase
@@ -67,7 +70,9 @@ export async function fetchTradesBeforeMonth(params: {
     .select('pnl_amount, pnl_percent, commission, net_pnl, reviewed_at')
     .lt('opened_at', startIso);
 
-  if (accountId && accountId !== 'all') q = q.eq('account_id', accountId);
+  if (accountId && accountId !== 'all') {
+    q = q.eq('account_id', accountId);
+  }
 
   const { data, error } = await q;
   if (error) throw error;
@@ -108,7 +113,6 @@ export async function fetchChecklistData(params: {
     id: string;
     template_id: string;
   }>;
-
   const denomByTemplate: Record<string, number> = {};
   const activeItemIds = activeItems.map((i) => i.id);
 
@@ -131,8 +135,8 @@ export async function fetchChecklistData(params: {
     trade_id: string;
     checked: boolean;
   }>;
-
   const checkedTrueByTrade: Record<string, number> = {};
+
   for (const row of checks) {
     if (row.checked) {
       checkedTrueByTrade[row.trade_id] =
@@ -143,51 +147,23 @@ export async function fetchChecklistData(params: {
   return { base, activeItems, denomByTemplate, checkedTrueByTrade };
 }
 
-export type TradeViewDbRow = {
-  id: string;
-  opened_at: string;
-
-  instrument: string | null;
-  direction: 'BUY' | 'SELL' | null;
-  outcome: 'WIN' | 'LOSS' | 'BREAKEVEN' | null;
-
-  pnl_amount: number | null;
-  pnl_percent: number | null;
-  risk_amount: number | null;
-  r_multiple: number | null;
-
-  template_id: string | null;
-  notes: string | null;
-
-  reviewed_at: string | null;
-
-  entry_price: number | null;
-  stop_loss: number | null;
-  take_profit: number | null;
-  exit_price: number | null;
-  closed_at: string | null;
-  commission: number | null;
-  net_pnl: number | null;
-
-  emotion_tag: string | null;
-  lesson_learned: string | null;
-  review_notes: string | null;
-
-  before_screenshot_path: string | null;
-  after_trade_screenshot_url: string | null;
-};
-
+/**
+ * NOTE:
+ * `account:accounts(...)` requires a FK from trades.account_id -> accounts.id.
+ */
 const TRADE_VIEW_SELECT = `
   id, opened_at,
   instrument, direction, outcome,
   pnl_amount, pnl_percent, risk_amount, r_multiple,
+  account_id,
+  account:accounts(id, name),
   template_id, notes, reviewed_at,
   entry_price, stop_loss, take_profit, exit_price, closed_at, commission, net_pnl,
   emotion_tag, lesson_learned, review_notes,
   before_screenshot_path, after_trade_screenshot_url
 `;
 
-export async function getTradeById(tradeId: string): Promise<TradeViewDbRow> {
+export async function getTradeById(tradeId: string) {
   const { data, error } = await supabase
     .from('trades')
     .select(TRADE_VIEW_SELECT)
@@ -195,5 +171,5 @@ export async function getTradeById(tradeId: string): Promise<TradeViewDbRow> {
     .single();
 
   if (error) throw error;
-  return data as TradeViewDbRow;
+  return data;
 }

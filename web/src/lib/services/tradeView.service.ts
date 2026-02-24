@@ -8,7 +8,8 @@ import type { TradeChecklistItem, TradeView } from '@/src/hooks/useTradeView';
 export async function loadTradeView(params: { tradeId: string }) {
   await requireUser();
 
-  const trade = (await getTradeById(params.tradeId)) as TradeView;
+  const raw = await getTradeById(params.tradeId);
+  const trade = raw as unknown as TradeView;
 
   // signed screenshot urls
   const beforeUrl = trade.before_screenshot_path
