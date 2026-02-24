@@ -6,6 +6,7 @@ import { getErr } from '@/src/domain/errors';
 import type { Profile } from '@/src/domain/profile';
 import { toNumberSafe } from '@/src/lib/utils/number';
 import {
+  type AnalyticsAccount,
   loadAnalyticsBootstrap,
   loadAnalyticsTradesInRange,
   logoutAnalytics,
@@ -20,6 +21,7 @@ export type Session = 'ASIA' | 'LONDON' | 'NEW_YORK' | 'OVERLAP';
 export type Filters = {
   rangeStart: string;
   rangeEnd: string;
+  accountFilter: 'all' | string;
   instrumentQuery: string;
   directionFilter: '' | Direction;
   sessionFilter: '' | Session;
@@ -66,6 +68,7 @@ function filtersEqual(a: Filters, b: Filters) {
   return (
     A.rangeStart === B.rangeStart &&
     A.rangeEnd === B.rangeEnd &&
+    A.accountFilter === B.accountFilter &&
     A.instrumentQuery === B.instrumentQuery &&
     A.directionFilter === B.directionFilter &&
     A.sessionFilter === B.sessionFilter &&
@@ -131,6 +134,7 @@ export function useAnalytics() {
     return {
       rangeStart: yyyyMmDd(addDays(today, -90).toISOString()),
       rangeEnd: yyyyMmDd(today.toISOString()),
+      accountFilter: 'all',
       instrumentQuery: '',
       directionFilter: '',
       sessionFilter: '',
@@ -143,6 +147,7 @@ export function useAnalytics() {
   const [draft, setDraft] = useState<Filters>(() => initialFilters);
   const [applied, setApplied] = useState<Filters>(() => initialFilters);
 
+  const [accounts, setAccounts] = useState<AnalyticsAccount[]>([]);
   const [setupTemplates, setSetupTemplates] = useState<AnalyticsSetupTemplate[]>([]);
 
   const [calendarMonth, setCalendarMonth] = useState(() =>
@@ -157,6 +162,7 @@ export function useAnalytics() {
 
   const activeFilterCount = useMemo(() => {
     let c = 0;
+    if (applied.accountFilter !== 'all') c++;
     if (applied.instrumentQuery.trim()) c++;
     if (applied.directionFilter) c++;
     if (applied.outcomeFilter) c++;
@@ -169,6 +175,13 @@ export function useAnalytics() {
   const filtersSummary = useMemo(() => {
     const bits: string[] = [];
     bits.push(`${applied.rangeStart} → ${applied.rangeEnd}`);
+
+    if (applied.accountFilter !== 'all') {
+      const accountName =
+        accounts.find((a) => a.id === applied.accountFilter)?.name ??
+        'Selected account';
+      bits.push(`Account: ${accountName}`);
+    }
 
     if (applied.instrumentQuery.trim())
       bits.push(`Instrument: ${applied.instrumentQuery.trim().toUpperCase()}`);
@@ -186,7 +199,7 @@ export function useAnalytics() {
     }
 
     return bits.join(' • ');
-  }, [applied, setupTemplates]);
+  }, [accounts, applied, setupTemplates]);
 
   const hasUnsavedChanges = useMemo(
     () => !filtersEqual(draft, applied),
@@ -211,6 +224,7 @@ export function useAnalytics() {
         if (cancelled) return;
 
         setProfile(res.profile);
+        setAccounts(res.accounts);
         setSetupTemplates(res.setupTemplates);
       } catch (e: unknown) {
         if (cancelled) return;
@@ -244,6 +258,7 @@ export function useAnalytics() {
         const rows = await loadAnalyticsTradesInRange({
           startIso: start.toISOString(),
           endIso: end.toISOString(),
+          accountId: applied.accountFilter,
         });
 
         if (cancelled) return;
@@ -266,7 +281,7 @@ export function useAnalytics() {
     return () => {
       cancelled = true;
     };
-  }, [applied.rangeStart, applied.rangeEnd, router]);
+  }, [applied.accountFilter, applied.rangeStart, applied.rangeEnd, router]);
 
   const filteredTrades = useMemo(() => {
     const q = applied.instrumentQuery.trim().toUpperCase();
@@ -787,6 +802,7 @@ export function useAnalytics() {
   function clearFilters() {
     const cleared: Filters = {
       ...initialFilters,
+      accountFilter: 'all',
       instrumentQuery: '',
       directionFilter: '',
       sessionFilter: '',
@@ -819,6 +835,7 @@ export function useAnalytics() {
     showFilters,
     setShowFilters,
 
+    accounts,
     setupTemplates,
     trades,
     filteredTrades,

@@ -589,6 +589,7 @@ export function AnalyticsClient() {
     showFilters,
     setShowFilters,
 
+    accounts,
     setupTemplates,
     trades,
     filteredTrades,
@@ -696,6 +697,26 @@ export function AnalyticsClient() {
         {showFilters && (
           <>
             <div className='grid grid-cols-1 md:grid-cols-4 gap-3'>
+              <Field label='Account'>
+                <select
+                  className='w-full border rounded-lg p-3'
+                  value={draft.accountFilter}
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      accountFilter: e.target.value,
+                    }))
+                  }>
+                  <option value='all'>All accounts</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                      {a.is_default ? ' (default)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
               <Field label='Start'>
                 <input
                   className='w-full border rounded-lg p-3'

@@ -1,4 +1,5 @@
 import type { Profile } from '@/src/domain/profile';
+import { fetchAccountsByUser } from '@/src/lib/db/accounts.repo';
 import { getOrCreateProfile } from '@/src/lib/db/profiles.repo';
 import { fetchSetupTemplates } from '@/src/lib/db/setupTemplates.repo';
 import { requireUser } from '@/src/lib/supabase/auth';
@@ -30,15 +31,24 @@ export type AnalyticsSetupTemplate = {
   is_default: boolean;
 };
 
+export type AnalyticsAccount = {
+  id: string;
+  name: string;
+  is_default: boolean;
+};
+
 export async function loadAnalyticsBootstrap(): Promise<{
   profile: Profile;
   setupTemplates: AnalyticsSetupTemplate[];
+  accounts: AnalyticsAccount[];
 }> {
   await requireUser();
 
-  const [{ profile }, setupTemplates] = await Promise.all([
-    getOrCreateProfile(),
+  const { profile, userId } = await getOrCreateProfile();
+
+  const [setupTemplates, accounts] = await Promise.all([
     fetchSetupTemplates(),
+    fetchAccountsByUser(userId),
   ]);
 
   return {
@@ -48,16 +58,22 @@ export async function loadAnalyticsBootstrap(): Promise<{
       name: t.name,
       is_default: !!t.is_default,
     })),
+    accounts: accounts.map((a) => ({
+      id: a.id,
+      name: a.name,
+      is_default: !!a.is_default,
+    })),
   };
 }
 
 export async function loadAnalyticsTradesInRange(params: {
   startIso: string;
   endIso: string;
+  accountId?: string | 'all';
 }): Promise<AnalyticsTrade[]> {
   await requireUser();
 
-  const { data, error } = await supabase
+  let q = supabase
     .from('trades')
     .select(
       `id, opened_at, closed_at,
@@ -67,8 +83,13 @@ export async function loadAnalyticsTradesInRange(params: {
        reviewed_at, template_id`,
     )
     .gte('opened_at', params.startIso)
-    .lte('opened_at', params.endIso)
-    .order('opened_at', { ascending: true });
+    .lte('opened_at', params.endIso);
+
+  if (params.accountId && params.accountId !== 'all') {
+    q = q.eq('account_id', params.accountId);
+  }
+
+  const { data, error } = await q.order('opened_at', { ascending: true });
 
   if (error) throw error;
   return (data ?? []) as AnalyticsTrade[];
