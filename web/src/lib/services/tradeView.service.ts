@@ -11,7 +11,6 @@ export async function loadTradeView(params: { tradeId: string }) {
   const raw = await getTradeById(params.tradeId);
   const trade = raw as unknown as TradeView;
 
-  // signed screenshot urls
   const beforeUrl = trade.before_screenshot_path
     ? await signTradeScreenshotPath(trade.before_screenshot_path)
     : '';
@@ -20,7 +19,6 @@ export async function loadTradeView(params: { tradeId: string }) {
     ? await signTradeScreenshotPath(trade.after_trade_screenshot_url)
     : '';
 
-  // checklist
   let items: TradeChecklistItem[] = [];
   let checks: Record<string, boolean> = {};
 

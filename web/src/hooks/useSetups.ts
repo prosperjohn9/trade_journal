@@ -38,19 +38,15 @@ export function useSetups() {
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [items, setItems] = useState<Item[]>([]);
 
-  // Create inputs
   const [newTemplateName, setNewTemplateName] = useState('');
   const [newItemLabel, setNewItemLabel] = useState('');
 
-  // Rename template
   const [isRenamingTemplate, setIsRenamingTemplate] = useState(false);
   const [renameTemplateValue, setRenameTemplateValue] = useState('');
 
-  // Edit item
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingItemValue, setEditingItemValue] = useState('');
 
-  // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -61,7 +57,6 @@ export function useSetups() {
 
   const isAnyEditing = editingItemId !== null || isRenamingTemplate;
 
-  // ---- loaders ----
   async function loadTemplates(uId: string) {
     const { data, error } = await supabase
       .from('setup_templates')
@@ -93,7 +88,6 @@ export function useSetups() {
     setItems((data ?? []) as Item[]);
   }
 
-  // ---- init (auth + templates) ----
   useEffect(() => {
     let cancelled = false;
 
@@ -118,7 +112,6 @@ export function useSetups() {
       } catch (e: unknown) {
         if (!cancelled) {
           setMsg(getErr(e, 'Failed to load setups'));
-          // if auth failure, bounce
           router.push('/auth');
         }
       } finally {
@@ -131,7 +124,6 @@ export function useSetups() {
     };
   }, [router]);
 
-  // ---- when selecting a template: load its items ----
   useEffect(() => {
     if (!selectedTemplateId) return;
 
@@ -149,7 +141,6 @@ export function useSetups() {
     };
   }, [selectedTemplateId]);
 
-  // Keep rename input in sync when selected template changes
   useEffect(() => {
     if (!selectedTemplateId) return;
     const tpl = templates.find((t) => t.id === selectedTemplateId);
@@ -159,7 +150,6 @@ export function useSetups() {
     setIsRenamingTemplate(false);
   }, [selectedTemplateId, templates]);
 
-  // ---- template actions ----
   async function createTemplate() {
     const name = newTemplateName.trim();
     if (!name) return;
@@ -238,7 +228,6 @@ export function useSetups() {
     setMsg('Setting default...');
 
     try {
-      // Clear existing default for THIS user only
       const { error: e1 } = await supabase
         .from('setup_templates')
         .update({ is_default: false })
@@ -263,7 +252,6 @@ export function useSetups() {
     }
   }
 
-  // ---- item actions ----
   async function addItem() {
     const label = newItemLabel.trim();
     if (!label || !selectedTemplateId) return;
@@ -342,7 +330,6 @@ export function useSetups() {
     }
   }
 
-  // swap ordering with item above/below
   async function moveItem(item: Item, direction: 'UP' | 'DOWN') {
     if (isAnyEditing) return;
 
@@ -354,7 +341,6 @@ export function useSetups() {
 
     const other = items[swapWith];
 
-    // optimistic swap
     setItems((prev) => {
       const copy = [...prev];
       copy[idx] = { ...copy[idx], sort_order: other.sort_order };
@@ -386,11 +372,10 @@ export function useSetups() {
       setMsg('');
     } catch (e: unknown) {
       setMsg(getErr(e, 'Failed to reorder'));
-      await loadItems(item.template_id); // revert to truth
+      await loadItems(item.template_id);
     }
   }
 
-  // ---- delete flow ----
   function requestDeleteItem(item: Item) {
     setDeleteTarget({ kind: 'item', item });
   }
@@ -446,10 +431,8 @@ export function useSetups() {
   }
 
   return {
-    // routing
     router,
 
-    // data
     loading,
     msg,
 
@@ -460,7 +443,6 @@ export function useSetups() {
 
     items,
 
-    // create inputs
     newTemplateName,
     setNewTemplateName,
     createTemplate,
@@ -469,7 +451,6 @@ export function useSetups() {
     setNewItemLabel,
     addItem,
 
-    // rename template
     isRenamingTemplate,
     renameTemplateValue,
     setRenameTemplateValue,
@@ -477,10 +458,8 @@ export function useSetups() {
     cancelRenameTemplate,
     saveRenameTemplate,
 
-    // set default template
     setDefaultTemplate,
 
-    // item edit
     editingItemId,
     editingItemValue,
     setEditingItemValue,
@@ -488,11 +467,9 @@ export function useSetups() {
     cancelEditItem,
     saveEditItem,
 
-    // item toggles + ordering
     toggleItemActive,
     moveItem,
 
-    // delete
     deleteTarget,
     deleting,
     requestDeleteTemplate,
@@ -500,7 +477,6 @@ export function useSetups() {
     closeDelete,
     confirmDelete,
 
-    // misc
     isAnyEditing,
   };
 }

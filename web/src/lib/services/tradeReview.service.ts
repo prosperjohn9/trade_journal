@@ -1,4 +1,3 @@
-// src/lib/services/tradeReview.service.ts
 import { requireUser } from '@/src/lib/supabase/auth';
 import { toNumberSafe } from '@/src/lib/utils/number';
 
@@ -115,7 +114,6 @@ export async function loadTradeReviewChecklist(params: {
 
   if (!params.templateId) return { items: [], checks: {} };
 
-  // listTemplateItems includes is_active, needed for the review UI
   const items = await listTemplateItems(params.templateId);
   const itemIds = items.map((i) => i.id);
 
@@ -123,7 +121,6 @@ export async function loadTradeReviewChecklist(params: {
 
   const saved = await listTradeChecks({ tradeId: params.tradeId, itemIds });
 
-  // default TRUE for review UI, then override with saved values
   const checks: Record<string, boolean> = {};
   for (const id of itemIds) checks[id] = true;
   for (const row of saved) checks[row.item_id] = !!row.checked;
@@ -168,7 +165,7 @@ export async function saveTradeReviewFlow(params: {
   }
 
   await updateTradeReviewFields(params.tradeId, {
-    template_id: params.templateId, // ✅ now supported by the repo typing
+    template_id: params.templateId, 
     entry_price: safeNum(params.entryPrice),
     stop_loss: safeNum(params.stopLoss),
     take_profit: safeNum(params.takeProfit),

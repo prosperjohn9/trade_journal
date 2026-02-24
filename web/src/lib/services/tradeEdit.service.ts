@@ -142,7 +142,6 @@ export async function loadTradeEditChecklist(params: {
 
   const saved = await listTradeChecks({ tradeId: params.tradeId, itemIds });
 
-  // default FALSE for edit-entry checklist
   const checks: Record<string, boolean> = {};
   for (const id of itemIds) checks[id] = false;
   for (const row of saved) checks[row.item_id] = !!row.checked;

@@ -42,7 +42,6 @@ export function useTradeEdit() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
 
-  // Entry feedback
   const [entryMsg, setEntryMsg] = useState('');
   const [entryMsgTone, setEntryMsgTone] = useState<
     'success' | 'error' | 'info'
@@ -50,7 +49,6 @@ export function useTradeEdit() {
 
   const [trade, setTrade] = useState<TradeEditRow | null>(null);
 
-  // ENTRY FIELDS
   const [accounts, setAccounts] = useState<AccountLite[]>([]);
   const [accountId, setAccountId] = useState('');
 
@@ -64,17 +62,14 @@ export function useTradeEdit() {
   const [riskAmount, setRiskAmount] = useState<number>(1000);
   const [notes, setNotes] = useState('');
 
-  // CHECKLIST
   const [templates, setTemplates] = useState<SetupTemplateRow[]>([]);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [items, setItems] = useState<SetupItemWithActiveRow[]>([]);
   const [checks, setChecks] = useState<Record<string, boolean>>({});
 
-  // SIGNED URLS (already signed by service)
   const [beforeSignedUrl, setBeforeSignedUrl] = useState('');
   const [afterSignedUrl, setAfterSignedUrl] = useState('');
 
-  // FILES + PREVIEWS
   const [beforeFile, setBeforeFile] = useState<File | null>(null);
   const [beforePreviewUrl, setBeforePreviewUrl] = useState('');
   const beforePreviewRef = useRef<string>('');
@@ -83,7 +78,6 @@ export function useTradeEdit() {
   const [afterPreviewUrl, setAfterPreviewUrl] = useState('');
   const afterPreviewRef = useRef<string>('');
 
-  // REVIEW FIELDS
   const [reviewedAt, setReviewedAt] = useState<string | null>(null);
 
   const [entryPrice, setEntryPrice] = useState('');
@@ -97,7 +91,6 @@ export function useTradeEdit() {
   const [lessonLearned, setLessonLearned] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
 
-  // computed
   const rMultiple = useMemo(() => {
     const amountNum = Number(pnlAmount);
     if (!riskAmount || Number.isNaN(riskAmount) || Number.isNaN(amountNum))
@@ -195,7 +188,6 @@ export function useTradeEdit() {
     setAfterPreviewUrl(url);
   }
 
-  // cleanup previews
   useEffect(() => {
     return () => {
       if (beforePreviewRef.current)
@@ -204,7 +196,6 @@ export function useTradeEdit() {
     };
   }, []);
 
-  // initial load
   useEffect(() => {
     let cancelled = false;
 
@@ -229,7 +220,6 @@ export function useTradeEdit() {
 
         setTrade(res.trade);
 
-        // entry
         setAccountId(res.trade.account_id ?? fallbackAccountId);
         setOpenedAt(toDatetimeLocalValue(res.trade.opened_at));
         setInstrument((res.trade.instrument ?? 'EURUSD').toUpperCase());
@@ -240,16 +230,13 @@ export function useTradeEdit() {
         setRiskAmount(res.trade.risk_amount ?? 1000);
         setNotes(res.trade.notes ?? '');
 
-        // checklist
         setTemplateId(res.trade.template_id ?? null);
         setItems(res.items);
         setChecks(res.checks);
 
-        // signed URLs
         setBeforeSignedUrl(res.beforeSignedUrl);
         setAfterSignedUrl(res.afterSignedUrl);
 
-        // review
         setReviewedAt(res.trade.reviewed_at ?? null);
         setEntryPrice(
           res.trade.entry_price == null ? '' : String(res.trade.entry_price),
@@ -288,7 +275,6 @@ export function useTradeEdit() {
     };
   }, [tradeId, router]);
 
-  // reload checklist when template changes
   useEffect(() => {
     let cancelled = false;
     if (!templateId) {
@@ -342,11 +328,8 @@ export function useTradeEdit() {
         beforeFile,
       });
 
-      // After saving, clear local file + preview
       setBeforeFileWithPreview(null);
 
-      // Re-sign preview by reloading page state? Not needed — edit page uses signed urls.
-      // If you want immediate refresh for beforeSignedUrl, you can reload bootstrap. Optional.
       if (res.beforeSignedUrl !== undefined)
         setBeforeSignedUrl(res.beforeSignedUrl);
 
@@ -405,15 +388,12 @@ export function useTradeEdit() {
     loading,
     msg,
 
-    // entry feedback
     entryMsg,
     entryMsgClasses,
 
-    // navigation
     goBackSafe,
     openFull,
 
-    // entry
     accounts,
     accountId,
     setAccountId,
@@ -438,7 +418,6 @@ export function useTradeEdit() {
 
     rMultiple,
 
-    // checklist
     templateId,
     setTemplateId,
     templates,
@@ -449,7 +428,6 @@ export function useTradeEdit() {
     toggleCheck,
     adherence,
 
-    // screenshots (signed urls)
     beforeSignedUrl,
     beforeFile,
     beforePreviewUrl,
@@ -460,7 +438,6 @@ export function useTradeEdit() {
     afterPreviewUrl,
     setAfterFileWithPreview,
 
-    // review
     reviewedAt,
     entryPrice,
     setEntryPrice,
@@ -486,7 +463,6 @@ export function useTradeEdit() {
     grossPnlNumber,
     netPnlComputed,
 
-    // actions
     saveEntry,
     saveReview,
   };

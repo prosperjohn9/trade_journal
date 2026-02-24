@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { supabase } from '@/src/lib/supabase/client';
 import { monthToRange } from '@/src/lib/analytics/core';
 
@@ -36,7 +35,7 @@ export async function fetchTradesForMonth(params: {
   month: string;
   accountId?: string | 'all';
 }): Promise<TradeDbRow[]> {
-  const { userId: _userId, month, accountId } = params;
+  const { userId, month, accountId } = params;
   const { startIso, endIso } = monthToRange(month);
 
   let q = supabase
@@ -44,6 +43,7 @@ export async function fetchTradesForMonth(params: {
     .select(
       'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, risk_amount, r_multiple, commission, net_pnl, reviewed_at, account_id, template_id',
     )
+    .eq('user_id', userId)
     .gte('opened_at', startIso)
     .lt('opened_at', endIso);
 
@@ -62,12 +62,13 @@ export async function fetchTradesBeforeMonth(params: {
   month: string;
   accountId?: string | 'all';
 }): Promise<TradeNetLiteRow[]> {
-  const { userId: _userId, month, accountId } = params;
+  const { userId, month, accountId } = params;
   const { startIso } = monthToRange(month);
 
   let q = supabase
     .from('trades')
     .select('pnl_amount, pnl_percent, commission, net_pnl, reviewed_at')
+    .eq('user_id', userId)
     .lt('opened_at', startIso);
 
   if (accountId && accountId !== 'all') {
@@ -147,10 +148,6 @@ export async function fetchChecklistData(params: {
   return { base, activeItems, denomByTemplate, checkedTrueByTrade };
 }
 
-/**
- * NOTE:
- * `account:accounts(...)` requires a FK from trades.account_id -> accounts.id.
- */
 const TRADE_VIEW_SELECT = `
   id, opened_at,
   instrument, direction, outcome,

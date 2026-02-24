@@ -69,7 +69,6 @@ function normalizePnlByOutcome(params: {
     };
   }
 
-  // BREAKEVEN: keep as-is (usually 0)
   return { pnl_amount: pnlAmount, pnl_percent: pnlPercent };
 }
 
@@ -129,7 +128,6 @@ export async function createTradeFlow(params: {
 
   const tradeId = created.id;
 
-  // checklist checks
   if (params.templateId && params.items.length) {
     const payload = params.items.map((it) => ({
       trade_id: tradeId,
@@ -140,7 +138,6 @@ export async function createTradeFlow(params: {
     await upsertTradeCriteriaChecks(payload);
   }
 
-  // screenshot upload + link
   if (params.beforeFile) {
     const path = await uploadTradeBeforeScreenshot({
       userId: user.id,

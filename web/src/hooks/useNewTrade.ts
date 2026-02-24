@@ -47,17 +47,14 @@ export function useNewTrade() {
   const [pnlPercent, setPnlPercent] = useState<string>('2');
   const [riskAmount, setRiskAmount] = useState<number>(1000);
 
-  // Accounts
   const [accounts, setAccounts] = useState<AccountLite[]>([]);
   const [accountId, setAccountId] = useState<string>('');
 
-  // Setup templates + items
   const [templates, setTemplates] = useState<SetupTemplate[]>([]);
   const [templateId, setTemplateId] = useState<string>('');
   const [items, setItems] = useState<SetupItem[]>([]);
   const [checks, setChecks] = useState<Record<string, boolean>>({});
 
-  // Screenshot
   const [beforeFile, setBeforeFile] = useState<File | null>(null);
   const [beforePreviewUrl, setBeforePreviewUrl] = useState<string>('');
   const beforePreviewUrlRef = useRef<string>('');
@@ -95,7 +92,6 @@ export function useNewTrade() {
     };
   }, []);
 
-  // Bootstrap: auth check + accounts + templates
   useEffect(() => {
     let cancelled = false;
 
@@ -103,7 +99,6 @@ export function useNewTrade() {
       setMsg('');
 
       try {
-        // accounts via service you already trust
         const accList = (await listAccounts()) as AccountLite[];
         if (cancelled) return;
 
@@ -128,7 +123,6 @@ export function useNewTrade() {
     };
   }, [router]);
 
-  // Load items when template changes
   useEffect(() => {
     let cancelled = false;
 
@@ -217,13 +211,11 @@ export function useNewTrade() {
   }
 
   return {
-    // accounts
     accounts,
     accountId,
     setAccountId,
     hasAccounts,
 
-    // core fields
     openedAt,
     setOpenedAt,
     instrument,
@@ -240,7 +232,6 @@ export function useNewTrade() {
     setRiskAmount,
     rMultiple,
 
-    // setups
     templates,
     templateId,
     setTemplateId,
@@ -249,12 +240,10 @@ export function useNewTrade() {
     toggle,
     checklistScore,
 
-    // screenshot
     beforeFile,
     beforePreviewUrl,
     onBeforeFileChange,
 
-    // notes + ui
     notes,
     setNotes,
     msg,

@@ -230,7 +230,6 @@ export function useDashboard() {
 
         setAccounts(res.accounts);
 
-        // Ensure selected account is valid (otherwise choose default)
         if (res.accounts.length) {
           setAccountId((prev) => {
             if (prev === 'all') return prev;
@@ -262,7 +261,6 @@ export function useDashboard() {
           const message = getErr(e, 'Failed to load dashboard');
           setMsg(message);
 
-          // Only redirect when truly unauthenticated
           if (message.toLowerCase().includes('not authenticated')) {
             router.push('/auth');
           }

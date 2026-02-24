@@ -1,4 +1,3 @@
-// src/lib/db/tradesWrite.repo.ts
 import { supabase } from '@/src/lib/supabase/client';
 
 export type CreateTradeInput = {
@@ -71,7 +70,6 @@ export async function updateTradeEntryFields(
 }
 
 export type TradeReviewUpdate = {
-  // ✅ FIX: allow template_id in review updates (your TS error was here)
   template_id?: string | null;
 
   reviewed_at?: string;

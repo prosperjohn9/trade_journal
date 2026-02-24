@@ -22,7 +22,6 @@ export function useTradeReview() {
   const searchParams = useSearchParams();
   const tradeId = params.id;
 
-  // safe returnTo
   const returnToParam = searchParams.get('returnTo');
   const returnTo =
     returnToParam && returnToParam.startsWith('/') ? returnToParam : null;
@@ -49,7 +48,6 @@ export function useTradeReview() {
   const [items, setItems] = useState<SetupTemplateItemRow[]>([]);
   const [checks, setChecks] = useState<Record<string, boolean>>({});
 
-  // editable fields (strings for controlled inputs)
   const [entryPrice, setEntryPrice] = useState('');
   const [stopLoss, setStopLoss] = useState('');
   const [takeProfit, setTakeProfit] = useState('');
@@ -61,17 +59,12 @@ export function useTradeReview() {
   const [lessonLearned, setLessonLearned] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
 
-  // AFTER screenshot: file upload + previews
   const [afterFile, setAfterFile] = useState<File | null>(null);
   const [afterPreviewUrl, setAfterPreviewUrl] = useState<string>('');
   const afterPreviewUrlRef = useRef<string>('');
 
-  // signed URL for existing
   const [afterSignedUrl, setAfterSignedUrl] = useState<string>('');
 
-  // NOTE: items for review include is_active in the original page.
-  // If your SetupTemplateItemRow currently does NOT include is_active,
-  // update that type in the repo file. Review UI needs it.
   const activeItems = useMemo(
     () => items.filter((i) => i.is_active),
     [items],
@@ -124,7 +117,6 @@ export function useTradeReview() {
     setAfterPreviewUrl(url);
   }
 
-  // cleanup preview URL
   useEffect(() => {
     return () => {
       if (afterPreviewUrlRef.current) {
@@ -134,7 +126,6 @@ export function useTradeReview() {
     };
   }, []);
 
-  // initial load
   useEffect(() => {
     let cancelled = false;
 
@@ -153,7 +144,6 @@ export function useTradeReview() {
         setItems(res.items);
         setChecks(res.checks);
 
-        // hydrate fields from trade
         const t = res.trade;
         setEntryPrice(t.entry_price?.toString() ?? '');
         setStopLoss(t.stop_loss?.toString() ?? '');
@@ -166,7 +156,6 @@ export function useTradeReview() {
         setLessonLearned(t.lesson_learned ?? '');
         setReviewNotes(t.review_notes ?? '');
 
-        // sign existing after screenshot
         setAfterSignedUrl('');
         if (t.after_trade_screenshot_url) {
           const url = await signTradeScreenshotPath(
@@ -189,7 +178,6 @@ export function useTradeReview() {
     };
   }, [tradeId, router]);
 
-  // when template changes: reload items + checks only
   useEffect(() => {
     let cancelled = false;
     if (!trade) return;

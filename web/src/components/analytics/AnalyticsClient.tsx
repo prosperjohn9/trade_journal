@@ -41,12 +41,11 @@ function signColor(n: number) {
   return 'text-slate-800';
 }
 
-// Lightweight SVG charts.
 
 type LinePoint = {
   xLabel: string;
   y: number;
-  // Optional extra info per point (e.g., daily net, cumulative net)
+
   meta?: {
     dayNet?: number;
     cumNet?: number;
@@ -88,11 +87,10 @@ function SvgLineChart({
     setHover({ x, y, content });
   };
 
-  // Padding tuned to prevent Y-axis value labels (which can be long) from colliding with X-axis date labels.
-  const padL = 96; // left space for money labels (supports large values)
+  const padL = 96; 
   const padR = 24;
   const padT = 24;
-  const padB = 44; // extra bottom space for dates
+  const padB = 44; 
 
   if (!points.length) {
     return (
@@ -297,7 +295,6 @@ function SvgBarChart({
     setHover({ x, y, content });
   };
 
-  // Padding tuned to prevent Y-axis value labels from colliding with X-axis category labels.
   const padL = 96;
   const padR = 24;
   const padT = 24;
@@ -459,7 +456,7 @@ function CalendarHeatmap({
   valueFormatter,
 }: {
   title: string;
-  month: string; // YYYY-MM
+  month: string; 
   valueByDay: Record<string, number>;
   modeLabel: string;
   valueFormatter: (n: number) => string;
@@ -467,7 +464,7 @@ function CalendarHeatmap({
   const [y, m] = month.split('-').map(Number);
   const first = new Date(y, m - 1, 1);
   const last = new Date(y, m, 0);
-  const firstDow = first.getDay(); // 0 Sun..6 Sat
+  const firstDow = first.getDay(); 
   const daysInMonth = last.getDate();
 
   const cells: Array<{ date: Date | null; key: string; value: number | null }> =
@@ -574,7 +571,6 @@ function CalendarHeatmap({
   );
 }
 
-// Page
 
 export function AnalyticsClient() {
   const {
@@ -900,7 +896,6 @@ export function AnalyticsClient() {
               `Day Net: ${formatMoney(dayNet, currency)}`,
             ];
 
-            // When equity is shown, also show cumulative net PnL since start.
             if (hasStartingBalance) {
               lines.push(`Cum Net: ${formatMoney(cumNet, currency)}`);
             }
