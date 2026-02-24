@@ -1,38 +1,38 @@
+import { toNumberSafe } from '@/src/lib/utils/number';
+
 export type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
 export type Direction = 'BUY' | 'SELL';
 
 export type TradeRow = {
   id: string;
-  opened_at: string; // timestamps ISO string from DB
+  opened_at: string; 
   instrument: string | null;
   direction: Direction | null;
   outcome: Outcome | null;
-  pnl_amount: number | null; // can be negative for losses
-  pnl_percent: number | null; // can be negative for losses
+  pnl_amount: number | null;
+  pnl_percent: number | null;
   risk_amount?: number | null;
   r_multiple?: number | null;
 };
 
 export type AnalyticsFilters = {
-  // Use either month (YYYY-MM) or date range
-  month?: string; // '2025-12'
-  startIso?: string; // inclusive ISO
-  endIso?: string; // exclusive ISO
+  month?: string; 
+  startIso?: string; 
+  endIso?: string; 
 
-  instruments?: string[]; // ['EURUSD', 'AUDUSD']
+  instruments?: string[];
   direction?: Direction | 'ALL';
   outcome?: Outcome | 'ALL';
 
-  // Used for daily grouping + session/hour analytics
-  timeZone?: string; // IANA, e.g. 'Europe/Istanbul'
+  timeZone?: string; 
 };
 
 export type DailyPoint = {
-  dayKey: string; // YYYY-MM-DD
-  dateLabel: string; // display label
-  pnl: number; // sum of pnl_amount for the day
-  equity: number; // cumulative equity after the day closes
-  ret: number; // pnl / prev_equity (daily return)
+  dayKey: string; 
+  dateLabel: string;
+  pnl: number;
+  equity: number;
+  ret: number; 
 };
 
 export type SymbolStat = {
@@ -43,33 +43,30 @@ export type SymbolStat = {
 };
 
 export type CoreReport = {
-  // Inputs
   timeZone: string;
   startingBalance: number;
   endingBalance: number;
 
-  // Counts
   totalTrades: number;
   wins: number;
   losses: number;
   breakeven: number;
-  winRate: number; // %
+  winRate: number;
 
-  // Money
   netPnl: number;
   grossProfit: number;
   grossLossAbs: number;
 
   avgWin: number;
-  avgLoss: number; // negative if your losses are negative
-  rrr: number; // avgWin / abs(avgLoss)
-  expectancy: number; // per trade
+  avgLoss: number;
+  rrr: number;
+  expectancy: number;
 
-  profitFactor: number; // grossProfit / abs(grossLoss)
-  sharpe: number; // daily returns, annualized sqrt(252)
+  profitFactor: number;
+  sharpe: number;
 
-  maxDrawdown: number; // absolute
-  maxDrawdownPct: number; // 0..1
+  maxDrawdown: number;
+  maxDrawdownPct: number;
 
   bestDay: DailyPoint | null;
   worstDay: DailyPoint | null;
@@ -77,15 +74,6 @@ export type CoreReport = {
   daily: DailyPoint[];
   bySymbol: SymbolStat[];
 };
-
-/**
- * Safe numeric coercion.
- * Converts unknown input to a finite number, otherwise returns `fallback`.
- */
-function n(x: unknown, fallback = 0) {
-  const v = Number(x);
-  return Number.isFinite(v) ? v : fallback;
-}
 
 function mean(arr: number[]) {
   if (!arr.length) return 0;
@@ -124,22 +112,17 @@ function inInstrumentFilter(symbol: string, instruments?: string[]) {
   return set.has(symbol);
 }
 
-/**
- * Converts a month key (`YYYY-MM`) into an ISO start/end range.
- * - startIso is inclusive
- * - endIso is exclusive
- **/
 export function monthToRange(month: string) {
-  const start = new Date(`${month}-01T00:00:00`);
-  const end = new Date(start);
-  end.setMonth(end.getMonth() + 1);
+  const [y, m] = month.split('-').map((x) => Number(x));
+  const year = Number.isFinite(y) ? y : new Date().getUTCFullYear();
+  const monthIndex = Number.isFinite(m) ? m - 1 : 0;
+
+  const start = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0));
+  const end = new Date(Date.UTC(year, monthIndex + 1, 1, 0, 0, 0));
+
   return { startIso: start.toISOString(), endIso: end.toISOString() };
 }
 
-/**
- * Applies client-side analytics filters to trades (instrument/direction/outcome/date range).
- * Prefer SQL-level filtering when possible, and use this for additional client-side slicing.
- **/
 export function filterTrades(trades: TradeRow[], f: AnalyticsFilters) {
   const dir = f.direction ?? 'ALL';
   const out = f.outcome ?? 'ALL';
@@ -151,7 +134,6 @@ export function filterTrades(trades: TradeRow[], f: AnalyticsFilters) {
     if (dir !== 'ALL' && t.direction !== dir) return false;
     if (out !== 'ALL' && t.outcome !== out) return false;
 
-    // Date range filtering (opened_at is ISO)
     if (f.startIso && t.opened_at < f.startIso) return false;
     if (f.endIso && t.opened_at >= f.endIso) return false;
 
@@ -159,75 +141,77 @@ export function filterTrades(trades: TradeRow[], f: AnalyticsFilters) {
   });
 }
 
-/**
- * Computes the core performance report:
- * - Equity curve and profit factor use `pnl_amount`.
- * - Sharpe uses daily returns computed from the equity curve.
- * - Day grouping respects `timeZone` for best/worst day and Sharpe calculations.
- **/
 export function computeReport(params: {
   trades: TradeRow[];
-  startingBalance: number; // from profiles.starting_balance
-  timeZone?: string; // defaults to browser tz at call site; fallback UTC
+  startingBalance: number;
+  timeZone?: string;
 }): CoreReport {
   const timeZone = params.timeZone || 'UTC';
-  const startingBalance = n(params.startingBalance, 0);
+  const startingBalance = toNumberSafe(params.startingBalance, 0);
 
-  // Ensure numbers are safe
   const rows = params.trades.map((t) => ({
     ...t,
     instrument: normalizeSymbol(t.instrument),
-    pnl_amount: n(t.pnl_amount, 0),
-    pnl_percent: n(t.pnl_percent, 0),
+    pnl_amount: toNumberSafe(t.pnl_amount, 0),
+    pnl_percent: toNumberSafe(t.pnl_percent, 0),
   }));
 
   const totalTrades = rows.length;
-  const wins = rows.filter((t) => t.outcome === 'WIN');
-  const losses = rows.filter((t) => t.outcome === 'LOSS');
-  const breakeven = rows.filter((t) => t.outcome === 'BREAKEVEN');
+  const winsArr = rows.filter((t) => t.outcome === 'WIN');
+  const lossesArr = rows.filter((t) => t.outcome === 'LOSS');
+  const beArr = rows.filter((t) => t.outcome === 'BREAKEVEN');
 
-  const netPnl = rows.reduce((s, t) => s + n(t.pnl_amount), 0);
+  const netPnl = rows.reduce((s, t) => s + toNumberSafe(t.pnl_amount, 0), 0);
 
-  const grossProfit = wins.reduce((s, t) => s + n(t.pnl_amount), 0);
-  const grossLossAbs = Math.abs(
-    losses.reduce((s, t) => s + n(t.pnl_amount), 0)
+  const grossProfit = winsArr.reduce(
+    (s, t) => s + toNumberSafe(t.pnl_amount, 0),
+    0,
   );
 
-  const avgWin = wins.length ? grossProfit / wins.length : 0;
-  const avgLoss = losses.length
-    ? losses.reduce((s, t) => s + n(t.pnl_amount), 0) / losses.length
-    : 0; // should be negative if losses stored negative
+  const grossLossAbs = Math.abs(
+    lossesArr.reduce((s, t) => s + toNumberSafe(t.pnl_amount, 0), 0),
+  );
 
-  const winRate = totalTrades ? (wins.length / totalTrades) * 100 : 0;
-  const lossRate = totalTrades ? losses.length / totalTrades : 0;
+  const avgWin = winsArr.length ? grossProfit / winsArr.length : 0;
+
+  const avgLoss = lossesArr.length
+    ? lossesArr.reduce((s, t) => s + toNumberSafe(t.pnl_amount, 0), 0) /
+      lossesArr.length
+    : 0;
+
+  const winRate = totalTrades ? (winsArr.length / totalTrades) * 100 : 0;
+  const lossRate = totalTrades ? lossesArr.length / totalTrades : 0;
 
   const rrr = avgLoss !== 0 ? avgWin / Math.abs(avgLoss) : 0;
 
   const expectancy = totalTrades
-    ? (wins.length / totalTrades) * avgWin + lossRate * avgLoss
+    ? (winsArr.length / totalTrades) * avgWin + lossRate * avgLoss
     : 0;
 
   const profitFactor =
     grossLossAbs > 0
       ? grossProfit / grossLossAbs
       : grossProfit > 0
-      ? Infinity
-      : 0;
+        ? Infinity
+        : 0;
 
-  // Aggregate by symbol
   const bySymbolMap = new Map<
     string,
     { pnl: number; count: number; wins: number }
   >();
+
   for (const t of rows) {
     const sym = t.instrument || '';
     if (!sym) continue;
+
     const prev = bySymbolMap.get(sym) ?? { pnl: 0, count: 0, wins: 0 };
-    prev.pnl += n(t.pnl_amount);
+    prev.pnl += toNumberSafe(t.pnl_amount, 0);
     prev.count += 1;
     if (t.outcome === 'WIN') prev.wins += 1;
+
     bySymbolMap.set(sym, prev);
   }
+
   const bySymbol: SymbolStat[] = [...bySymbolMap.entries()]
     .map(([symbol, v]) => ({
       symbol,
@@ -237,7 +221,6 @@ export function computeReport(params: {
     }))
     .sort((a, b) => b.pnl - a.pnl);
 
-  // Daily grouping in chosen timezone
   const fmtDayKey = new Intl.DateTimeFormat('en-CA', {
     timeZone,
     year: 'numeric',
@@ -252,12 +235,14 @@ export function computeReport(params: {
   });
 
   const dailyMap = new Map<string, { pnl: number; label: string }>();
+
   for (const t of rows) {
     const d = new Date(t.opened_at);
-    const dayKey = fmtDayKey.format(d); // YYYY-MM-DD
+    const dayKey = fmtDayKey.format(d); 
     const label = fmtLabel.format(d);
+
     const prev = dailyMap.get(dayKey) ?? { pnl: 0, label };
-    prev.pnl += n(t.pnl_amount);
+    prev.pnl += toNumberSafe(t.pnl_amount, 0);
     dailyMap.set(dayKey, prev);
   }
 
@@ -265,19 +250,19 @@ export function computeReport(params: {
 
   let equity = startingBalance;
   const daily: DailyPoint[] = [];
+
   for (const k of dailyKeys) {
     const v = dailyMap.get(k);
     if (!v) continue;
 
-    const { pnl, label } = v;
     const prevEquity = equity;
-    equity = equity + pnl;
-    const ret = prevEquity !== 0 ? pnl / prevEquity : 0;
+    equity = equity + v.pnl;
+    const ret = prevEquity !== 0 ? v.pnl / prevEquity : 0;
 
     daily.push({
       dayKey: k,
-      dateLabel: label,
-      pnl,
+      dateLabel: v.label,
+      pnl: v.pnl,
       equity,
       ret,
     });
@@ -288,14 +273,14 @@ export function computeReport(params: {
   const equitySeries = [startingBalance, ...daily.map((p) => p.equity)];
   const { maxDD, maxDDPct } = maxDrawdown(equitySeries);
 
-  const bestDay = daily.length
-    ? [...daily].sort((a, b) => b.pnl - a.pnl)[0]
-    : null;
-  const worstDay = daily.length
-    ? [...daily].sort((a, b) => a.pnl - b.pnl)[0]
-    : null;
+  let bestDay: DailyPoint | null = null;
+  let worstDay: DailyPoint | null = null;
 
-  // Sharpe (daily returns, rf=0), annualized sqrt(252)
+  for (const d of daily) {
+    if (!bestDay || d.pnl > bestDay.pnl) bestDay = d;
+    if (!worstDay || d.pnl < worstDay.pnl) worstDay = d;
+  }
+
   const dailyReturns = daily.map((p) => p.ret);
   const sharpe =
     std(dailyReturns) > 0
@@ -308,9 +293,9 @@ export function computeReport(params: {
     endingBalance,
 
     totalTrades,
-    wins: wins.length,
-    losses: losses.length,
-    breakeven: breakeven.length,
+    wins: winsArr.length,
+    losses: lossesArr.length,
+    breakeven: beArr.length,
     winRate,
 
     netPnl,

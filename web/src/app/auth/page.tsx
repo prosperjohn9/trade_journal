@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/src/lib/supabaseClient';
+import { supabase } from '@/src/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
 export default function AuthPage() {
@@ -11,15 +11,19 @@ export default function AuthPage() {
   const [msg, setMsg] = useState('');
   const [sending, setSending] = useState(false);
 
-  // If already logged in, bypass this page
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       const { data } = await supabase.auth.getSession();
-      if (data.session) router.replace('/dashboard');
+      if (!cancelled && data.session) router.replace('/dashboard');
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
-  // Auto-fill email if user previously requested a magic link
   useEffect(() => {
     const saved =
       typeof window !== 'undefined'
@@ -31,19 +35,24 @@ export default function AuthPage() {
 
   async function signInWithEmail(e: React.FormEvent) {
     e.preventDefault();
+    const trimmed = email.trim();
+
+    if (!trimmed) {
+      setMsg('Enter your email.');
+      return;
+    }
+
     setSending(true);
     setMsg('Sending magic link...');
 
     try {
-      // Save for auto-fill next time
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem('last_magic_email', email.trim());
+        window.localStorage.setItem('last_magic_email', trimmed);
       }
 
       const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
+        email: trimmed,
         options: {
-          // Clicking the email link will go to this route, then you redirect to /dashboard there
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       });
@@ -62,6 +71,7 @@ export default function AuthPage() {
   async function goToAppIfLoggedIn() {
     const { data } = await supabase.auth.getSession();
     if (data.session) router.push('/dashboard');
+    else setMsg('No active session yet. Use the magic link from your email.');
   }
 
   return (

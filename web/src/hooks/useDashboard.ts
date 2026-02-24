@@ -2,36 +2,162 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/src/lib/supabaseClient';
-import {
-  getOrCreateProfile,
-  updateProfile,
-  type Profile,
-} from '@/src/lib/profile';
-import {
-  deleteTradeById,
-  fetchChecklistScores,
-  fetchDashboardAccounts,
-  fetchPriorPnl,
-  fetchTradesForMonth,
-  type AccountRow,
-  type TradeRow,
-} from '@/src/lib/dashboard';
+import { supabase } from '@/src/lib/supabase/client';
 import { getErr } from '@/src/domain/errors';
+import type { Profile } from '@/src/domain/profile';
+import { updateProfile } from '@/src/lib/db/profiles.repo';
+import { toNumberSafe } from '@/src/lib/utils/number';
+import {
+  loadDashboard,
+  removeTrade,
+} from '@/src/lib/services/dashboard.service';
 
-type UpdateProfileInput = {
-  display_name: string | null;
+type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
+type Direction = 'BUY' | 'SELL';
+
+export type TradeRow = {
+  id: string;
+  account_id: string;
+  opened_at: string;
+  instrument: string;
+  direction: Direction;
+  outcome: Outcome;
+  pnl_amount: number;
+  pnl_percent: number;
+  commission: number | null;
+  net_pnl: number | null;
+  r_multiple: number | null;
+  template_id: string | null;
+  reviewed_at: string | null;
 };
 
-function toNumberSafe(v: unknown): number {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
+export type AccountRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  starting_balance: number;
+  base_currency: string | null;
+  is_default: boolean;
+  created_at: string;
+};
+
+type DashboardLoadResult = {
+  profile: Profile | null;
+  accounts: AccountRow[];
+  trades: TradeRow[];
+  priorPnlDollar: number;
+};
+
+type UpdateProfileInput = { display_name: string | null };
+
+function getDefaultMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function calcDisplayPnl(t: TradeRow): number {
+  const gross = toNumberSafe(t.pnl_amount ?? 0, 0);
+
+  if (!t.reviewed_at) return gross;
+
+  const net = Number(t.net_pnl);
+  if (Number.isFinite(net)) return net;
+
+  const comm = toNumberSafe(t.commission ?? 0, 0);
+  return gross - comm;
+}
+
+async function fetchChecklistScores(
+  trades: Array<Pick<TradeRow, 'id' | 'template_id'>>,
+): Promise<Record<string, number | null>> {
+  const base: Record<string, number | null> = {};
+  for (const t of trades) base[t.id] = null;
+
+  if (!trades.length) return base;
+
+  const tradeIds = trades.map((t) => t.id);
+  const templateIds = Array.from(
+    new Set(trades.map((t) => t.template_id).filter(Boolean)),
+  ) as string[];
+
+  if (!templateIds.length) return base;
+
+  const { data: itemsData, error: itemsErr } = await supabase
+    .from('setup_template_items')
+    .select('id, template_id, is_active')
+    .in('template_id', templateIds)
+    .eq('is_active', true);
+
+  if (itemsErr) throw itemsErr;
+
+  const activeItems = (itemsData ?? []) as Array<{
+    id: string;
+    template_id: string;
+  }>;
+
+  const denomByTemplate: Record<string, number> = {};
+  const activeItemIds = activeItems.map((i) => i.id);
+
+  for (const it of activeItems) {
+    denomByTemplate[it.template_id] =
+      (denomByTemplate[it.template_id] || 0) + 1;
+  }
+
+  if (!activeItemIds.length) return base;
+
+  const { data: checksData, error: checksErr } = await supabase
+    .from('trade_criteria_checks')
+    .select('trade_id, item_id, checked')
+    .in('trade_id', tradeIds)
+    .in('item_id', activeItemIds);
+
+  if (checksErr) throw checksErr;
+
+  const checks = (checksData ?? []) as Array<{
+    trade_id: string;
+    checked: boolean;
+  }>;
+
+  const checkedTrueByTrade: Record<string, number> = {};
+  for (const row of checks) {
+    if (row.checked) {
+      checkedTrueByTrade[row.trade_id] =
+        (checkedTrueByTrade[row.trade_id] || 0) + 1;
+    }
+  }
+
+  const out: Record<string, number | null> = { ...base };
+
+  const templateIdByTrade: Record<string, string | null> = {};
+  for (const t of trades) templateIdByTrade[t.id] = t.template_id ?? null;
+
+  for (const tradeId of tradeIds) {
+    const tpl = templateIdByTrade[tradeId];
+    if (!tpl) {
+      out[tradeId] = null;
+      continue;
+    }
+
+    const denom = denomByTemplate[tpl] || 0;
+    if (!denom) {
+      out[tradeId] = null;
+      continue;
+    }
+
+    const num = checkedTrueByTrade[tradeId] || 0;
+    out[tradeId] = (num / denom) * 100;
+  }
+
+  return out;
 }
 
 export function useDashboard() {
   const router = useRouter();
 
-  const [userId, setUserId] = useState<string | null>(null);
+  const [month, setMonth] = useState(getDefaultMonth);
+
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState('');
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [displayNameDraft, setDisplayNameDraft] = useState('');
@@ -43,171 +169,117 @@ export function useDashboard() {
   const [accountId, setAccountId] = useState<string>('all');
 
   const [trades, setTrades] = useState<TradeRow[]>([]);
-
   const [priorPnlDollar, setPriorPnlDollar] = useState(0);
   const [loadingPriorPnl, setLoadingPriorPnl] = useState(false);
-
-  const [month, setMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
 
   const [checklistScoreByTrade, setChecklistScoreByTrade] = useState<
     Record<string, number | null>
   >({});
 
-  // Delete confirmation modal state.
   const [deleteTradeTarget, setDeleteTradeTarget] = useState<TradeRow | null>(
     null,
   );
   const [deletingTrade, setDeletingTrade] = useState(false);
 
-  // Logout confirmation modal state.
   const [showLogout, setShowLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-
-  // Some fields may not be present on generated Profile type.
-  type ProfileExtras = { base_currency?: string | null };
-  const profileExtras = (profile ?? null) as unknown as ProfileExtras | null;
-  const currency = profileExtras?.base_currency ?? 'USD';
-
-  const selectedAccount = useMemo(
-    () => accounts.find((a) => a.id === accountId) ?? null,
-    [accounts, accountId],
-  );
-
-  const startingBalanceRaw = selectedAccount?.starting_balance;
-  const hasStartingBalance =
-    startingBalanceRaw !== null && startingBalanceRaw !== undefined;
-
-  const startingBalance = hasStartingBalance
-    ? toNumberSafe(startingBalanceRaw)
-    : 0;
 
   const defaultAccountId = useMemo(
     () => accounts.find((a) => !!a.is_default)?.id ?? null,
     [accounts],
   );
 
+  const selectedAccount = useMemo(
+    () => accounts.find((a) => a.id === accountId) ?? null,
+    [accounts, accountId],
+  );
+
   const allAccountsStartingBalance = useMemo(
     () =>
-      accounts.reduce((acc, a) => acc + toNumberSafe(a.starting_balance), 0),
+      accounts.reduce((acc, a) => acc + toNumberSafe(a.starting_balance, 0), 0),
     [accounts],
   );
 
-  // --- Auth + profile ---
-  useEffect(() => {
-    (async () => {
-      try {
-        const { profile, user } = await getOrCreateProfile();
-        if (!user) {
-          router.push('/auth');
-          return;
-        }
-        setUserId(user.id);
-        setProfile(profile);
-        setDisplayNameDraft(profile?.display_name ?? '');
-      } catch (e: unknown) {
-        console.error(e);
-        router.push('/auth');
-      }
-    })();
-  }, [router]);
+  type ProfileExtras = { base_currency?: string | null };
+  const profileExtras = (profile ?? null) as unknown as ProfileExtras | null;
+  const currency = profileExtras?.base_currency ?? 'USD';
 
-  // --- Accounts ---
+  const hasStartingBalance =
+    accountId === 'all'
+      ? true
+      : selectedAccount?.starting_balance !== null &&
+        selectedAccount?.starting_balance !== undefined;
+
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
-      if (!userId) return;
+      setLoading(true);
+      setMsg('');
+      setLoadingPriorPnl(true);
 
       try {
-        const rows = await fetchDashboardAccounts(userId);
-        setAccounts(rows);
+        const res = (await loadDashboard({
+          month,
+          accountId,
+        })) as DashboardLoadResult;
+        if (cancelled) return;
 
-        // default selection: keep if valid, else default account, else first
-        if (rows.length) {
-          const def = rows.find((a) => !!a.is_default) ?? rows[0];
+        setProfile(res.profile);
+        setDisplayNameDraft(res.profile?.display_name ?? '');
 
+        setAccounts(res.accounts);
+
+        // Ensure selected account is valid (otherwise choose default)
+        if (res.accounts.length) {
           setAccountId((prev) => {
             if (prev === 'all') return prev;
-            if (rows.some((a) => a.id === prev)) return prev;
-            return def.id;
+            if (res.accounts.some((a) => a.id === prev)) return prev;
+
+            const def =
+              res.accounts.find((a) => a.is_default) ?? res.accounts[0];
+            return def?.id ?? 'all';
           });
         }
-      } catch (e: unknown) {
-        console.error(e);
-        setAccounts([]);
-      }
-    })();
-  }, [userId]);
 
-  // --- Trades (selected month) ---
-  useEffect(() => {
-    (async () => {
-      try {
-        const list = await fetchTradesForMonth({ month, accountId });
-        setTrades(list);
-      } catch (e: unknown) {
-        console.error(e);
-        setTrades([]);
-      }
-    })();
-  }, [month, accountId]);
-
-  // --- Prior P&L (before selected month) ---
-  useEffect(() => {
-    (async () => {
-      const canCompute = accountId === 'all' ? true : hasStartingBalance;
-
-      if (!canCompute) {
-        setPriorPnlDollar(0);
-        return;
-      }
-
-      setLoadingPriorPnl(true);
-      try {
-        const sum = await fetchPriorPnl({ month, accountId });
-        setPriorPnlDollar(sum);
-      } catch (e: unknown) {
-        console.error(e);
-        setPriorPnlDollar(0);
-      } finally {
-        setLoadingPriorPnl(false);
-      }
-    })();
-  }, [month, accountId, hasStartingBalance]);
-
-  // --- Checklist scores ---
-  useEffect(() => {
-    (async () => {
-      setChecklistScoreByTrade({});
-      try {
-        const scores = await fetchChecklistScores(
-          trades.map((t) => ({ id: t.id, template_id: t.template_id })),
+        setTrades(res.trades);
+        setPriorPnlDollar(
+          Number.isFinite(res.priorPnlDollar) ? res.priorPnlDollar : 0,
         );
-        setChecklistScoreByTrade(scores);
+
+        try {
+          const scores = await fetchChecklistScores(
+            res.trades.map((t) => ({ id: t.id, template_id: t.template_id })),
+          );
+          if (!cancelled) setChecklistScoreByTrade(scores);
+        } catch {
+          const base: Record<string, number | null> = {};
+          for (const t of res.trades) base[t.id] = null;
+          if (!cancelled) setChecklistScoreByTrade(base);
+        }
       } catch (e: unknown) {
-        console.error(e);
-        const base: Record<string, number | null> = {};
-        for (const t of trades) base[t.id] = null;
-        setChecklistScoreByTrade(base);
+        if (!cancelled) {
+          const message = getErr(e, 'Failed to load dashboard');
+          setMsg(message);
+
+          // Only redirect when truly unauthenticated
+          if (message.toLowerCase().includes('not authenticated')) {
+            router.push('/auth');
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setLoadingPriorPnl(false);
+        }
       }
     })();
-  }, [trades]);
 
-  // --- P&L display logic (same rule you had) ---
-  function calcDisplayPnl(t: TradeRow): number {
-    const gross = toNumberSafe(t.pnl_amount ?? 0);
+    return () => {
+      cancelled = true;
+    };
+  }, [month, accountId, router]);
 
-    if (!t.reviewed_at) return gross;
-
-    const net = Number(t.net_pnl);
-    if (Number.isFinite(net)) return net;
-
-    const comm = toNumberSafe(t.commission ?? 0);
-    return gross - comm;
-  }
-
-  // --- Summary stats (NET based) ---
   const stats = useMemo(() => {
     const total = trades.length;
     const wins = trades.filter((t) => t.outcome === 'WIN').length;
@@ -226,12 +298,11 @@ export function useDashboard() {
     return { total, wins, losses, be, pnlDollar, winRate, commissionsPaid };
   }, [trades]);
 
-  // Month starting balance:
   const monthStartingBalance =
     accountId === 'all'
       ? allAccountsStartingBalance + priorPnlDollar
-      : hasStartingBalance
-        ? startingBalance + priorPnlDollar
+      : hasStartingBalance && selectedAccount
+        ? toNumberSafe(selectedAccount.starting_balance, 0) + priorPnlDollar
         : null;
 
   const monthPnlPct = monthStartingBalance
@@ -254,17 +325,13 @@ export function useDashboard() {
       const payload: UpdateProfileInput = {
         display_name: displayNameDraft.trim() || null,
       };
-
-      const updated = await updateProfile(
-        payload as unknown as Partial<Profile>,
-      );
+      const updated = await updateProfile(payload);
       setProfile(updated);
       setDisplayNameDraft(updated.display_name ?? '');
 
       setProfileMsg('Saved');
       setShowProfile(false);
     } catch (e: unknown) {
-      console.error(e);
       setProfileMsg(getErr(e, 'Failed to save'));
     } finally {
       setSavingProfile(false);
@@ -282,7 +349,7 @@ export function useDashboard() {
 
     setDeletingTrade(true);
     try {
-      await deleteTradeById(deleteTradeTarget.id);
+      await removeTrade(deleteTradeTarget.id);
       setTrades((prev) => prev.filter((t) => t.id !== deleteTradeTarget.id));
       setDeleteTradeTarget(null);
     } catch (e: unknown) {
@@ -310,7 +377,12 @@ export function useDashboard() {
   }
 
   return {
-    // state
+    loading,
+    msg,
+
+    month,
+    setMonth,
+
     accounts,
     accountId,
     setAccountId,
@@ -320,15 +392,11 @@ export function useDashboard() {
     trades,
     checklistScoreByTrade,
 
-    month,
-    setMonth,
-
     profile,
     currency,
     displayName,
     displayNameDraft,
     setDisplayNameDraft,
-
     showProfile,
     setShowProfile,
     savingProfile,
@@ -342,22 +410,21 @@ export function useDashboard() {
     equity,
     stats,
 
-    // delete trade modal
     deleteTradeTarget,
     deletingTrade,
     requestDeleteTrade,
     confirmDeleteTrade,
     setDeleteTradeTarget,
 
-    // logout modal
     showLogout,
     loggingOut,
     requestLogout,
     confirmLogout,
     setShowLogout,
 
-    // helpers
     hasStartingBalance,
     calcDisplayPnl,
   };
 }
+
+export type DashboardState = ReturnType<typeof useDashboard>;

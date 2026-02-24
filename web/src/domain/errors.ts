@@ -1,20 +1,13 @@
-// src/domain/errors.ts
+export function getErr(
+  err: unknown,
+  fallback = 'Something went wrong',
+): string {
+  if (err instanceof Error) return err.message || fallback;
+  if (typeof err === 'string') return err || fallback;
 
-export function getErr(e: unknown, fallback: string): string {
-  if (!e || typeof e !== 'object') return fallback;
-
-  const obj = e as Record<string, unknown>;
-
-  const pick = (key: string): string => {
-    const v = obj[key];
-    return typeof v === 'string' ? v.trim() : '';
-  };
-
-  return (
-    pick('message') ||
-    pick('error') ||
-    pick('details') ||
-    pick('hint') ||
-    fallback
-  );
+  if (err && typeof err === 'object') {
+    const anyErr = err as { message?: unknown };
+    if (typeof anyErr.message === 'string') return anyErr.message || fallback;
+  }
+  return fallback;
 }

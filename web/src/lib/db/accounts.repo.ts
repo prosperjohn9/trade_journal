@@ -1,6 +1,6 @@
-import { supabase } from '@/src/lib/supabaseClient';
+import { supabase } from '@/src/lib/supabase/client';
 
-export type Account = {
+export type AccountRow = {
   id: string;
   user_id: string;
   name: string;
@@ -22,32 +22,29 @@ export type UpdateAccountInput = {
   base_currency?: string | null;
 };
 
-
-export async function fetchAccounts(): Promise<Account[]> {
+export async function fetchAccountsByUser(
+  userId: string,
+): Promise<AccountRow[]> {
   const { data, error } = await supabase
     .from('accounts')
     .select(
       'id, user_id, name, starting_balance, base_currency, is_default, created_at',
     )
+    .eq('user_id', userId)
     .order('created_at', { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as Account[];
+  return (data ?? []) as AccountRow[];
 }
 
-export async function createAccount(
+export async function createAccountForUser(
+  userId: string,
   input: CreateAccountInput,
-): Promise<Account> {
-  const { data: auth, error: authErr } = await supabase.auth.getUser();
-  if (authErr) throw authErr;
-
-  const user = auth?.user;
-  if (!user) throw new Error('Not authenticated');
-
+): Promise<AccountRow> {
   const { data, error } = await supabase
     .from('accounts')
     .insert({
-      user_id: user.id,
+      user_id: userId,
       name: input.name,
       starting_balance: input.starting_balance,
       base_currency: input.base_currency,
@@ -58,19 +55,14 @@ export async function createAccount(
     .single();
 
   if (error) throw error;
-  return data as Account;
+  return data as AccountRow;
 }
 
-export async function updateAccount(
+export async function updateAccountForUser(
+  userId: string,
   id: string,
   input: UpdateAccountInput,
-): Promise<Account> {
-  const { data: auth, error: authErr } = await supabase.auth.getUser();
-  if (authErr) throw authErr;
-
-  const user = auth?.user;
-  if (!user) throw new Error('Not authenticated');
-
+): Promise<AccountRow> {
   const patch: Record<string, unknown> = {};
   if (typeof input.name === 'string') patch.name = input.name;
   if (typeof input.starting_balance === 'number')
@@ -82,41 +74,36 @@ export async function updateAccount(
     throw new Error('Nothing to update');
   }
 
-  // include user_id filter for extra safety (RLS should also enforce it)
   const { data, error } = await supabase
     .from('accounts')
     .update(patch)
     .eq('id', id)
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .select(
       'id, user_id, name, starting_balance, base_currency, is_default, created_at',
     )
     .single();
 
   if (error) throw error;
-  return data as Account;
+  return data as AccountRow;
 }
 
-export async function setDefaultAccount(id: string): Promise<void> {
+export async function setDefaultAccount(
+  _userId: string,
+  accountId: string,
+): Promise<void> {
   const { error } = await supabase.rpc('set_default_account', {
-    p_account_id: id,
+    p_account_id: accountId,
   });
   if (error) throw error;
 }
 
-export async function getDefaultAccountId(): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('accounts')
-    .select('id')
-    .eq('is_default', true)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data?.id ?? null;
-}
-
-export async function deleteAccount(id: string): Promise<void> {
-  const { error } = await supabase.rpc('delete_account', { p_account_id: id });
+export async function deleteAccount(
+  _userId: string,
+  accountId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('delete_account', {
+    p_account_id: accountId,
+  });
   if (error) throw error;
 }

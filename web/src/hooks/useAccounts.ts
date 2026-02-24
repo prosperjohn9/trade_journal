@@ -2,27 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/src/lib/supabaseClient';
+import type { Account } from '@/src/domain/account';
+import { getErr } from '@/src/domain/errors';
+import { toNumberSafe } from '@/src/lib/utils/number';
+import { toIsoCurrencyOrNull } from '@/src/lib/utils/format';
 import {
   createAccount,
   deleteAccount,
-  fetchAccounts,
+  listAccounts,
   setDefaultAccount,
   updateAccount,
-  type Account,
-} from '@/src/lib/accounts';
-import { getErr } from '@/src/domain/errors';
-
-function toNumberSafe(v: unknown): number {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function toIsoCurrencyOrNull(input: string): string | null {
-  const v = input.trim().toUpperCase();
-  if (!v) return null;
-  return /^[A-Z]{3}$/.test(v) ? v : null;
-}
+} from '@/src/lib/services/accounts.service';
 
 export function useAccounts() {
   const router = useRouter();
@@ -31,7 +21,6 @@ export function useAccounts() {
   const [loading, setLoading] = useState(true);
   const [pageMsg, setPageMsg] = useState('');
 
-  // Add modal
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState('');
   const [addStartingBalance, setAddStartingBalance] = useState('0');
@@ -39,7 +28,6 @@ export function useAccounts() {
   const [addMsg, setAddMsg] = useState('');
   const [creating, setCreating] = useState(false);
 
-  // Edit modal
   const [editing, setEditing] = useState<Account | null>(null);
   const [editName, setEditName] = useState('');
   const [editStartingBalance, setEditStartingBalance] = useState('');
@@ -47,12 +35,10 @@ export function useAccounts() {
   const [editMsg, setEditMsg] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Delete modal
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteMsg, setDeleteMsg] = useState('');
 
-  // Default action state
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
 
   const defaultAccountId = useMemo(
@@ -65,19 +51,16 @@ export function useAccounts() {
     setPageMsg('');
 
     try {
-      const { data, error } = await supabase.auth.getUser();
-      if (error) throw error;
-
-      if (!data?.user) {
-        router.push('/auth');
-        return;
-      }
-
-      const list = await fetchAccounts();
+      const list = await listAccounts();
       setAccounts(list);
     } catch (e: unknown) {
-      setPageMsg(getErr(e, 'Failed to load accounts'));
+      const message = getErr(e, 'Failed to load accounts');
+      setPageMsg(message);
       setAccounts([]);
+
+      if (message.toLowerCase().includes('not authenticated')) {
+        router.push('/auth');
+      }
     } finally {
       setLoading(false);
     }
@@ -87,7 +70,6 @@ export function useAccounts() {
     void reload();
   }, [reload]);
 
-  // --- Add modal helpers (standardize open/close) ---
   function openAdd() {
     setAddMsg('');
     setShowAdd(true);
@@ -100,13 +82,14 @@ export function useAccounts() {
 
   async function onAddAccount() {
     setAddMsg('');
+
     const name = addName.trim();
     if (!name) {
       setAddMsg('Account name is required.');
       return;
     }
 
-    const sb = toNumberSafe(addStartingBalance);
+    const sb = toNumberSafe(addStartingBalance, 0);
     const currency = toIsoCurrencyOrNull(addCurrency);
     if (addCurrency.trim() && !currency) {
       setAddMsg('Currency must be a 3-letter code like USD, EUR, GBP.');
@@ -140,7 +123,6 @@ export function useAccounts() {
     }
   }
 
-  // --- Edit modal helpers ---
   function openEdit(a: Account) {
     setEditMsg('');
     setEditing(a);
@@ -156,6 +138,7 @@ export function useAccounts() {
 
   async function onSaveEdit() {
     if (!editing) return;
+
     setEditMsg('');
 
     const name = editName.trim();
@@ -164,7 +147,7 @@ export function useAccounts() {
       return;
     }
 
-    const sb = toNumberSafe(editStartingBalance);
+    const sb = toNumberSafe(editStartingBalance, 0);
     const currency = toIsoCurrencyOrNull(editCurrency);
     if (editCurrency.trim() && !currency) {
       setEditMsg('Currency must be a 3-letter code like USD, EUR, GBP.');
@@ -207,7 +190,6 @@ export function useAccounts() {
     }
   }
 
-  // --- Delete modal helpers ---
   function requestDelete(a: Account) {
     setDeleteMsg('');
     setDeleteTarget(a);
@@ -236,13 +218,11 @@ export function useAccounts() {
   }
 
   return {
-    // data
     accounts,
     loading,
     pageMsg,
     defaultAccountId,
 
-    // add modal
     showAdd,
     addName,
     addStartingBalance,
@@ -250,7 +230,6 @@ export function useAccounts() {
     addMsg,
     creating,
 
-    // edit modal
     editing,
     editName,
     editStartingBalance,
@@ -258,15 +237,12 @@ export function useAccounts() {
     editMsg,
     saving,
 
-    // delete modal
     deleteTarget,
     deleting,
     deleteMsg,
 
-    // default state
     settingDefaultId,
 
-    // actions
     reload,
 
     openAdd,
