@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { getErr } from '@/src/domain/errors';
 import { listAccounts } from '@/src/lib/services/accounts.service';
 import type { Account } from '@/src/domain/account';
+import type { SetupTemplateRow } from '@/src/lib/db/setupTemplates.repo';
 
 import type { SetupItemWithActiveRow } from '@/src/lib/db/setupTemplateItems.repo';
 import type {
@@ -15,6 +16,7 @@ import type {
 import {
   loadTradeEditBootstrap,
   loadTradeEditChecklist,
+  loadTradeEditTemplates,
   saveTradeEntryFlow,
   saveTradeReviewFlow,
   toDatetimeLocalValue,
@@ -63,6 +65,7 @@ export function useTradeEdit() {
   const [notes, setNotes] = useState('');
 
   // CHECKLIST
+  const [templates, setTemplates] = useState<SetupTemplateRow[]>([]);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [items, setItems] = useState<SetupItemWithActiveRow[]>([]);
   const [checks, setChecks] = useState<Record<string, boolean>>({});
@@ -132,6 +135,10 @@ export function useTradeEdit() {
   const isCurrentAccountMissing = useMemo(
     () => !!accountId && !accounts.some((a) => a.id === accountId),
     [accountId, accounts],
+  );
+  const isCurrentTemplateMissing = useMemo(
+    () => !!templateId && !templates.some((t) => t.id === templateId),
+    [templateId, templates],
   );
 
   function toggleCheck(itemId: string) {
@@ -206,13 +213,15 @@ export function useTradeEdit() {
       setMsg('');
 
       try {
-        const [res, loadedAccounts] = await Promise.all([
+        const [res, loadedAccounts, loadedTemplates] = await Promise.all([
           loadTradeEditBootstrap({ tradeId }),
           listAccounts(),
+          loadTradeEditTemplates(),
         ]);
         if (cancelled) return;
 
         setAccounts(loadedAccounts);
+        setTemplates(loadedTemplates);
         const fallbackAccountId =
           loadedAccounts.find((a) => a.is_default)?.id ??
           loadedAccounts[0]?.id ??
@@ -282,7 +291,11 @@ export function useTradeEdit() {
   // reload checklist when template changes
   useEffect(() => {
     let cancelled = false;
-    if (!templateId) return;
+    if (!templateId) {
+      setItems([]);
+      setChecks({});
+      return;
+    }
 
     (async () => {
       try {
@@ -428,6 +441,8 @@ export function useTradeEdit() {
     // checklist
     templateId,
     setTemplateId,
+    templates,
+    isCurrentTemplateMissing,
     items,
     activeItems,
     checks,

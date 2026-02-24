@@ -99,12 +99,44 @@ export function TradeEditClient() {
           />
         </Field>
 
+        <Field label='Setup (Entry Criteria)'>
+          <div className='space-y-3'>
+            <select
+              className='w-full border rounded-lg p-3'
+              value={s.templateId ?? ''}
+              onChange={(e) => s.setTemplateId(e.target.value || null)}>
+              <option value=''>No setup</option>
+              {s.isCurrentTemplateMissing && s.templateId && (
+                <option value={s.templateId}>Current setup (unavailable)</option>
+              )}
+              {s.templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.is_default ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+
+            <div className='text-xs opacity-60'>
+              Manage setups in{' '}
+              <button
+                type='button'
+                className='underline'
+                onClick={() => router.push('/settings/setups')}>
+                Settings → Setups
+              </button>
+            </div>
+          </div>
+        </Field>
+
         {/* Setup checklist */}
         <section className='border rounded-xl p-4 space-y-3'>
           <div className='flex items-center justify-between gap-3'>
             <div className='font-semibold'>Setup Checklist</div>
 
-            {s.activeItems.length ? (
+            {!s.templateId ? (
+              <div className='text-sm opacity-70'>No setup selected.</div>
+            ) : s.activeItems.length ? (
               <div className='text-sm opacity-80'>
                 Adherence:{' '}
                 <span className='font-semibold'>{s.adherence.checked}</span>/
@@ -116,7 +148,7 @@ export function TradeEditClient() {
             )}
           </div>
 
-          {s.activeItems.length > 0 && (
+          {!!s.templateId && s.activeItems.length > 0 && (
             <div className='grid grid-cols-1 gap-2'>
               {s.activeItems.map((it) => {
                 const ok = !!s.checks[it.id];
@@ -141,17 +173,6 @@ export function TradeEditClient() {
             </div>
           )}
 
-          {!!s.templateId && (
-            <div className='text-xs opacity-60'>
-              Manage checklist items in{' '}
-              <button
-                type='button'
-                className='underline'
-                onClick={() => router.push('/settings/setups')}>
-                Settings → Setups
-              </button>
-            </div>
-          )}
         </section>
 
         {/* Before screenshot */}

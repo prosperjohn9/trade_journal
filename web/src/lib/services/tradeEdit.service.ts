@@ -2,6 +2,7 @@ import { requireUser } from '@/src/lib/supabase/auth';
 import { toNumberSafe } from '@/src/lib/utils/number';
 
 import { getTradeById } from '@/src/lib/db/trades.repo';
+import { fetchSetupTemplates } from '@/src/lib/db/setupTemplates.repo';
 import {
   listTemplateItems,
   type SetupItemWithActiveRow,
@@ -119,6 +120,11 @@ export async function loadTradeEditBootstrap(params: { tradeId: string }) {
     beforeSignedUrl,
     afterSignedUrl,
   };
+}
+
+export async function loadTradeEditTemplates() {
+  await requireUser();
+  return fetchSetupTemplates();
 }
 
 export async function loadTradeEditChecklist(params: {
