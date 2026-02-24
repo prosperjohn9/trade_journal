@@ -46,6 +46,7 @@ export async function updateTradeBeforeScreenshotPath(
 }
 
 export type TradeEntryUpdate = {
+  account_id?: string | null;
   opened_at?: string;
   instrument?: string;
   direction?: 'BUY' | 'SELL';

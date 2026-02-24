@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getErr } from '@/src/domain/errors';
+import { listAccounts } from '@/src/lib/services/accounts.service';
+import type { Account } from '@/src/domain/account';
 
 import type { SetupItemWithActiveRow } from '@/src/lib/db/setupTemplateItems.repo';
 import type {
@@ -17,6 +19,8 @@ import {
   saveTradeReviewFlow,
   toDatetimeLocalValue,
 } from '@/src/lib/services/tradeEdit.service';
+
+type AccountLite = Pick<Account, 'id' | 'name' | 'is_default'>;
 
 export function parseDirection(v: string): Direction {
   return v === 'SELL' ? 'SELL' : 'BUY';
@@ -45,6 +49,9 @@ export function useTradeEdit() {
   const [trade, setTrade] = useState<TradeEditRow | null>(null);
 
   // ENTRY FIELDS
+  const [accounts, setAccounts] = useState<AccountLite[]>([]);
+  const [accountId, setAccountId] = useState('');
+
   const [openedAt, setOpenedAt] = useState('');
   const [instrument, setInstrument] = useState('EURUSD');
   const [direction, setDirection] = useState<Direction>('BUY');
@@ -121,6 +128,11 @@ export function useTradeEdit() {
     () => grossPnlNumber - commissionNumber,
     [grossPnlNumber, commissionNumber],
   );
+  const hasAccounts = accounts.length > 0;
+  const isCurrentAccountMissing = useMemo(
+    () => !!accountId && !accounts.some((a) => a.id === accountId),
+    [accountId, accounts],
+  );
 
   function toggleCheck(itemId: string) {
     setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
@@ -194,12 +206,22 @@ export function useTradeEdit() {
       setMsg('');
 
       try {
-        const res = await loadTradeEditBootstrap({ tradeId });
+        const [res, loadedAccounts] = await Promise.all([
+          loadTradeEditBootstrap({ tradeId }),
+          listAccounts(),
+        ]);
         if (cancelled) return;
+
+        setAccounts(loadedAccounts);
+        const fallbackAccountId =
+          loadedAccounts.find((a) => a.is_default)?.id ??
+          loadedAccounts[0]?.id ??
+          '';
 
         setTrade(res.trade);
 
         // entry
+        setAccountId(res.trade.account_id ?? fallbackAccountId);
         setOpenedAt(toDatetimeLocalValue(res.trade.opened_at));
         setInstrument((res.trade.instrument ?? 'EURUSD').toUpperCase());
         setDirection((res.trade.direction ?? 'BUY') as Direction);
@@ -281,12 +303,18 @@ export function useTradeEdit() {
 
   async function saveEntry(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!accountId) {
+      setEntryFeedback('Please select an account first.', 'error');
+      return;
+    }
+
     setEntryFeedback('Saving entry...', 'info');
     setMsg('');
 
     try {
       const res = await saveTradeEntryFlow({
         tradeId,
+        accountId,
         openedAtLocal: openedAt,
         instrument,
         direction,
@@ -373,6 +401,11 @@ export function useTradeEdit() {
     openFull,
 
     // entry
+    accounts,
+    accountId,
+    setAccountId,
+    hasAccounts,
+    isCurrentAccountMissing,
     openedAt,
     setOpenedAt,
     instrument,

@@ -28,6 +28,7 @@ export type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
 export type TradeEditRow = {
   id: string;
   opened_at: string;
+  account_id: string | null;
   instrument: string | null;
   direction: Direction | null;
   outcome: Outcome | null;
@@ -145,6 +146,7 @@ export async function loadTradeEditChecklist(params: {
 
 export async function saveTradeEntryFlow(params: {
   tradeId: string;
+  accountId: string;
 
   openedAtLocal: string;
   instrument: string;
@@ -166,6 +168,9 @@ export async function saveTradeEntryFlow(params: {
 
   const pnlAmountNum = Number(params.pnlAmountRaw);
   const pnlPercentNum = Number(params.pnlPercentRaw);
+  if (!params.accountId) {
+    throw new Error('Please select an account first.');
+  }
 
   if (!Number.isFinite(pnlAmountNum) || !Number.isFinite(pnlPercentNum)) {
     throw new Error('Please enter valid P&L values.');
@@ -197,6 +202,7 @@ export async function saveTradeEntryFlow(params: {
   }
 
   await updateTradeEntryFields(params.tradeId, {
+    account_id: params.accountId,
     opened_at: new Date(params.openedAtLocal).toISOString(),
     instrument: params.instrument,
     direction: params.direction,

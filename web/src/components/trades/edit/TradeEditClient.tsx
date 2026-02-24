@@ -58,6 +58,37 @@ export function TradeEditClient() {
       <form onSubmit={s.saveEntry} className='space-y-4 border rounded-xl p-4'>
         <h2 className='font-semibold'>Entry</h2>
 
+        <Field label='Account'>
+          <select
+            className='w-full border rounded-lg p-3'
+            value={s.accountId}
+            onChange={(e) => s.setAccountId(e.target.value)}
+            disabled={!s.hasAccounts && !s.accountId}>
+            {!s.hasAccounts && !s.accountId && (
+              <option value=''>No accounts</option>
+            )}
+            {s.isCurrentAccountMissing && (
+              <option value={s.accountId}>Current account (unavailable)</option>
+            )}
+            {s.accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+                {a.is_default ? ' (default)' : ''}
+              </option>
+            ))}
+          </select>
+
+          <div className='text-xs opacity-60 mt-1'>
+            Manage accounts in{' '}
+            <button
+              type='button'
+              className='underline'
+              onClick={() => router.push('/settings/accounts')}>
+              Settings → Accounts
+            </button>
+          </div>
+        </Field>
+
         <Field label='Date/Time'>
           <input
             className='w-full border rounded-lg p-3'
@@ -269,7 +300,11 @@ export function TradeEditClient() {
           />
         </Field>
 
-        <button className='w-full border rounded-lg p-3'>Save Entry</button>
+        <button
+          className='w-full border rounded-lg p-3 disabled:opacity-60'
+          disabled={!s.accountId}>
+          Save Entry
+        </button>
 
         {!!s.entryMsg && (
           <div className={`text-sm border rounded-lg p-3 ${s.entryMsgClasses}`}>
