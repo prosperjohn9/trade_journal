@@ -41,11 +41,11 @@ export function MonthlyReportClient() {
     <main
       className='dashboard-theme min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]'
       data-theme={theme}>
-      <div className='mx-auto w-full max-w-[1280px] space-y-10 px-4 py-8 sm:px-6 lg:px-8'>
+      <div className='mx-auto w-full max-w-[1280px] space-y-12 px-4 py-8 sm:px-6 lg:px-8'>
         <MonthlyReportHeader state={s} />
 
         {showStartingBalanceTip && (
-          <p className='rounded-xl border border-[var(--table-divider)] bg-[var(--surface-elevated)] p-4 text-sm text-[var(--text-secondary)]'>
+          <p className='rounded-xl border border-[var(--report-border)] bg-[var(--surface-elevated)] p-4 text-sm text-[var(--text-secondary)]'>
             <span className='font-semibold text-[var(--text-primary)]'>Tip:</span>{' '}
             Set a{' '}
             <span className='font-semibold text-[var(--text-primary)]'>
@@ -60,7 +60,7 @@ export function MonthlyReportClient() {
         )}
 
         {s.msg && (
-          <p className='rounded-xl border border-[var(--table-divider)] bg-[var(--surface-elevated)] p-4 text-sm text-[var(--loss)]'>
+          <p className='rounded-xl border border-[var(--report-border)] bg-[var(--surface-elevated)] p-4 text-sm text-[var(--loss)]'>
             {s.msg}
           </p>
         )}

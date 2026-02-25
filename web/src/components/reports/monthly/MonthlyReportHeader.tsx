@@ -34,7 +34,7 @@ export function MonthlyReportHeader({ state: s }: { state: State }) {
   }, [s.month, s.selectedAccount?.name]);
 
   return (
-    <header className='space-y-4'>
+    <header className='space-y-5'>
       <div className='flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'>
         <div>
           <h1 className='text-[2rem] font-semibold tracking-tight text-[var(--text-primary)]'>
@@ -47,7 +47,7 @@ export function MonthlyReportHeader({ state: s }: { state: State }) {
           <label className='text-xs font-medium text-[var(--text-secondary)]'>
             <span className='mb-1 block'>Account</span>
             <select
-              className='min-w-[190px] rounded-lg border border-[var(--table-divider)] bg-[var(--surface-elevated)] p-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
+              className='min-w-[190px] rounded-lg border border-[var(--report-border)] bg-[var(--surface-elevated)] p-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
               value={s.accountId}
               onChange={(e) => s.setAccountId(e.target.value as 'all' | string)}
               disabled={!s.accounts.length}
@@ -64,7 +64,7 @@ export function MonthlyReportHeader({ state: s }: { state: State }) {
           <label className='text-xs font-medium text-[var(--text-secondary)]'>
             <span className='mb-1 block'>Month</span>
             <input
-              className='rounded-lg border border-[var(--table-divider)] bg-[var(--surface-elevated)] p-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
+              className='rounded-lg border border-[var(--report-border)] bg-[var(--surface-elevated)] p-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
               type='month'
               value={s.month}
               onChange={(e) => s.setMonth(e.target.value)}

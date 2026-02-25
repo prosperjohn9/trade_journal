@@ -38,10 +38,12 @@ export function MonthlyReportEquitySection({ state: s }: { state: State }) {
   ];
 
   return (
-    <section className='space-y-4'>
-      <h2 className='text-xl font-semibold'>Equity Overview</h2>
+    <section className='space-y-6'>
+      <h2 className='text-[20px] font-semibold tracking-[0.2px]'>
+        Equity Overview
+      </h2>
 
-      <div className='rounded-2xl bg-[var(--bg-subtle)] px-5 py-6 md:py-8'>
+      <div className='rounded-2xl bg-[var(--bg-subtle)] px-5 py-7 md:px-6 md:py-9'>
         <div className='flex flex-wrap items-start justify-between gap-3'>
           <div>
             <h3 className='text-lg font-semibold text-[var(--text-primary)]'>
@@ -66,22 +68,24 @@ export function MonthlyReportEquitySection({ state: s }: { state: State }) {
           />
         </div>
 
-        <div className='mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[var(--text-secondary)]'>
-          <span>
-            Total Return:{' '}
+        <div className='mt-5 flex flex-wrap items-center gap-2.5'>
+          <span className='inline-flex items-center rounded-full border border-[var(--report-border)] bg-[var(--surface-elevated)] px-3 py-1 text-[13px] font-semibold text-[var(--text-secondary)]'>
             <strong className={signValueClass(totalReturnPct)}>
               {formatSignedPercent(totalReturnPct, 2)}
             </strong>
+            <span className='ml-1.5'>Return</span>
           </span>
-          <span>
-            Max Drawdown:{' '}
+
+          <span className='inline-flex items-center rounded-full border border-[var(--report-border)] bg-[var(--surface-elevated)] px-3 py-1 text-[13px] font-semibold text-[var(--text-secondary)]'>
             <strong className='text-[var(--loss)]'>
               {formatSignedPercent(-Math.abs(maxDrawdownPct), 2)}
             </strong>
+            <span className='ml-1.5'>DD</span>
           </span>
-          <span>
-            Volatility:{' '}
-            <strong className='text-[var(--text-primary)]'>{volatility}</strong>
+
+          <span className='inline-flex items-center rounded-full border border-[var(--report-border)] bg-[var(--surface-muted)] px-3 py-1 text-[13px] font-semibold text-[var(--text-secondary)]'>
+            <strong className='text-[var(--text-secondary)]'>{volatility}</strong>
+            <span className='ml-1.5'>Volatility</span>
           </span>
         </div>
       </div>

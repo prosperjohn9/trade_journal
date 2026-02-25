@@ -18,7 +18,9 @@ export function MonthlyReportPerformanceCards({ state: s }: { state: State }) {
   return (
     <>
       <section className='space-y-4'>
-        <h2 className='text-xl font-semibold'>Core Metrics</h2>
+        <h2 className='text-[20px] font-semibold tracking-[0.2px]'>
+          Core Metrics
+        </h2>
         <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4'>
           <ReportMetricCard
             title='Total P&L'
@@ -34,8 +36,13 @@ export function MonthlyReportPerformanceCards({ state: s }: { state: State }) {
 
           <ReportMetricCard
             title='Max DD'
-            value={formatMoney(-Math.abs(s.report.maxDrawdown), s.baseCurrency)}
-            valueClassName='text-[var(--loss)]'
+            value={formatMoney(Math.abs(s.report.maxDrawdown), s.baseCurrency)}
+            valueClassName='text-[var(--text-primary)]'
+            caption={
+              <span className='text-[var(--loss)]'>
+                Drawdown {formatMoney(-Math.abs(s.report.maxDrawdown), s.baseCurrency)}
+              </span>
+            }
           />
 
           <ReportMetricCard title='Profit Factor' value={profitFactor} />
@@ -43,8 +50,10 @@ export function MonthlyReportPerformanceCards({ state: s }: { state: State }) {
       </section>
 
       <section className='space-y-4'>
-        <h2 className='text-xl font-semibold'>Risk &amp; Performance Metrics</h2>
-        <div className='grid grid-cols-2 gap-4 lg:grid-cols-4'>
+        <h2 className='text-[20px] font-semibold tracking-[0.2px]'>
+          Risk &amp; Performance Metrics
+        </h2>
+        <div className='grid grid-cols-2 gap-3 lg:grid-cols-4'>
           <ReportMetricCard
             title='Avg Win'
             value={formatMoney(s.report.avgWin, s.baseCurrency)}

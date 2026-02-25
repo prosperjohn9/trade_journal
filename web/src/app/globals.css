@@ -34,6 +34,8 @@
   --table-row-bg: #ffffff;
   --table-row-hover: #f7f9fd;
   --table-zebra: #f9fbff;
+  --report-border: #e8edf5;
+  --report-divider: #e5eaf27a;
 
   --chart-line: #2f3d52;
   --chart-grid: #d9e1ec;
@@ -44,6 +46,8 @@
   --chart-loss-fill: rgba(220, 38, 38, 0.16);
   --chart-tooltip-bg: #ffffff;
   --chart-tooltip-border: #d6dee9;
+  --chart-line-width: 2.2;
+  --chart-tooltip-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
 }
 
 .dashboard-theme[data-theme='light'] {
@@ -78,6 +82,8 @@
   --table-row-bg: #ffffff;
   --table-row-hover: #f7f9fd;
   --table-zebra: #f9fbff;
+  --report-border: #e8edf5;
+  --report-divider: #e5eaf27a;
 
   --chart-line: #2f3d52;
   --chart-grid: #d9e1ec;
@@ -88,6 +94,8 @@
   --chart-loss-fill: rgba(220, 38, 38, 0.16);
   --chart-tooltip-bg: #ffffff;
   --chart-tooltip-border: #d6dee9;
+  --chart-line-width: 2.2;
+  --chart-tooltip-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
 }
 
 .dashboard-theme[data-theme='dark'] {
@@ -122,6 +130,8 @@
   --table-row-bg: #1b2842;
   --table-row-hover: #223450;
   --table-zebra: transparent;
+  --report-border: #304563;
+  --report-divider: #3b4f7188;
 
   --chart-line: #9fb0c8;
   --chart-grid: #2f4462;
@@ -132,6 +142,8 @@
   --chart-loss-fill: rgba(248, 113, 113, 0.22);
   --chart-tooltip-bg: #111a2e;
   --chart-tooltip-border: #304563;
+  --chart-line-width: 2.5;
+  --chart-tooltip-shadow: 0 12px 28px rgba(2, 6, 23, 0.3);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -167,6 +179,8 @@
     --table-row-bg: #1b2842;
     --table-row-hover: #223450;
     --table-zebra: transparent;
+    --report-border: #304563;
+    --report-divider: #3b4f7188;
 
     --chart-line: #9fb0c8;
     --chart-grid: #2f4462;
@@ -177,5 +191,7 @@
     --chart-loss-fill: rgba(248, 113, 113, 0.22);
     --chart-tooltip-bg: #111a2e;
     --chart-tooltip-border: #304563;
+    --chart-line-width: 2.5;
+    --chart-tooltip-shadow: 0 12px 28px rgba(2, 6, 23, 0.3);
   }
 }

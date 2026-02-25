@@ -39,6 +39,7 @@ export function ReportMetricCard({
   title,
   value,
   valueClassName,
+  caption,
   emphasized = false,
   compact = false,
   muted = false,
@@ -46,6 +47,7 @@ export function ReportMetricCard({
   title: string;
   value: React.ReactNode;
   valueClassName?: string;
+  caption?: React.ReactNode;
   emphasized?: boolean;
   compact?: boolean;
   muted?: boolean;
@@ -53,20 +55,29 @@ export function ReportMetricCard({
   return (
     <div
       className={cx(
-        'rounded-xl border border-[var(--table-divider)]',
-        muted ? 'bg-[var(--surface-muted)]' : 'bg-[var(--surface-elevated)]',
-        compact ? 'min-h-[96px] p-4' : 'min-h-[114px] p-5',
+        'rounded-xl border',
+        muted
+          ? 'border-[var(--report-divider)] bg-[var(--surface-muted)]'
+          : 'border-[var(--report-border)] bg-[var(--surface-elevated)]',
+        compact ? 'min-h-[82px] px-4 py-3.5' : 'min-h-[112px] p-5',
       )}>
-      <div className='text-sm text-[var(--text-secondary)]'>{title}</div>
+      <div className='text-[13px] font-medium text-[var(--text-secondary)]'>
+        {title}
+      </div>
       <div
         className={cx(
           'mt-2 tabular-nums leading-tight tracking-[-0.02em] text-[var(--text-primary)]',
-          emphasized ? 'text-[2.45rem] font-bold' : 'text-[2rem] font-bold',
-          compact && !emphasized && 'text-[1.8rem]',
+          emphasized ? 'text-[2.125rem] font-bold' : 'text-[1.625rem] font-bold',
+          compact && !emphasized && 'text-[1.35rem]',
           valueClassName,
         )}>
         {value}
       </div>
+      {caption ? (
+        <div className='mt-1.5 text-[11px] font-medium text-[var(--text-muted)]'>
+          {caption}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -220,7 +231,7 @@ export function LineChart({
 
   if (!points.length) {
     return (
-      <div className='rounded-xl border border-[var(--table-divider)] bg-[var(--surface-elevated)] p-6 text-center text-sm text-[var(--text-secondary)]'>
+      <div className='rounded-xl border border-[var(--report-border)] bg-[var(--surface-elevated)] p-6 text-center text-sm text-[var(--text-secondary)]'>
         No equity data available.
       </div>
     );
@@ -305,8 +316,9 @@ export function LineChart({
                   x2={width - padR}
                   y2={y}
                   stroke='var(--chart-grid)'
-                  strokeDasharray={isBaseline ? '4 4' : '0'}
-                  strokeWidth={isBaseline ? '1.25' : '1'}
+                  strokeDasharray={isBaseline ? '3 6' : '0'}
+                  strokeWidth={isBaseline ? '1' : '1'}
+                  opacity={isBaseline ? '0.48' : '0.58'}
                 />
                 <text
                   x={10}
@@ -346,7 +358,7 @@ export function LineChart({
                       ? 'var(--chart-profit-line)'
                       : 'var(--chart-loss-line)'
                   }
-                  strokeWidth='2.4'
+                  strokeWidth='var(--chart-line-width)'
                   strokeLinecap='round'
                 />
               </g>
@@ -418,13 +430,14 @@ export function LineChart({
       </div>
 
       <div
-        className='pointer-events-none absolute z-20 min-w-[210px] rounded-xl border px-3 py-2 text-xs shadow-sm'
+        className='pointer-events-none absolute z-20 min-w-[210px] rounded-xl border px-3 py-2 text-xs'
         style={{
           left: `${(tooltipX / width) * 100}%`,
           top: `${(tooltipY / height) * 100}%`,
           backgroundColor: 'var(--chart-tooltip-bg)',
           borderColor: 'var(--chart-tooltip-border)',
           color: 'var(--text-primary)',
+          boxShadow: 'var(--chart-tooltip-shadow)',
         }}>
         <div className='font-semibold text-[var(--text-primary)]'>
           {formatTooltipDateLabel(activePoint.dayKey)}
