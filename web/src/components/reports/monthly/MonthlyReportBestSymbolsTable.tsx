@@ -2,38 +2,53 @@
 
 import type { MonthlyReportState } from '@/src/hooks/useMonthlyReport';
 import { formatMoney } from '@/src/lib/utils/format';
+import { formatNumber, signValueClass } from './monthly-report-ui';
 
 type State = Pick<MonthlyReportState, 'report' | 'baseCurrency'>;
 
 export function MonthlyReportBestSymbolsTable({ state: s }: { state: State }) {
   return (
-    <section className='border rounded-xl p-4 space-y-3'>
-      <h2 className='font-semibold'>Best Performing Symbols</h2>
+    <section className='space-y-4'>
+      <h2 className='text-xl font-semibold'>Symbol Breakdown</h2>
 
-      <div className='overflow-auto'>
-        <table className='w-full text-sm'>
+      <div className='overflow-auto rounded-xl border border-[var(--table-divider)] bg-[var(--surface-elevated)]'>
+        <table className='w-full min-w-[560px] text-sm'>
           <thead>
-            <tr className='text-left border-b'>
-              <th className='p-2'>Symbol</th>
-              <th className='p-2'>Trades</th>
-              <th className='p-2'>Win Rate</th>
-              <th className='p-2'>Net P&amp;L</th>
+            <tr className='border-b border-[var(--table-divider)] text-xs uppercase tracking-wide text-[var(--text-secondary)]'>
+              <th className='px-4 py-3 text-left font-semibold'>Symbol</th>
+              <th className='px-4 py-3 text-right font-semibold'>Trades</th>
+              <th className='px-4 py-3 text-right font-semibold'>Win Rate</th>
+              <th className='px-4 py-3 text-right font-semibold'>Net P&amp;L</th>
             </tr>
           </thead>
+
           <tbody>
-            {s.report.bySymbol.map((r) => (
-              <tr key={r.symbol} className='border-b'>
-                <td className='p-2 font-semibold'>{r.symbol}</td>
-                <td className='p-2'>{r.count}</td>
-                <td className='p-2'>{r.winRate.toFixed(1)}%</td>
-                <td className='p-2'>{formatMoney(r.pnl, s.baseCurrency)}</td>
+            {s.report.bySymbol.map((row) => (
+              <tr
+                key={row.symbol}
+                className='border-b border-[var(--table-divider)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--table-row-hover)]'>
+                <td className='px-4 py-3.5 font-semibold text-[var(--text-primary)]'>
+                  {row.symbol}
+                </td>
+                <td className='px-4 py-3.5 text-right tabular-nums'>
+                  {formatNumber(row.count, 0)}
+                </td>
+                <td className='px-4 py-3.5 text-right tabular-nums'>
+                  {formatNumber(row.winRate, 1)}%
+                </td>
+                <td
+                  className={`px-4 py-3.5 text-right font-semibold tabular-nums ${signValueClass(row.pnl)}`}>
+                  {formatMoney(row.pnl, s.baseCurrency)}
+                </td>
               </tr>
             ))}
 
             {!s.report.bySymbol.length && (
               <tr>
-                <td className='p-2 opacity-70' colSpan={4}>
-                  No trades for this month.
+                <td
+                  className='px-4 py-4 text-center text-[var(--text-muted)]'
+                  colSpan={4}>
+                  No symbol data for this month.
                 </td>
               </tr>
             )}

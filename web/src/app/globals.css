@@ -33,6 +33,11 @@
 
   --table-row-bg: #ffffff;
   --table-row-hover: #f7f9fd;
+  --table-zebra: #f9fbff;
+
+  --chart-line: #2f3d52;
+  --chart-grid: #d9e1ec;
+  --chart-point: #435670;
 }
 
 .dashboard-theme[data-theme='light'] {
@@ -66,6 +71,11 @@
 
   --table-row-bg: #ffffff;
   --table-row-hover: #f7f9fd;
+  --table-zebra: #f9fbff;
+
+  --chart-line: #2f3d52;
+  --chart-grid: #d9e1ec;
+  --chart-point: #435670;
 }
 
 .dashboard-theme[data-theme='dark'] {
@@ -99,6 +109,11 @@
 
   --table-row-bg: #1b2842;
   --table-row-hover: #223450;
+  --table-zebra: transparent;
+
+  --chart-line: #9fb0c8;
+  --chart-grid: #2f4462;
+  --chart-point: #b4c2d6;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -133,5 +148,10 @@
 
     --table-row-bg: #1b2842;
     --table-row-hover: #223450;
+    --table-zebra: transparent;
+
+    --chart-line: #9fb0c8;
+    --chart-grid: #2f4462;
+    --chart-point: #b4c2d6;
   }
 }
