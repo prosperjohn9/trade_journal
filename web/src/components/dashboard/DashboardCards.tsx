@@ -181,26 +181,30 @@ function PrimaryCard({
   glowTone?: 'profit' | 'loss' | 'neutral';
 }) {
   const glowByTone = {
-    profit:
-      'linear-gradient(to bottom right, rgba(34,197,94,0.08), transparent 68%)',
-    loss: 'linear-gradient(to bottom right, rgba(248,113,113,0.08), transparent 68%)',
-    neutral:
-      'linear-gradient(to bottom right, rgba(148,163,184,0.08), transparent 68%)',
+    profit: 'rgba(34, 197, 94, 0.26)',
+    loss: 'rgba(248, 113, 113, 0.24)',
+    neutral: 'rgba(148, 163, 184, 0.2)',
   } as const;
 
   return (
-    <div
-      className='flex min-h-[160px] flex-col justify-between rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'
-      style={emphasized ? { backgroundImage: glowByTone[glowTone] } : undefined}>
+    <div className='flex min-h-[160px] flex-col justify-between rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5'>
       <div className='text-sm font-medium text-[var(--text-secondary)]'>{title}</div>
       <div>
-        <div
-          className={cx(
-            'leading-none tracking-[-0.02em] tabular-nums',
-            emphasized ? 'text-[2.7rem] font-bold' : 'text-[2.35rem] font-semibold',
-            valueClassName ?? 'text-[var(--text-primary)]',
-          )}>
-          {value}
+        <div className='relative inline-block'>
+          {emphasized ? (
+            <span
+              className='pointer-events-none absolute left-1/2 top-1/2 -z-10 h-14 w-[11.5rem] -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl'
+              style={{ backgroundColor: glowByTone[glowTone] }}
+            />
+          ) : null}
+          <div
+            className={cx(
+              'leading-none tracking-[-0.02em] tabular-nums',
+              emphasized ? 'text-[2.7rem] font-bold' : 'text-[2.35rem] font-semibold',
+              valueClassName ?? 'text-[var(--text-primary)]',
+            )}>
+            {value}
+          </div>
         </div>
         {support ? (
           <div className='mt-2 text-sm text-[var(--text-muted)]'>{support}</div>

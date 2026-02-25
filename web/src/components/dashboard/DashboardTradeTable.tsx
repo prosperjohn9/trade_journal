@@ -62,7 +62,7 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
     <div className='max-h-[620px] overflow-auto rounded-xl border border-[var(--border-default)]'>
       <table className='w-full min-w-[1120px] border-collapse text-sm'>
         <thead>
-          <tr className='border-b border-[var(--border-strong)] text-xs uppercase tracking-wide text-[var(--text-secondary)]'>
+          <tr className='border-b border-[var(--table-divider)] text-xs uppercase tracking-wide text-[var(--text-secondary)]'>
             <th className='sticky top-0 z-10 bg-[var(--bg-subtle)] px-4 py-4 text-center font-semibold'>
               Date
             </th>
@@ -110,7 +110,7 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
             return (
               <tr
                 key={t.id}
-                className='border-b border-[var(--border-default)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)]'>
+                className='border-b border-[var(--table-divider)] bg-[var(--table-row-bg)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--table-row-hover)]'>
                 <td className='whitespace-nowrap px-4 py-[18px]'>
                   {new Date(t.opened_at).toLocaleString()}
                 </td>
