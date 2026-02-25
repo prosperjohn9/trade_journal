@@ -25,10 +25,22 @@ export function Modal({
         onClick={onClose}
         aria-label='Close modal'
       />
-      <div className='relative w-full max-w-lg rounded-xl border bg-white p-4 shadow-lg'>
+      <div
+        className='relative w-full max-w-lg rounded-xl border p-4 shadow-lg'
+        style={{
+          backgroundColor: 'var(--bg-surface, #ffffff)',
+          borderColor: 'var(--border-default, #e2e8f0)',
+          color: 'var(--text-primary, #0f172a)',
+        }}>
         <div className='flex items-start justify-between gap-3'>
           <div className='text-lg font-semibold'>{title}</div>
-          <button className='border rounded-lg px-3 py-1' onClick={onClose}>
+          <button
+            className='rounded-lg border px-3 py-1 text-sm'
+            style={{
+              borderColor: 'var(--border-default, #e2e8f0)',
+              color: 'var(--text-secondary, #475569)',
+            }}
+            onClick={onClose}>
             ✕
           </button>
         </div>

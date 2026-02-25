@@ -24,24 +24,62 @@ type PropsState = Pick<
 
 type TradeRow = PropsState['trades'][number];
 
+function ChecklistCell({ score }: { score: number }) {
+  const normalized = Math.max(0, Math.min(100, score));
+
+  return (
+    <div className='inline-flex items-center justify-end gap-2'>
+      <div className='h-1.5 w-20 overflow-hidden rounded-full bg-[var(--neutral-badge)]'>
+        <div
+          className='h-full rounded-full bg-[var(--accent)]'
+          style={{ width: `${normalized}%` }}
+        />
+      </div>
+      <span className='w-10 text-right text-xs tabular-nums text-[var(--text-secondary)]'>
+        {normalized.toFixed(0)}%
+      </span>
+    </div>
+  );
+}
+
 export function DashboardTradeTable({ state: s }: { state: PropsState }) {
   const router = useRouter();
 
   return (
-    <div className='overflow-auto'>
-      <table className='w-full text-sm'>
+    <div className='max-h-[620px] overflow-auto rounded-xl border border-[var(--border-default)]'>
+      <table className='w-full min-w-[1120px] border-collapse text-sm'>
         <thead>
-          <tr className='text-left border-b'>
-            <th className='p-2'>Date</th>
-            <th className='p-2'>Instrument</th>
-            <th className='p-2'>Dir</th>
-            <th className='p-2'>Outcome</th>
-            <th className='p-2'>P&amp;L ($)</th>
-            <th className='p-2'>P&amp;L (%)</th>
-            <th className='p-2'>R</th>
-            <th className='p-2'>Checklist</th>
-            <th className='p-2'>Reviewed</th>
-            <th className='p-2'>Actions</th>
+          <tr className='border-b border-[var(--border-strong)] text-xs uppercase tracking-wide text-[var(--text-secondary)]'>
+            <th className='sticky top-0 z-10 bg-[var(--bg-subtle)] px-4 py-4 text-center font-semibold'>
+              Date
+            </th>
+            <th className='sticky top-0 z-10 bg-[var(--bg-subtle)] px-4 py-4 text-center font-semibold'>
+              Instrument
+            </th>
+            <th className='sticky top-0 z-10 bg-[var(--bg-subtle)] px-4 py-4 text-center font-semibold'>
+              Dir
+            </th>
+            <th className='sticky top-0 z-10 bg-[var(--bg-subtle)] px-4 py-4 text-center font-semibold'>
+              Outcome
+            </th>
+            <th className='sticky top-0 z-10 bg-[var(--bg-subtle)] px-4 py-4 text-center font-semibold'>
+              P&amp;L ($)
+            </th>
+            <th className='sticky top-0 z-10 bg-[var(--bg-subtle)] px-4 py-4 text-center font-semibold'>
+              P&amp;L (%)
+            </th>
+            <th className='sticky top-0 z-10 bg-[var(--bg-subtle)] px-4 py-4 text-center font-semibold'>
+              R
+            </th>
+            <th className='sticky top-0 z-10 bg-[var(--bg-subtle)] px-4 py-4 text-center font-semibold'>
+              Checklist
+            </th>
+            <th className='sticky top-0 z-10 bg-[var(--bg-subtle)] px-4 py-4 text-center font-semibold'>
+              Reviewed
+            </th>
+            <th className='sticky top-0 z-10 bg-[var(--bg-subtle)] pl-4 pr-8 py-4 text-center font-semibold'>
+              Actions
+            </th>
           </tr>
         </thead>
 
@@ -57,65 +95,85 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
             const score = s.checklistScoreByTrade[t.id] ?? null;
 
             return (
-              <tr key={t.id} className='border-b'>
-                <td className='p-2'>
+              <tr
+                key={t.id}
+                className='border-b border-[var(--border-default)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)]'>
+                <td className='whitespace-nowrap px-4 py-[18px]'>
                   {new Date(t.opened_at).toLocaleString()}
                 </td>
-                <td className='p-2'>{t.instrument}</td>
-                <td className='p-2'>{t.direction}</td>
 
-                <td className='p-2'>
+                <td className='px-4 py-[18px] font-medium text-[var(--text-primary)]'>
+                  {t.instrument}
+                </td>
+
+                <td className='px-4 py-[18px]'>{t.direction}</td>
+
+                <td className='px-4 py-[18px]'>
                   <span
                     className={cx(
-                      'inline-flex items-center px-2 py-1 rounded-full border text-xs font-semibold',
+                      'inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold',
                       badgeClasses(t.outcome),
                     )}>
                     {t.outcome}
                   </span>
                 </td>
 
-                <td className={cx('p-2 font-medium', signColor(pnlAmt))}>
+                <td
+                  className={cx(
+                    'px-4 py-[18px] text-right font-mono font-medium tabular-nums',
+                    signColor(pnlAmt),
+                  )}>
                   {formatMoney(pnlAmt, s.currency)}
                 </td>
 
-                <td className={cx('p-2 font-medium', signColor(pnlPct))}>
+                <td
+                  className={cx(
+                    'px-4 py-[18px] text-right font-mono font-medium tabular-nums',
+                    signColor(pnlPct),
+                  )}>
                   {formatPercent(pnlPct, 2)}
                 </td>
 
-                <td className='p-2'>
+                <td className='px-4 py-[18px] text-right tabular-nums text-[var(--text-primary)]'>
                   {t.r_multiple === null || t.r_multiple === undefined
                     ? '—'
                     : formatNumber(Number(t.r_multiple), 2)}
                 </td>
 
-                <td className='p-2'>
-                  {score === null ? '—' : `${score.toFixed(0)}%`}
+                <td className='px-4 py-[18px] text-center'>
+                  {score === null ? (
+                    <span className='text-[var(--text-muted)]'>—</span>
+                  ) : (
+                    <ChecklistCell score={score} />
+                  )}
                 </td>
 
-                <td className='p-2'>{reviewedBadge(t.reviewed_at)}</td>
+                <td className='px-4 py-[18px] text-center'>
+                  {reviewedBadge(t.reviewed_at)}
+                </td>
 
-                <td className='p-2'>
-                  <div className='flex flex-wrap gap-2'>
+                <td className='min-w-[220px] pl-4 pr-8 py-[18px] text-center'>
+                  <div className='mx-auto grid w-full max-w-[176px] grid-cols-2 gap-2'>
                     <button
-                      className='border rounded-lg px-3 py-1'
+                      className='rounded-lg border border-[var(--accent-soft)] px-3 py-2 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]'
                       onClick={() => router.push(`/trades/${t.id}`)}>
                       View
                     </button>
 
                     <button
-                      className='border rounded-lg px-3 py-1'
+                      className='rounded-lg border border-[var(--border-default)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
                       onClick={() => router.push(`/trades/${t.id}/edit`)}>
                       Edit
                     </button>
 
                     <button
-                      className='border rounded-lg px-3 py-1'
+                      className='rounded-lg border border-[var(--border-default)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
                       onClick={() => router.push(`/trades/${t.id}/review`)}>
                       Review
                     </button>
 
                     <button
-                      className='border rounded-lg px-3 py-1'
+                      className='rounded-lg border border-[var(--border-default)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--loss)] hover:text-[var(--loss)]'
                       onClick={() => s.requestDeleteTrade(t)}>
                       Delete
                     </button>
@@ -127,7 +185,9 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
 
           {!s.trades.length && (
             <tr>
-              <td className='p-2 opacity-70' colSpan={10}>
+              <td
+                className='px-4 py-[18px] text-center text-[var(--text-muted)]'
+                colSpan={10}>
                 No trades for this month.
               </td>
             </tr>

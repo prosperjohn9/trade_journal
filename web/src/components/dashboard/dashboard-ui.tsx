@@ -11,30 +11,36 @@ export function formatPercent(amount: number, maxDigits = 2): string {
 }
 
 export function signColor(n: number): string {
-  if (n > 0) return 'text-emerald-600';
-  if (n < 0) return 'text-rose-600';
-  return 'text-slate-700';
+  if (n > 0) return 'text-[var(--profit)]';
+  if (n < 0) return 'text-[var(--loss)]';
+  return 'text-[var(--text-primary)]';
 }
 
 export function badgeClasses(outcome: Outcome): string {
   switch (outcome) {
     case 'WIN':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      return 'border-transparent bg-[var(--profit-soft)] text-[var(--profit)]';
     case 'LOSS':
-      return 'bg-rose-50 text-rose-700 border-rose-200';
+      return 'border-transparent bg-[var(--loss-soft)] text-[var(--loss)]';
     default:
-      return 'bg-slate-50 text-slate-700 border-slate-200';
+      return 'border-transparent bg-[var(--neutral-badge)] text-[var(--neutral-text)]';
   }
 }
 
 export function reviewedBadge(reviewedAt: string | null) {
-  return reviewedAt ? (
-    <span className='text-xs border rounded-full px-2 py-1 bg-slate-50'>
-      Reviewed
-    </span>
-  ) : (
-    <span className='text-xs border rounded-full px-2 py-1 bg-white'>
-      Not reviewed
+  if (reviewedAt) {
+    return (
+      <span className='inline-flex items-center gap-1 rounded-full border border-[var(--border-default)] bg-[var(--neutral-badge)] px-2 py-1 text-xs text-[var(--neutral-text)]'>
+        <span aria-hidden='true'>●</span>
+        Reviewed
+      </span>
+    );
+  }
+
+  return (
+    <span className='inline-flex items-center gap-1 rounded-full border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 py-1 text-xs text-[var(--text-muted)]'>
+      <span aria-hidden='true'>○</span>
+      Pending
     </span>
   );
 }
