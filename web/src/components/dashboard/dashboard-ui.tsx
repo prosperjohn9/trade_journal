@@ -30,7 +30,7 @@ export function badgeClasses(outcome: Outcome): string {
 export function reviewedBadge(reviewedAt: string | null) {
   if (reviewedAt) {
     return (
-      <span className='inline-flex items-center gap-1 rounded-full border border-[var(--border-default)] bg-[var(--neutral-badge)] px-2 py-1 text-xs text-[var(--neutral-text)]'>
+      <span className='inline-flex items-center gap-1 rounded-full border border-[var(--border-default)] bg-[var(--neutral-badge)] px-1.5 py-0.5 text-[11px] text-[var(--neutral-text)]'>
         <span aria-hidden='true'>●</span>
         Reviewed
       </span>
@@ -38,7 +38,7 @@ export function reviewedBadge(reviewedAt: string | null) {
   }
 
   return (
-    <span className='inline-flex items-center gap-1 rounded-full border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 py-1 text-xs text-[var(--text-muted)]'>
+    <span className='inline-flex items-center gap-1 rounded-full border border-[var(--border-default)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[11px] text-[var(--text-muted)]'>
       <span aria-hidden='true'>○</span>
       Pending
     </span>

@@ -78,13 +78,17 @@ export function DashboardCards({ state: s }: { state: PropsState }) {
       : null;
 
   return (
-    <section className='space-y-4'>
+    <section className='space-y-5'>
       <div className='grid grid-cols-1 gap-4 lg:grid-cols-3'>
         <PrimaryCard
           title='Net P&L'
           value={formatMoney(s.stats.pnlDollar, s.currency)}
           support={formatSignedPercent(s.monthPnlPct, 1)}
           valueClassName={signColor(s.stats.pnlDollar)}
+          emphasized
+          glowTone={
+            s.stats.pnlDollar > 0 ? 'profit' : s.stats.pnlDollar < 0 ? 'loss' : 'neutral'
+          }
         />
 
         <PrimaryCard
@@ -133,22 +137,24 @@ export function DashboardCards({ state: s }: { state: PropsState }) {
         />
       </div>
 
-      <div className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-subtle)] px-5 py-3 text-sm text-[var(--text-secondary)]'>
+      <div
+        className='rounded-xl border border-[var(--border-default)] border-l-4 border-l-[var(--accent)] px-5 py-3.5 text-sm font-medium text-[var(--text-secondary)]'
+        style={{ backgroundColor: 'var(--accent-strip-bg)' }}>
         <div className='flex flex-wrap items-center gap-x-6 gap-y-2'>
           <span>
             Consistency Score:{' '}
-            <strong className='font-medium text-[var(--text-primary)]'>
+            <strong className='font-semibold text-[var(--text-primary)]'>
               {formatPercent(consistencyScore, 0)}
             </strong>
           </span>
           <span>
             Avg Checklist:{' '}
-            <strong className='font-medium text-[var(--text-primary)]'>
+            <strong className='font-semibold text-[var(--text-primary)]'>
               {avgChecklist === null ? '—' : formatPercent(avgChecklist, 0)}
             </strong>
           </span>
           <span>
-            <strong className='font-medium text-[var(--text-primary)]'>
+            <strong className='font-semibold text-[var(--text-primary)]'>
               {winningDays}
             </strong>{' '}
             Winning Days
@@ -164,19 +170,34 @@ function PrimaryCard({
   value,
   support,
   valueClassName,
+  emphasized = false,
+  glowTone = 'neutral',
 }: {
   title: string;
   value: React.ReactNode;
   support?: React.ReactNode;
   valueClassName?: string;
+  emphasized?: boolean;
+  glowTone?: 'profit' | 'loss' | 'neutral';
 }) {
+  const glowByTone = {
+    profit:
+      'linear-gradient(to bottom right, rgba(34,197,94,0.08), transparent 68%)',
+    loss: 'linear-gradient(to bottom right, rgba(248,113,113,0.08), transparent 68%)',
+    neutral:
+      'linear-gradient(to bottom right, rgba(148,163,184,0.08), transparent 68%)',
+  } as const;
+
   return (
-    <div className='flex min-h-[160px] flex-col justify-between rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
+    <div
+      className='flex min-h-[160px] flex-col justify-between rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'
+      style={emphasized ? { backgroundImage: glowByTone[glowTone] } : undefined}>
       <div className='text-sm font-medium text-[var(--text-secondary)]'>{title}</div>
       <div>
         <div
           className={cx(
-            'text-[2.35rem] font-semibold leading-none tracking-tight',
+            'leading-none tracking-[-0.02em] tabular-nums',
+            emphasized ? 'text-[2.7rem] font-bold' : 'text-[2.35rem] font-semibold',
             valueClassName ?? 'text-[var(--text-primary)]',
           )}>
           {value}
@@ -199,11 +220,11 @@ function SecondaryCard({
   valueClassName?: string;
 }) {
   return (
-    <div className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
+    <div className='rounded-xl border border-[var(--border-default)] bg-[var(--surface-muted)] p-5'>
       <div className='text-sm text-[var(--text-secondary)]'>{title}</div>
       <div
         className={cx(
-          'mt-2 text-2xl font-semibold leading-tight text-[var(--text-primary)]',
+          'mt-2 text-[1.95rem] font-semibold leading-tight tracking-[-0.02em] tabular-nums text-[var(--text-primary)]',
           valueClassName,
         )}>
         {value}

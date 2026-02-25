@@ -205,21 +205,23 @@ export default function DashboardClient() {
         </div>
       </Modal>
 
-      <div className='mx-auto w-full max-w-[1280px] space-y-8 px-4 py-8 sm:px-6 lg:px-8'>
+      <div className='mx-auto w-full max-w-[1280px] space-y-9 px-4 py-8 sm:px-6 lg:px-8'>
         <header className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
           <div className='flex flex-wrap items-start justify-between gap-3'>
             <div>
-              <h1 className='text-2xl font-semibold tracking-tight'>Journaled</h1>
-              <p className='mt-1 text-sm text-[var(--text-secondary)]'>
+              <h1 className='text-3xl font-semibold tracking-tight md:text-[2.2rem]'>
+                Journaled
+              </h1>
+              <p className='mt-1 text-xs text-[var(--text-muted)]'>
                 Signed in as{' '}
-                <span className='font-semibold text-[var(--text-primary)]'>
+                <span className='font-medium text-[var(--text-secondary)]'>
                   {s.displayName}
                 </span>
               </p>
             </div>
 
             <button
-              className='inline-flex items-center rounded-lg border border-[var(--accent)] bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-95'
+              className='inline-flex items-center rounded-lg border border-transparent bg-[var(--accent-cta)] px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110'
               onClick={() => router.push('/trades/new')}>
               + Add Trade
             </button>
@@ -228,25 +230,31 @@ export default function DashboardClient() {
           <div className='mt-4 flex flex-wrap items-center justify-between gap-3'>
             <nav className='flex flex-wrap items-center gap-2'>
               <button
-                className='inline-flex items-center rounded-lg border border-[var(--accent-soft)] bg-[var(--accent-soft)] px-3 py-2 text-sm font-medium text-[var(--accent)]'
+                className='inline-flex items-center rounded-lg border border-[var(--accent-soft)] bg-[var(--accent-soft)] px-3 py-2 text-xs font-medium text-[var(--accent)]'
                 onClick={() => router.push('/dashboard')}>
                 Dashboard
               </button>
 
               <button
-                className='inline-flex items-center rounded-lg border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
+                className='inline-flex items-center rounded-lg border border-transparent bg-transparent px-3 py-2 text-xs font-normal text-[var(--text-muted)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
                 onClick={scrollToTrades}>
                 Trades
               </button>
 
               <button
-                className='inline-flex items-center rounded-lg border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
+                className='inline-flex items-center rounded-lg border border-transparent bg-transparent px-3 py-2 text-xs font-normal text-[var(--text-muted)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
+                onClick={() => router.push('/reports/monthly')}>
+                Monthly Report
+              </button>
+
+              <button
+                className='inline-flex items-center rounded-lg border border-transparent bg-transparent px-3 py-2 text-xs font-normal text-[var(--text-muted)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
                 onClick={() => router.push('/analytics')}>
                 Analytics
               </button>
 
               <button
-                className='inline-flex items-center rounded-lg border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
+                className='inline-flex items-center rounded-lg border border-transparent bg-transparent px-3 py-2 text-xs font-normal text-[var(--text-muted)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
                 onClick={() => router.push('/settings/accounts')}>
                 Accounts
               </button>
@@ -263,7 +271,7 @@ export default function DashboardClient() {
 
               <div className='relative' ref={profileMenuRef}>
                 <button
-                  className='inline-flex items-center rounded-lg border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
+                  className='inline-flex items-center rounded-lg border border-transparent bg-transparent px-3 py-2 text-xs font-normal text-[var(--text-muted)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
                   onClick={() => setShowProfileMenu((v) => !v)}
                   aria-haspopup='menu'
                   aria-expanded={showProfileMenu}>
@@ -403,7 +411,9 @@ export default function DashboardClient() {
         )}
 
         {/* KPI cards + insights */}
-        <DashboardCards state={s} />
+        <div className='pt-2'>
+          <DashboardCards state={s} />
+        </div>
 
         {/* Trades table */}
         <section

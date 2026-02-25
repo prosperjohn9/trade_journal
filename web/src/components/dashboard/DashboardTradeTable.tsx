@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatMoney } from '@/src/lib/utils/format';
 import { cx } from '@/src/lib/utils/ui';
@@ -26,13 +27,25 @@ type TradeRow = PropsState['trades'][number];
 
 function ChecklistCell({ score }: { score: number }) {
   const normalized = Math.max(0, Math.min(100, score));
+  const [barWidth, setBarWidth] = useState(0);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setBarWidth(normalized);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [normalized]);
 
   return (
     <div className='inline-flex items-center justify-end gap-2'>
-      <div className='h-1.5 w-20 overflow-hidden rounded-full bg-[var(--neutral-badge)]'>
+      <div className='h-1 w-20 overflow-hidden rounded-full bg-[var(--neutral-badge)]'>
         <div
-          className='h-full rounded-full bg-[var(--accent)]'
-          style={{ width: `${normalized}%` }}
+          className='h-full rounded-full transition-[width] duration-700 ease-out'
+          style={{
+            width: `${barWidth}%`,
+            backgroundColor: 'var(--accent-progress)',
+          }}
         />
       </div>
       <span className='w-10 text-right text-xs tabular-nums text-[var(--text-secondary)]'>
@@ -153,7 +166,7 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
                 </td>
 
                 <td className='min-w-[220px] pl-4 pr-8 py-[18px] text-center'>
-                  <div className='mx-auto grid w-full max-w-[176px] grid-cols-2 gap-2'>
+                  <div className='mx-auto flex w-full max-w-[220px] items-center justify-center gap-2'>
                     <button
                       className='rounded-lg border border-[var(--accent-soft)] px-3 py-2 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]'
                       onClick={() => router.push(`/trades/${t.id}`)}>
@@ -166,17 +179,33 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
                       Edit
                     </button>
 
-                    <button
-                      className='rounded-lg border border-[var(--border-default)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
-                      onClick={() => router.push(`/trades/${t.id}/review`)}>
-                      Review
-                    </button>
+                    <details className='relative'>
+                      <summary className='flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-[var(--border-default)] text-lg leading-none text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] [&::-webkit-details-marker]:hidden'>
+                        ⋯
+                      </summary>
 
-                    <button
-                      className='rounded-lg border border-[var(--border-default)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--loss)] hover:text-[var(--loss)]'
-                      onClick={() => s.requestDeleteTrade(t)}>
-                      Delete
-                    </button>
+                      <div className='absolute right-0 top-10 z-20 w-32 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-1'>
+                        <button
+                          className='w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
+                          onClick={(e) => {
+                            router.push(`/trades/${t.id}/review`);
+                            const detailsEl = e.currentTarget.closest('details');
+                            if (detailsEl) detailsEl.open = false;
+                          }}>
+                          Review
+                        </button>
+
+                        <button
+                          className='mt-1 w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--loss)]'
+                          onClick={(e) => {
+                            s.requestDeleteTrade(t);
+                            const detailsEl = e.currentTarget.closest('details');
+                            if (detailsEl) detailsEl.open = false;
+                          }}>
+                          Delete
+                        </button>
+                      </div>
+                    </details>
                   </div>
                 </td>
               </tr>
