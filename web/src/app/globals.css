@@ -38,6 +38,12 @@
   --chart-line: #2f3d52;
   --chart-grid: #d9e1ec;
   --chart-point: #435670;
+  --chart-profit-line: #16a34a;
+  --chart-loss-line: #dc2626;
+  --chart-profit-fill: rgba(22, 163, 74, 0.15);
+  --chart-loss-fill: rgba(220, 38, 38, 0.16);
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-border: #d6dee9;
 }
 
 .dashboard-theme[data-theme='light'] {
@@ -76,6 +82,12 @@
   --chart-line: #2f3d52;
   --chart-grid: #d9e1ec;
   --chart-point: #435670;
+  --chart-profit-line: #16a34a;
+  --chart-loss-line: #dc2626;
+  --chart-profit-fill: rgba(22, 163, 74, 0.15);
+  --chart-loss-fill: rgba(220, 38, 38, 0.16);
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-border: #d6dee9;
 }
 
 .dashboard-theme[data-theme='dark'] {
@@ -114,6 +126,12 @@
   --chart-line: #9fb0c8;
   --chart-grid: #2f4462;
   --chart-point: #b4c2d6;
+  --chart-profit-line: #22c55e;
+  --chart-loss-line: #f87171;
+  --chart-profit-fill: rgba(34, 197, 94, 0.2);
+  --chart-loss-fill: rgba(248, 113, 113, 0.22);
+  --chart-tooltip-bg: #111a2e;
+  --chart-tooltip-border: #304563;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -153,5 +171,11 @@
     --chart-line: #9fb0c8;
     --chart-grid: #2f4462;
     --chart-point: #b4c2d6;
+    --chart-profit-line: #22c55e;
+    --chart-loss-line: #f87171;
+    --chart-profit-fill: rgba(34, 197, 94, 0.2);
+    --chart-loss-fill: rgba(248, 113, 113, 0.22);
+    --chart-tooltip-bg: #111a2e;
+    --chart-tooltip-border: #304563;
   }
 }

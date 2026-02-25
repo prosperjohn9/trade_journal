@@ -3,6 +3,7 @@
 import type { MonthlyReportState } from '@/src/hooks/useMonthlyReport';
 import { formatMoney } from '@/src/lib/utils/format';
 import {
+  type EquityChartPoint,
   formatSignedPercent,
   LineChart,
   signValueClass,
@@ -19,6 +20,22 @@ export function MonthlyReportEquitySection({ state: s }: { state: State }) {
 
   const maxDrawdownPct = s.report.maxDrawdownPct * 100;
   const volatility = volatilityLabel(s.report.daily.map((d) => d.ret));
+  const chartPoints: EquityChartPoint[] = [
+    {
+      dayKey: 'Start',
+      xLabel: 'Start',
+      equity: s.report.startingBalance,
+      dayNet: 0,
+      cumNet: 0,
+    },
+    ...s.report.daily.map((point) => ({
+      dayKey: point.dayKey,
+      xLabel: point.dateLabel,
+      equity: point.equity,
+      dayNet: point.pnl,
+      cumNet: point.equity - s.report.startingBalance,
+    })),
+  ];
 
   return (
     <section className='space-y-4'>
@@ -42,12 +59,10 @@ export function MonthlyReportEquitySection({ state: s }: { state: State }) {
 
         <div className='mt-5'>
           <LineChart
-            values={[
-              s.report.startingBalance,
-              ...s.report.daily.map((point) => point.equity),
-            ]}
-            labels={['Start', ...s.report.daily.map((point) => point.dateLabel)]}
-            height={300}
+            points={chartPoints}
+            startingBalance={s.report.startingBalance}
+            currency={s.baseCurrency}
+            height={320}
           />
         </div>
 

@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { formatMoney } from '@/src/lib/utils/format';
 import { cx } from '@/src/lib/utils/ui';
 
 export function formatNumber(amount: number, maxDigits = 2): string {
@@ -69,9 +71,26 @@ export function ReportMetricCard({
   );
 }
 
-type ChartPoint = { x: number; y: number };
+export type EquityChartPoint = {
+  dayKey: string;
+  xLabel: string;
+  equity: number;
+  dayNet: number;
+  cumNet: number;
+};
 
-function smoothPath(points: ChartPoint[]): string {
+type CartesianPoint = {
+  x: number;
+  y: number;
+  value: number;
+};
+
+type SignedSegment = {
+  tone: 'profit' | 'loss';
+  points: CartesianPoint[];
+};
+
+function smoothPath(points: Array<{ x: number; y: number }>): string {
   if (!points.length) return '';
   if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
 
@@ -93,70 +112,354 @@ function smoothPath(points: ChartPoint[]): string {
   return d;
 }
 
+function splitByBaseline(
+  points: CartesianPoint[],
+  baselineValue: number,
+): SignedSegment[] {
+  if (points.length < 2) return [];
+
+  const segments: SignedSegment[] = [];
+
+  let currentTone: SignedSegment['tone'] =
+    points[0].value >= baselineValue ? 'profit' : 'loss';
+  let currentPoints: CartesianPoint[] = [points[0]];
+
+  for (let i = 1; i < points.length; i += 1) {
+    const p1 = currentPoints[currentPoints.length - 1];
+    const p2 = points[i];
+
+    const p1Above = p1.value >= baselineValue;
+    const p2Above = p2.value >= baselineValue;
+
+    if (p1Above === p2Above || p1.value === p2.value) {
+      currentPoints.push(p2);
+      continue;
+    }
+
+    const t = (baselineValue - p1.value) / (p2.value - p1.value);
+    const crossingPoint: CartesianPoint = {
+      x: p1.x + (p2.x - p1.x) * t,
+      y: p1.y + (p2.y - p1.y) * t,
+      value: baselineValue,
+    };
+
+    currentPoints.push(crossingPoint);
+
+    segments.push({
+      tone: currentTone,
+      points: currentPoints,
+    });
+
+    currentTone = p2Above ? 'profit' : 'loss';
+    currentPoints = [crossingPoint, p2];
+  }
+
+  if (currentPoints.length > 1) {
+    segments.push({ tone: currentTone, points: currentPoints });
+  }
+
+  return segments;
+}
+
+function areaPath(points: CartesianPoint[], baselineY: number): string {
+  if (points.length < 2) return '';
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  const line = points
+    .slice(1)
+    .map((p) => `L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+    .join(' ');
+
+  return [
+    `M ${first.x.toFixed(2)} ${baselineY.toFixed(2)}`,
+    `L ${first.x.toFixed(2)} ${first.y.toFixed(2)}`,
+    line,
+    `L ${last.x.toFixed(2)} ${baselineY.toFixed(2)}`,
+    'Z',
+  ].join(' ');
+}
+
+function formatTooltipDateLabel(dayKey: string): string {
+  if (dayKey === 'Start') return 'Start';
+
+  const d = new Date(dayKey);
+  if (Number.isNaN(d.getTime())) return dayKey;
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
+function tooltipMetricTone(n: number): string {
+  if (n > 0) return 'text-[var(--profit)]';
+  if (n < 0) return 'text-[var(--loss)]';
+  return 'text-[var(--text-primary)]';
+}
+
 export function LineChart({
-  values,
-  labels,
-  height = 280,
+  points,
+  startingBalance,
+  currency,
+  height = 300,
 }: {
-  values: number[];
-  labels: string[];
+  points: EquityChartPoint[];
+  startingBalance: number;
+  currency: string;
   height?: number;
 }) {
-  const width = 1000;
-  const padX = 20;
-  const padY = 26;
+  const width = 1080;
+  const padL = 112;
+  const padR = 26;
+  const padT = 20;
+  const padB = 40;
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
-  const points = values.map((v, i) => {
-    const x = padX + (i * (width - padX * 2)) / Math.max(values.length - 1, 1);
-    const y = padY + (1 - (v - min) / range) * (height - padY * 2);
-    return { x, y };
+  if (!points.length) {
+    return (
+      <div className='rounded-xl border border-[var(--table-divider)] bg-[var(--surface-elevated)] p-6 text-center text-sm text-[var(--text-secondary)]'>
+        No equity data available.
+      </div>
+    );
+  }
+
+  const values = points.map((point) => point.equity);
+  const min = Math.min(...values, startingBalance);
+  const max = Math.max(...values, startingBalance);
+  const range = max - min || Math.max(Math.abs(max) * 0.02, 1);
+
+  // Add symmetric headroom/footroom so the curve stays visually centered.
+  const yPadding = Math.max(range * 0.18, Math.abs(startingBalance) * 0.006, 1);
+  const domainMin = min - yPadding;
+  const domainMax = max + yPadding;
+  const domainRange = domainMax - domainMin || 1;
+
+  const toX = (index: number) =>
+    padL + (index * (width - padL - padR)) / Math.max(points.length - 1, 1);
+  const toY = (value: number) =>
+    padT + (1 - (value - domainMin) / domainRange) * (height - padT - padB);
+
+  const cartesianPoints: CartesianPoint[] = points.map((point, index) => ({
+    x: toX(index),
+    y: toY(point.equity),
+    value: point.equity,
+  }));
+
+  const baselineY = toY(startingBalance);
+  const lineSegments = splitByBaseline(cartesianPoints, startingBalance);
+
+  const ticks = 4;
+  const baseTicks = Array.from({ length: ticks + 1 }, (_, i) => {
+    const v = domainMin + (domainRange * i) / ticks;
+    return Number(v.toFixed(2));
   });
+  const tickValues = Array.from(
+    new Set([...baseTicks, Number(startingBalance.toFixed(2))]),
+  ).sort((a, b) => b - a);
 
-  const pathD = smoothPath(points);
+  const currentIndex =
+    selectedIndex === null
+      ? points.length - 1
+      : Math.min(selectedIndex, points.length - 1);
+  const activePoint = points[currentIndex];
+  const activeXY = cartesianPoints[currentIndex];
+  const tooltipWidth = 236;
+  const tooltipHeight = 130;
+  const tooltipXBase =
+    activeXY.x > width - tooltipWidth - 24
+      ? activeXY.x - tooltipWidth - 14
+      : activeXY.x + 14;
+  const tooltipYBase =
+    activeXY.y < tooltipHeight + 24
+      ? activeXY.y + 14
+      : activeXY.y - tooltipHeight - 14;
+  const tooltipX = Math.max(8, Math.min(tooltipXBase, width - tooltipWidth - 8));
+  const tooltipY = Math.max(
+    8,
+    Math.min(tooltipYBase, height - tooltipHeight - 8),
+  );
 
-  const gridLines = [0.2, 0.5, 0.8].map((ratio) => {
-    const y = padY + ratio * (height - padY * 2);
-    return { y, id: ratio };
-  });
+  const labelStep =
+    points.length > 14 ? Math.ceil((points.length - 1) / 10) : 1;
 
   return (
-    <div className='w-full'>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className='block h-[280px] w-full md:h-[310px]'
-        role='img'
-        aria-label='Equity curve'>
-        {gridLines.map((line) => (
+    <div className='relative w-full'>
+      <div className='overflow-x-auto'>
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className='block h-[300px] min-w-[760px] w-full md:h-[330px]'
+          role='img'
+          aria-label='Equity curve'>
+          {tickValues.map((tick) => {
+            const y = toY(tick);
+            const isBaseline = Math.abs(tick - startingBalance) < 0.005;
+
+            return (
+              <g key={tick}>
+                <line
+                  x1={padL}
+                  y1={y}
+                  x2={width - padR}
+                  y2={y}
+                  stroke='var(--chart-grid)'
+                  strokeDasharray={isBaseline ? '4 4' : '0'}
+                  strokeWidth={isBaseline ? '1.25' : '1'}
+                />
+                <text
+                  x={10}
+                  y={y + 4}
+                  fontSize='11'
+                  fill='var(--text-muted)'
+                  className='tabular-nums'>
+                  {formatMoney(tick, currency)}
+                </text>
+              </g>
+            );
+          })}
+
+          {lineSegments.map((segment, idx) => {
+            const fillD = areaPath(segment.points, baselineY);
+            const strokeD = smoothPath(segment.points);
+
+            return (
+              <g key={`${segment.tone}-${idx}`}>
+                {fillD && (
+                  <path
+                    d={fillD}
+                    fill={
+                      segment.tone === 'profit'
+                        ? 'var(--chart-profit-fill)'
+                        : 'var(--chart-loss-fill)'
+                    }
+                    opacity='0.8'
+                  />
+                )}
+
+                <path
+                  d={strokeD}
+                  fill='none'
+                  stroke={
+                    segment.tone === 'profit'
+                      ? 'var(--chart-profit-line)'
+                      : 'var(--chart-loss-line)'
+                  }
+                  strokeWidth='2.4'
+                  strokeLinecap='round'
+                />
+              </g>
+            );
+          })}
+
           <line
-            key={line.id}
-            x1={padX}
-            y1={line.y}
-            x2={width - padX}
-            y2={line.y}
+            x1={activeXY.x}
+            y1={padT}
+            x2={activeXY.x}
+            y2={height - padB}
             stroke='var(--chart-grid)'
-            strokeWidth='1'
+            strokeDasharray='4 4'
           />
-        ))}
 
-        <path d={pathD} fill='none' stroke='var(--chart-line)' strokeWidth='2' />
+          {cartesianPoints.map((point, index) => {
+            const above = points[index].equity >= startingBalance;
+            const isActive = index === currentIndex;
 
-        {points.length > 0 && (
-          <circle
-            cx={points[points.length - 1].x}
-            cy={points[points.length - 1].y}
-            r='3.25'
-            fill='var(--chart-point)'
-          />
-        )}
-      </svg>
+            return (
+              <g key={`${points[index].dayKey}-${index}`}>
+                <circle
+                  cx={point.x}
+                  cy={point.y}
+                  r='10'
+                  fill='transparent'
+                  onMouseEnter={() => setSelectedIndex(index)}
+                  onMouseMove={() => setSelectedIndex(index)}
+                  onClick={() => setSelectedIndex(index)}
+                  style={{ pointerEvents: 'all' }}
+                />
 
-      <div className='mt-2 flex justify-between text-xs text-[var(--text-muted)]'>
-        <span>{labels[0] ?? ''}</span>
-        <span>{labels[labels.length - 1] ?? ''}</span>
+                <circle
+                  cx={point.x}
+                  cy={point.y}
+                  r={isActive ? '5.6' : '3.2'}
+                  fill={
+                    above ? 'var(--chart-profit-line)' : 'var(--chart-loss-line)'
+                  }
+                  stroke='var(--surface-elevated)'
+                  strokeWidth={isActive ? '2.2' : '1.4'}
+                />
+              </g>
+            );
+          })}
+
+          {points.map((point, index) => {
+            if (
+              index !== 0 &&
+              index !== points.length - 1 &&
+              index % labelStep !== 0
+            ) {
+              return null;
+            }
+
+            return (
+              <text
+                key={`${point.dayKey}-x`}
+                x={cartesianPoints[index].x}
+                y={height - 10}
+                fontSize='11'
+                fill='var(--text-muted)'
+                textAnchor='middle'>
+                {point.xLabel}
+              </text>
+            );
+          })}
+        </svg>
+      </div>
+
+      <div
+        className='pointer-events-none absolute z-20 min-w-[210px] rounded-xl border px-3 py-2 text-xs shadow-sm'
+        style={{
+          left: `${(tooltipX / width) * 100}%`,
+          top: `${(tooltipY / height) * 100}%`,
+          backgroundColor: 'var(--chart-tooltip-bg)',
+          borderColor: 'var(--chart-tooltip-border)',
+          color: 'var(--text-primary)',
+        }}>
+        <div className='font-semibold text-[var(--text-primary)]'>
+          {formatTooltipDateLabel(activePoint.dayKey)}
+        </div>
+
+        <div className='mt-2 space-y-1.5'>
+          <div className='flex items-center justify-between gap-3'>
+            <span className='text-[var(--text-secondary)]'>Equity</span>
+            <span className='font-semibold tabular-nums'>
+              {formatMoney(activePoint.equity, currency)}
+            </span>
+          </div>
+
+          <div className='flex items-center justify-between gap-3'>
+            <span className='text-[var(--text-secondary)]'>Day Net</span>
+            <span
+              className={cx(
+                'font-semibold tabular-nums',
+                tooltipMetricTone(activePoint.dayNet),
+              )}>
+              {formatMoney(activePoint.dayNet, currency)}
+            </span>
+          </div>
+
+          <div className='flex items-center justify-between gap-3'>
+            <span className='text-[var(--text-secondary)]'>Cum Net</span>
+            <span
+              className={cx(
+                'font-semibold tabular-nums',
+                tooltipMetricTone(activePoint.cumNet),
+              )}>
+              {formatMoney(activePoint.cumNet, currency)}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
