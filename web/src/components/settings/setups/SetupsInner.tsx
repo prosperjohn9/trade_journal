@@ -17,7 +17,6 @@ export function SetupsInner() {
   const sp = useSearchParams();
   const [theme, setTheme] = useState<DashboardTheme>('light');
 
-  // Only allow internal paths to avoid open-redirect issues.
   const returnToParam = sp.get('returnTo');
   const returnTo =
     returnToParam && returnToParam.startsWith('/') ? returnToParam : null;

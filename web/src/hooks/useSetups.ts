@@ -409,8 +409,6 @@ export function useSetups() {
     setMsg('Reordering...');
 
     try {
-      // Stage 1: move all rows to a high temporary order range to avoid
-      // collisions when sort_order has uniqueness constraints.
       for (let index = 0; index < nextOrdered.length; index += 1) {
         const { error } = await supabase
           .from('setup_template_items')
@@ -419,7 +417,6 @@ export function useSetups() {
         if (error) throw error;
       }
 
-      // Stage 2: write final contiguous order.
       for (let index = 0; index < nextOrdered.length; index += 1) {
         const { error } = await supabase
           .from('setup_template_items')

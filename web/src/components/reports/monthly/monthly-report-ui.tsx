@@ -242,7 +242,6 @@ export function LineChart({
   const max = Math.max(...values, startingBalance);
   const range = max - min || Math.max(Math.abs(max) * 0.02, 1);
 
-  // Add symmetric headroom/footroom so the curve stays visually centered.
   const yPadding = Math.max(range * 0.18, Math.abs(startingBalance) * 0.006, 1);
   const domainMin = min - yPadding;
   const domainMax = max + yPadding;
