@@ -1,47 +1,37 @@
 'use client';
 
-import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import type { useAccounts } from '@/src/hooks/useAccounts';
 
 type AccountsState = Pick<
   ReturnType<typeof useAccounts>,
-  'accounts' | 'defaultAccountId' | 'openAdd'
+  'openAdd'
 >;
 
 export function AccountsHeader({ state: s }: { state: AccountsState }) {
   const router = useRouter();
 
-  const defaultName = useMemo(() => {
-    if (!s.defaultAccountId) return null;
-    return s.accounts.find((a) => a.id === s.defaultAccountId)?.name ?? null;
-  }, [s.accounts, s.defaultAccountId]);
-
   return (
-    <header className='flex items-start justify-between gap-4'>
-      <div className='space-y-1'>
-        <h1 className='text-2xl font-semibold'>Accounts</h1>
-        <div className='text-sm opacity-80'>
-          Manage your trading accounts. Every trade belongs to exactly one
-          account.
-        </div>
-
-        {defaultName && (
-          <div className='text-sm opacity-70'>
-            Default account:{' '}
-            <span className='font-semibold'>{defaultName}</span>
-          </div>
-        )}
+    <header className='flex flex-col gap-5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5 md:flex-row md:items-start md:justify-between'>
+      <div>
+        <h1 className='text-[2rem] font-semibold tracking-tight text-[var(--text-primary)]'>
+          Accounts
+        </h1>
+        <p className='mt-1 text-sm text-[var(--text-secondary)]'>
+          Manage and organize your trading capital.
+        </p>
       </div>
 
-      <div className='flex gap-2'>
+      <div className='flex flex-wrap gap-2 md:justify-end'>
         <button
-          className='border rounded-lg px-4 py-2'
+          className='rounded-lg border border-[var(--border-default)] bg-transparent px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
           onClick={() => router.push('/dashboard')}>
           Back
         </button>
 
-        <button className='border rounded-lg px-4 py-2' onClick={s.openAdd}>
+        <button
+          className='rounded-lg border border-transparent bg-[var(--accent-cta)] px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110'
+          onClick={s.openAdd}>
           + Add Account
         </button>
       </div>
