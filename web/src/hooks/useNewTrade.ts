@@ -10,6 +10,7 @@ import {
   loadNewTradeBootstrap,
   loadSetupItemsForTemplate,
 } from '@/src/lib/services/newTrade.service';
+import { toNumberSafe } from '@/src/lib/utils/number';
 
 export type Direction = 'BUY' | 'SELL';
 export type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
@@ -29,10 +30,40 @@ export type SetupItem = {
 export type AccountLite = {
   id: string;
   name: string;
+  account_type: string;
   is_default: boolean;
   base_currency: string | null;
   starting_balance: number;
 };
+
+const RECENT_INSTRUMENTS_KEY = 'new-trade-recent-instruments-v1';
+const MAX_RECENT_INSTRUMENTS = 8;
+const MAX_RISK_PERCENT = 2;
+const FAVORITE_INSTRUMENTS = ['EURUSD', 'GBPUSD', 'XAUUSD', 'US30', 'BTCUSD'];
+
+function normalizeInstrument(value: string): string {
+  return value.trim().replace(/\s+/g, '').toUpperCase();
+}
+
+function normalizePnlByOutcome(outcome: Outcome, amount: number): number {
+  if (outcome === 'LOSS') return -Math.abs(amount);
+  if (outcome === 'WIN') return Math.abs(amount);
+  return amount;
+}
+
+function uniqueInOrder(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const value of values) {
+    const normalized = normalizeInstrument(value);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+
+  return out;
+}
 
 export function useNewTrade() {
   const router = useRouter();
@@ -44,7 +75,6 @@ export function useNewTrade() {
   const [outcome, setOutcome] = useState<Outcome>('WIN');
 
   const [pnlAmount, setPnlAmount] = useState<string>('2000');
-  const [pnlPercent, setPnlPercent] = useState<string>('2');
   const [riskAmount, setRiskAmount] = useState<number>(1000);
 
   const [accounts, setAccounts] = useState<AccountLite[]>([]);
@@ -55,6 +85,8 @@ export function useNewTrade() {
   const [items, setItems] = useState<SetupItem[]>([]);
   const [checks, setChecks] = useState<Record<string, boolean>>({});
 
+  const [recentInstruments, setRecentInstruments] = useState<string[]>([]);
+
   const [beforeFile, setBeforeFile] = useState<File | null>(null);
   const [beforePreviewUrl, setBeforePreviewUrl] = useState<string>('');
   const beforePreviewUrlRef = useRef<string>('');
@@ -62,8 +94,100 @@ export function useNewTrade() {
   const [notes, setNotes] = useState('');
   const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+  const [checklistLoaded, setChecklistLoaded] = useState(false);
 
   const hasAccounts = accounts.length > 0;
+
+  const selectedAccount = useMemo(
+    () => accounts.find((a) => a.id === accountId) ?? null,
+    [accounts, accountId],
+  );
+  const selectedAccountBalance = useMemo(
+    () => toNumberSafe(selectedAccount?.starting_balance, 0),
+    [selectedAccount?.starting_balance],
+  );
+  const selectedCurrency = selectedAccount?.base_currency ?? 'USD';
+
+  const pnlAmountNumber = useMemo(() => toNumberSafe(pnlAmount, 0), [pnlAmount]);
+  const normalizedPnlAmount = useMemo(
+    () => normalizePnlByOutcome(outcome, pnlAmountNumber),
+    [outcome, pnlAmountNumber],
+  );
+
+  const pnlPercentNumber = useMemo(() => {
+    if (!selectedAccountBalance) return null;
+    return (normalizedPnlAmount / selectedAccountBalance) * 100;
+  }, [normalizedPnlAmount, selectedAccountBalance]);
+
+  const pnlPercent = useMemo(() => {
+    if (pnlPercentNumber === null || Number.isNaN(pnlPercentNumber)) return '—';
+    return pnlPercentNumber.toFixed(2);
+  }, [pnlPercentNumber]);
+
+  const rMultiple = useMemo(() => {
+    if (!riskAmount || Number.isNaN(riskAmount)) return null;
+    return normalizedPnlAmount / riskAmount;
+  }, [normalizedPnlAmount, riskAmount]);
+
+  const riskPercentOfAccount = useMemo(() => {
+    if (!selectedAccountBalance || !riskAmount || Number.isNaN(riskAmount)) {
+      return null;
+    }
+    return (riskAmount / selectedAccountBalance) * 100;
+  }, [riskAmount, selectedAccountBalance]);
+
+  const riskExceedsPolicy = useMemo(
+    () =>
+      riskPercentOfAccount !== null &&
+      Number.isFinite(riskPercentOfAccount) &&
+      riskPercentOfAccount > MAX_RISK_PERCENT,
+    [riskPercentOfAccount],
+  );
+
+  const favoriteInstruments = useMemo(() => FAVORITE_INSTRUMENTS, []);
+  const instrumentSuggestions = useMemo(
+    () =>
+      uniqueInOrder([
+        instrument,
+        ...recentInstruments,
+        ...favoriteInstruments,
+      ]),
+    [favoriteInstruments, instrument, recentInstruments],
+  );
+
+  const canSave = useMemo(() => {
+    if (!hasAccounts) return false;
+    if (!accountId.trim()) return false;
+    if (!openedAt.trim()) return false;
+    if (!normalizeInstrument(instrument)) return false;
+    const pnlNum = Number(pnlAmount);
+    return Number.isFinite(pnlNum);
+  }, [accountId, hasAccounts, instrument, openedAt, pnlAmount]);
+
+  function persistRecentInstruments(next: string[]) {
+    setRecentInstruments(next);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(RECENT_INSTRUMENTS_KEY, JSON.stringify(next));
+    }
+  }
+
+  function recordRecentInstrument(value: string) {
+    const normalized = normalizeInstrument(value);
+    if (!normalized) return;
+
+    setRecentInstruments((prev) => {
+      const next = uniqueInOrder([normalized, ...prev]).slice(
+        0,
+        MAX_RECENT_INSTRUMENTS,
+      );
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(RECENT_INSTRUMENTS_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+  }
 
   function onBeforeFileChange(file: File | null) {
     if (beforePreviewUrlRef.current) {
@@ -83,6 +207,24 @@ export function useNewTrade() {
     setBeforePreviewUrl(url);
   }
 
+  function selectInstrument(next: string) {
+    setInstrument(normalizeInstrument(next));
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const raw = window.localStorage.getItem(RECENT_INSTRUMENTS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      persistRecentInstruments(uniqueInOrder(parsed).slice(0, MAX_RECENT_INSTRUMENTS));
+    } catch {
+      persistRecentInstruments([]);
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       if (beforePreviewUrlRef.current) {
@@ -97,6 +239,7 @@ export function useNewTrade() {
 
     (async () => {
       setMsg('');
+      if (!cancelled) setInitialized(false);
 
       try {
         const accList = (await listAccounts()) as AccountLite[];
@@ -115,6 +258,8 @@ export function useNewTrade() {
         const m = getErr(e, 'Failed to load Add Trade');
         setMsg(m);
         if (m.toLowerCase().includes('not authenticated')) router.push('/auth');
+      } finally {
+        if (!cancelled) setInitialized(true);
       }
     })();
 
@@ -127,9 +272,11 @@ export function useNewTrade() {
     let cancelled = false;
 
     (async () => {
+      if (!cancelled) setChecklistLoaded(false);
       if (!templateId) {
         setItems([]);
         setChecks({});
+        setChecklistLoaded(true);
         return;
       }
 
@@ -141,8 +288,10 @@ export function useNewTrade() {
         const next: Record<string, boolean> = {};
         for (const it of list) next[it.id] = false;
         setChecks(next);
+        setChecklistLoaded(true);
       } catch (e: unknown) {
         if (!cancelled) setMsg(getErr(e, 'Failed to load checklist items'));
+        if (!cancelled) setChecklistLoaded(true);
       }
     })();
 
@@ -165,13 +314,6 @@ export function useNewTrade() {
     return total > 0 ? Math.round((checkedCount / total) * 100) : null;
   }, [checkedCount, items.length]);
 
-  const rMultiple = useMemo(() => {
-    if (!riskAmount || Number.isNaN(riskAmount)) return null;
-    const amountNum = Number(pnlAmount);
-    if (Number.isNaN(amountNum)) return null;
-    return amountNum / riskAmount;
-  }, [pnlAmount, riskAmount]);
-
   async function onSaveTrade(e: FormEvent) {
     e.preventDefault();
     if (saving) return;
@@ -181,6 +323,16 @@ export function useNewTrade() {
       return;
     }
 
+    const nextInstrument = normalizeInstrument(instrument);
+    if (!nextInstrument) {
+      setMsg('Instrument is required.');
+      return;
+    }
+
+    const pnlPercentRaw = Number.isFinite(pnlPercentNumber ?? NaN)
+      ? String(pnlPercentNumber)
+      : '0';
+
     setSaving(true);
     setMsg('Saving...');
 
@@ -188,11 +340,11 @@ export function useNewTrade() {
       await createTradeFlow({
         accountId,
         openedAtLocal: openedAt,
-        instrument,
+        instrument: nextInstrument,
         direction,
         outcome,
         pnlAmountRaw: pnlAmount,
-        pnlPercentRaw: pnlPercent,
+        pnlPercentRaw,
         riskAmount,
         notes,
         templateId: templateId || null,
@@ -201,6 +353,7 @@ export function useNewTrade() {
         beforeFile,
       });
 
+      recordRecentInstrument(nextInstrument);
       setMsg('Saved');
       router.push('/dashboard');
     } catch (e: unknown) {
@@ -219,7 +372,7 @@ export function useNewTrade() {
     openedAt,
     setOpenedAt,
     instrument,
-    setInstrument,
+    setInstrument: selectInstrument,
     direction,
     setDirection,
     outcome,
@@ -227,10 +380,20 @@ export function useNewTrade() {
     pnlAmount,
     setPnlAmount,
     pnlPercent,
-    setPnlPercent,
+    pnlPercentNumber,
     riskAmount,
     setRiskAmount,
     rMultiple,
+    selectedCurrency,
+    selectedAccount,
+    selectedAccountBalance,
+    riskPercentOfAccount,
+    riskExceedsPolicy,
+    maxRiskPercent: MAX_RISK_PERCENT,
+
+    favoriteInstruments,
+    recentInstruments,
+    instrumentSuggestions,
 
     templates,
     templateId,
@@ -248,6 +411,9 @@ export function useNewTrade() {
     setNotes,
     msg,
     saving,
+    initialized,
+    checklistLoaded,
+    canSave,
     onSaveTrade,
   };
 }

@@ -39,6 +39,7 @@ export function useSetups() {
   const [items, setItems] = useState<Item[]>([]);
 
   const [newTemplateName, setNewTemplateName] = useState('');
+  const [newTemplateDescription, setNewTemplateDescription] = useState('');
   const [newItemLabel, setNewItemLabel] = useState('');
 
   const [isRenamingTemplate, setIsRenamingTemplate] = useState(false);
@@ -152,11 +153,11 @@ export function useSetups() {
 
   async function createTemplate() {
     const name = newTemplateName.trim();
-    if (!name) return;
+    if (!name) return false;
 
     if (!userId) {
       router.push('/auth');
-      return;
+      return false;
     }
 
     setMsg('Creating template...');
@@ -171,11 +172,14 @@ export function useSetups() {
       if (error) throw error;
 
       setNewTemplateName('');
+      setNewTemplateDescription('');
       setMsg('Created');
       await loadTemplates(userId);
       window.setTimeout(() => setMsg(''), 1200);
+      return true;
     } catch (e: unknown) {
       setMsg(getErr(e, 'Failed to create template'));
+      return false;
     }
   }
 
@@ -216,10 +220,20 @@ export function useSetups() {
 
   function requestDeleteTemplate() {
     if (!selectedTemplate) return;
+
+    if (selectedTemplate.is_default) {
+      setMsg('Set another template as default before deleting this template.');
+      window.setTimeout(() => setMsg(''), 2000);
+      return;
+    }
+
     setDeleteTarget({ kind: 'template', template: selectedTemplate });
   }
 
   async function setDefaultTemplate(templateId: string) {
+    const target = templates.find((template) => template.id === templateId);
+    if (!target || target.is_default) return;
+
     if (!userId) {
       router.push('/auth');
       return;
@@ -376,6 +390,52 @@ export function useSetups() {
     }
   }
 
+  async function reorderItems(nextIds: string[]) {
+    if (isAnyEditing) return;
+    if (!selectedTemplateId) return;
+    if (!nextIds.length) return;
+
+    const byId = new Map(items.map((item) => [item.id, item] as const));
+    const nextOrdered = nextIds
+      .map((id) => byId.get(id))
+      .filter((item): item is Item => !!item);
+
+    if (nextOrdered.length !== items.length) return;
+
+    const isSameOrder = items.every((item, index) => item.id === nextIds[index]);
+    if (isSameOrder) return;
+
+    setItems(nextOrdered.map((item, index) => ({ ...item, sort_order: index })));
+    setMsg('Reordering...');
+
+    try {
+      // Stage 1: move all rows to a high temporary order range to avoid
+      // collisions when sort_order has uniqueness constraints.
+      for (let index = 0; index < nextOrdered.length; index += 1) {
+        const { error } = await supabase
+          .from('setup_template_items')
+          .update({ sort_order: 1000 + index })
+          .eq('id', nextOrdered[index].id);
+        if (error) throw error;
+      }
+
+      // Stage 2: write final contiguous order.
+      for (let index = 0; index < nextOrdered.length; index += 1) {
+        const { error } = await supabase
+          .from('setup_template_items')
+          .update({ sort_order: index })
+          .eq('id', nextOrdered[index].id);
+        if (error) throw error;
+      }
+
+      await loadItems(selectedTemplateId);
+      setMsg('');
+    } catch (e: unknown) {
+      setMsg(getErr(e, 'Failed to reorder'));
+      await loadItems(selectedTemplateId);
+    }
+  }
+
   function requestDeleteItem(item: Item) {
     setDeleteTarget({ kind: 'item', item });
   }
@@ -445,6 +505,8 @@ export function useSetups() {
 
     newTemplateName,
     setNewTemplateName,
+    newTemplateDescription,
+    setNewTemplateDescription,
     createTemplate,
 
     newItemLabel,
@@ -469,6 +531,7 @@ export function useSetups() {
 
     toggleItemActive,
     moveItem,
+    reorderItems,
 
     deleteTarget,
     deleting,

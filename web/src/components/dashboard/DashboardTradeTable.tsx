@@ -25,8 +25,15 @@ type PropsState = Pick<
 
 type TradeRow = PropsState['trades'][number];
 
+function executionTone(score: number): string {
+  if (score < 40) return 'var(--loss)';
+  if (score < 70) return '#f59e0b';
+  return 'var(--profit)';
+}
+
 function ChecklistCell({ score }: { score: number }) {
   const normalized = Math.max(0, Math.min(100, score));
+  const tone = executionTone(normalized);
   const [barWidth, setBarWidth] = useState(0);
 
   useEffect(() => {
@@ -39,16 +46,20 @@ function ChecklistCell({ score }: { score: number }) {
 
   return (
     <div className='inline-flex items-center justify-end gap-2'>
-      <div className='h-1 w-20 overflow-hidden rounded-full bg-[var(--neutral-badge)]'>
+      <div className='h-1 w-20 overflow-hidden rounded-full bg-[var(--bg-subtle)]'>
         <div
           className='h-full rounded-full transition-[width] duration-700 ease-out'
           style={{
             width: `${barWidth}%`,
-            backgroundColor: 'var(--accent-progress)',
+            background: `linear-gradient(90deg, color-mix(in srgb, ${tone} 80%, transparent), color-mix(in srgb, ${tone} 45%, transparent))`,
           }}
         />
       </div>
-      <span className='w-10 text-right text-xs tabular-nums text-[var(--text-secondary)]'>
+      <span
+        className='w-10 text-right text-xs font-semibold tabular-nums'
+        style={{
+          color: `color-mix(in srgb, ${tone} 88%, var(--text-primary))`,
+        }}>
         {normalized.toFixed(0)}%
       </span>
     </div>

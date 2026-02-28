@@ -13,29 +13,29 @@ export function SetupsDeleteModal({
 }) {
   const title =
     s.deleteTarget?.kind === 'template'
-      ? 'Delete setup template?'
+      ? 'Delete Template?'
       : 'Delete checklist item?';
 
   const body =
     s.deleteTarget?.kind === 'template'
-      ? `This will delete "${s.deleteTarget.template.name}" and all its items. This cannot be undone.`
+      ? 'This will remove all associated checklist rules. This cannot be undone.'
       : s.deleteTarget?.kind === 'item'
         ? `This will delete "${s.deleteTarget.item.label}". This cannot be undone.`
         : '';
 
   return (
     <Modal open={!!s.deleteTarget} title={title} onClose={s.closeDelete}>
-      <p className='text-sm opacity-80'>{body}</p>
+      <p className='text-sm text-[var(--text-secondary)]'>{body}</p>
 
-      <div className='mt-4 flex gap-2 justify-end'>
+      <div className='mt-4 flex justify-end gap-2'>
         <button
-          className='border rounded-lg px-4 py-2 disabled:opacity-60'
+          className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] disabled:opacity-60'
           onClick={s.closeDelete}
           disabled={s.deleting}>
           Cancel
         </button>
         <button
-          className='border rounded-lg px-4 py-2 disabled:opacity-60'
+          className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2 text-sm text-[var(--loss)] transition-colors hover:bg-[var(--loss-soft)] disabled:opacity-60'
           onClick={s.confirmDelete}
           disabled={s.deleting}>
           {s.deleting ? 'Deleting...' : 'Delete'}
