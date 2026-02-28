@@ -128,7 +128,7 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
                         'color-mix(in srgb, var(--accent) 35%, transparent)',
                       color: 'color-mix(in srgb, var(--accent) 86%, var(--text-primary))',
                     }}>
-                    ⭐ Default
+                    Default
                   </span>
                 )}
               </div>
@@ -204,7 +204,7 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
 
         {!s.accounts.length && (
           <div className='rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-6 text-sm text-[var(--text-secondary)]'>
-            No accounts yet. Click <span className='font-semibold'>+ Add Account</span>{' '}
+            No accounts yet. Click <span className='font-semibold'>Add Account</span>{' '}
             to create your first one.
           </div>
         )}

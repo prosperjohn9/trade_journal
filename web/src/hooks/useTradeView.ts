@@ -41,7 +41,13 @@ export type TradeView = {
   before_screenshot_path: string | null;
   after_trade_screenshot_url: string | null;
   account_id: string | null;
-  account: { id: string; name: string } | null;
+  account: {
+    id: string;
+    name: string;
+    account_type?: string | null;
+    base_currency?: string | null;
+    starting_balance?: number | null;
+  } | null;
 };
 
 export type TradeChecklistItem = {

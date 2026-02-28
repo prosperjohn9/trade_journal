@@ -32,7 +32,7 @@ export function AccountsHeader({ state: s }: { state: AccountsState }) {
         <button
           className='rounded-lg border border-transparent bg-[var(--accent-cta)] px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110'
           onClick={s.openAdd}>
-          + Add Account
+          Add Account
         </button>
       </div>
     </header>
