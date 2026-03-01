@@ -122,7 +122,7 @@ export async function loadTradeReviewChecklist(params: {
   const saved = await listTradeChecks({ tradeId: params.tradeId, itemIds });
 
   const checks: Record<string, boolean> = {};
-  for (const id of itemIds) checks[id] = true;
+  for (const id of itemIds) checks[id] = false;
   for (const row of saved) checks[row.item_id] = !!row.checked;
 
   return { items, checks };

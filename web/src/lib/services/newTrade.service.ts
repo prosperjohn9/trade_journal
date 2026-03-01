@@ -3,16 +3,13 @@ import { toNumberSafe } from '@/src/lib/utils/number';
 import type {
   Direction,
   Outcome,
-  SetupItem,
   SetupTemplate,
 } from '@/src/hooks/useNewTrade';
 import { fetchSetupTemplates } from '@/src/lib/db/setupTemplates.repo';
-import { fetchActiveSetupItemsByTemplate } from '@/src/lib/db/setupTemplateItems.repo';
 import {
   createTradeRow,
   updateTradeBeforeScreenshotPath,
 } from '@/src/lib/db/tradesWrite.repo';
-import { upsertTradeCriteriaChecks } from '@/src/lib/db/tradeCriteriaChecks.repo';
 import { uploadTradeBeforeScreenshot } from '@/src/lib/db/tradeScreenshots.repo';
 
 export function getDefaultMonthDatetimeLocal(): string {
@@ -39,13 +36,6 @@ export async function loadNewTradeBootstrap(): Promise<{
   const defaultTemplateId = def?.id ?? templates[0]?.id ?? '';
 
   return { templates, defaultTemplateId };
-}
-
-export async function loadSetupItemsForTemplate(
-  templateId: string,
-): Promise<SetupItem[]> {
-  await requireUser();
-  return fetchActiveSetupItemsByTemplate(templateId);
 }
 
 function normalizePnlByOutcome(params: {
@@ -87,9 +77,6 @@ export async function createTradeFlow(params: {
   notes: string;
   templateId: string | null;
 
-  items: SetupItem[];
-  checks: Record<string, boolean>;
-
   beforeFile: File | null;
 }): Promise<void> {
   const user = await requireUser();
@@ -127,16 +114,6 @@ export async function createTradeFlow(params: {
   });
 
   const tradeId = created.id;
-
-  if (params.templateId && params.items.length) {
-    const payload = params.items.map((it) => ({
-      trade_id: tradeId,
-      item_id: it.id,
-      checked: !!params.checks[it.id],
-    }));
-
-    await upsertTradeCriteriaChecks(payload);
-  }
 
   if (params.beforeFile) {
     const path = await uploadTradeBeforeScreenshot({

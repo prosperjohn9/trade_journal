@@ -8,7 +8,6 @@ import {
   createTradeFlow,
   getDefaultMonthDatetimeLocal,
   loadNewTradeBootstrap,
-  loadSetupItemsForTemplate,
 } from '@/src/lib/services/newTrade.service';
 import { toNumberSafe } from '@/src/lib/utils/number';
 
@@ -19,12 +18,6 @@ export type SetupTemplate = {
   id: string;
   name: string;
   is_default: boolean;
-};
-
-export type SetupItem = {
-  id: string;
-  label: string;
-  sort_order: number;
 };
 
 export type AccountLite = {
@@ -82,8 +75,6 @@ export function useNewTrade() {
 
   const [templates, setTemplates] = useState<SetupTemplate[]>([]);
   const [templateId, setTemplateId] = useState<string>('');
-  const [items, setItems] = useState<SetupItem[]>([]);
-  const [checks, setChecks] = useState<Record<string, boolean>>({});
 
   const [recentInstruments, setRecentInstruments] = useState<string[]>([]);
 
@@ -95,7 +86,6 @@ export function useNewTrade() {
   const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState(false);
   const [initialized, setInitialized] = useState(false);
-  const [checklistLoaded, setChecklistLoaded] = useState(false);
 
   const hasAccounts = accounts.length > 0;
 
@@ -268,52 +258,6 @@ export function useNewTrade() {
     };
   }, [router]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      if (!cancelled) setChecklistLoaded(false);
-      if (!templateId) {
-        setItems([]);
-        setChecks({});
-        setChecklistLoaded(true);
-        return;
-      }
-
-      try {
-        const list = await loadSetupItemsForTemplate(templateId);
-        if (cancelled) return;
-
-        setItems(list);
-        const next: Record<string, boolean> = {};
-        for (const it of list) next[it.id] = false;
-        setChecks(next);
-        setChecklistLoaded(true);
-      } catch (e: unknown) {
-        if (!cancelled) setMsg(getErr(e, 'Failed to load checklist items'));
-        if (!cancelled) setChecklistLoaded(true);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [templateId]);
-
-  function toggle(itemId: string) {
-    setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
-  }
-
-  const checkedCount = useMemo(
-    () => Object.values(checks).filter(Boolean).length,
-    [checks],
-  );
-
-  const checklistScore = useMemo(() => {
-    const total = items.length;
-    return total > 0 ? Math.round((checkedCount / total) * 100) : null;
-  }, [checkedCount, items.length]);
-
   async function onSaveTrade(e: FormEvent) {
     e.preventDefault();
     if (saving) return;
@@ -348,8 +292,6 @@ export function useNewTrade() {
         riskAmount,
         notes,
         templateId: templateId || null,
-        items,
-        checks,
         beforeFile,
       });
 
@@ -398,10 +340,6 @@ export function useNewTrade() {
     templates,
     templateId,
     setTemplateId,
-    items,
-    checks,
-    toggle,
-    checklistScore,
 
     beforeFile,
     beforePreviewUrl,
@@ -412,7 +350,6 @@ export function useNewTrade() {
     msg,
     saving,
     initialized,
-    checklistLoaded,
     canSave,
     onSaveTrade,
   };

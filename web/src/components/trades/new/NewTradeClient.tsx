@@ -42,13 +42,6 @@ function accountTypeTone(accountType: string | undefined): string {
   return ACCOUNT_TYPE_TONES[accountType.trim().toLowerCase()] ?? 'var(--text-muted)';
 }
 
-function executionTone(score: number | null): string {
-  if (score === null) return 'var(--text-muted)';
-  if (score < 40) return 'var(--loss)';
-  if (score < 70) return '#f59e0b';
-  return 'var(--profit)';
-}
-
 function OutcomeBadge({ outcome }: { outcome: 'WIN' | 'LOSS' | 'BREAKEVEN' }) {
   const tone = outcomeTone(outcome);
 
@@ -131,10 +124,6 @@ export function NewTradeClient() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-
-  const checklistPercent = s.checklistScore ?? 0;
-  const executionLabel = s.checklistScore === null ? '—' : `${s.checklistScore}%`;
-  const executionAccent = executionTone(s.checklistScore);
   const accountImpactTone =
     s.pnlPercentNumber === null || Number.isNaN(s.pnlPercentNumber)
       ? undefined
@@ -162,7 +151,6 @@ export function NewTradeClient() {
   const summaryPnl = formatMoney(Number(s.pnlAmount || 0), s.selectedCurrency);
   const summaryImpact = percentText(s.pnlPercentNumber);
   const summaryR = ratioText(s.rMultiple);
-  const summaryExecution = s.checklistScore === null ? '—' : `${s.checklistScore}%`;
   const summaryStartingBalance = s.selectedAccount
     ? formatMoney(Number(s.selectedAccountBalance || 0), s.selectedCurrency)
     : '—';
@@ -181,14 +169,6 @@ export function NewTradeClient() {
     [favoriteInstrumentSet, s.recentInstruments],
   );
 
-  const checksSnapshot = useMemo(
-    () =>
-      Object.entries(s.checks).sort(([a], [b]) =>
-        a.localeCompare(b),
-      ),
-    [s.checks],
-  );
-
   const draftSnapshot = useMemo(
     () =>
       JSON.stringify({
@@ -198,7 +178,6 @@ export function NewTradeClient() {
         direction: s.direction,
         outcome: s.outcome,
         templateId: s.templateId,
-        checks: checksSnapshot,
         pnlAmount: s.pnlAmount,
         riskAmount: s.riskAmount,
         notes: s.notes,
@@ -207,7 +186,6 @@ export function NewTradeClient() {
           : '',
       }),
     [
-      checksSnapshot,
       s.accountId,
       s.beforeFile,
       s.direction,
@@ -241,7 +219,7 @@ export function NewTradeClient() {
   }, []);
 
   useEffect(() => {
-    if (!s.initialized || !s.checklistLoaded) return;
+    if (!s.initialized) return;
 
     if (initialSnapshotRef.current === null) {
       initialSnapshotRef.current = draftSnapshot;
@@ -252,7 +230,7 @@ export function NewTradeClient() {
     if (nextHasUnsaved !== hasUnsavedChanges) {
       setHasUnsavedChanges(nextHasUnsaved);
     }
-  }, [draftSnapshot, hasUnsavedChanges, s.checklistLoaded, s.initialized]);
+  }, [draftSnapshot, hasUnsavedChanges, s.initialized]);
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -317,7 +295,7 @@ export function NewTradeClient() {
           <div>
             <h1 className='text-[2.1rem] font-semibold tracking-tight'>Add Trade</h1>
             <p className='mt-1 text-sm text-[var(--text-muted)]'>
-              Capture execution quality and performance in one place.
+              Capture trade context and performance in one place.
             </p>
           </div>
           <button
@@ -534,152 +512,10 @@ export function NewTradeClient() {
                 </div>
               </SectionCard>
 
-              <div className='space-y-4'>
-                <SectionCard
-                  title='Execution Quality'
-                  subtitle='Checklist discipline and pre-trade context.'>
-                  <div className='space-y-4'>
-                  <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4'>
-                    <div className='flex items-center justify-between gap-3'>
-                      <p className='text-sm text-[var(--text-secondary)]'>
-                        Execution Score
-                      </p>
-                      <p
-                        className='text-sm font-semibold'
-                        style={{
-                          color: `color-mix(in srgb, ${executionAccent} 88%, var(--text-primary))`,
-                        }}>
-                        {executionLabel}
-                      </p>
-                    </div>
-                    <div className='mt-3 h-2 rounded-full bg-[var(--bg-subtle)]'>
-                      <div
-                        className='h-full rounded-full transition-all'
-                        style={{
-                          width: `${checklistPercent}%`,
-                          background: `linear-gradient(90deg, color-mix(in srgb, ${executionAccent} 80%, transparent), color-mix(in srgb, ${executionAccent} 45%, transparent))`,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {s.templateId && s.items.length > 0 ? (
-                    <div className='space-y-2'>
-                      {s.items.map((it) => (
-                        <label
-                          key={it.id}
-                          className='flex items-center gap-3 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2.5'>
-                          <input
-                            type='checkbox'
-                            checked={!!s.checks[it.id]}
-                            onChange={() => s.toggle(it.id)}
-                          />
-                          <span className='text-sm text-[var(--text-secondary)]'>
-                            {it.label}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  ) : s.templateId ? (
-                    <div className='text-sm text-[var(--text-muted)]'>
-                      This setup has no active checklist items.
-                    </div>
-                  ) : (
-                    <div className='text-sm text-[var(--text-muted)]'>
-                      Create a setup in{' '}
-                      <button
-                        type='button'
-                        className='underline'
-                        onClick={() => navigateWithGuard('/settings/setups')}>
-                        Settings → Setups
-                      </button>
-                      .
-                    </div>
-                  )}
-
-                  <div className='text-xs text-[var(--text-muted)]'>
-                    Manage setups in{' '}
-                    <button
-                      type='button'
-                      className='underline'
-                      onClick={() => navigateWithGuard('/settings/setups')}>
-                      Settings → Setups
-                    </button>
-                  </div>
-
-                  <div className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-4'>
-                    <div className='font-semibold text-[var(--text-primary)]'>
-                      Before-Trade Screenshot
-                    </div>
-                    <div className='mt-1 text-sm text-[var(--text-muted)]'>
-                      Upload your setup screenshot.
-                    </div>
-
-                    <input
-                      className='mt-3 block text-sm text-[var(--text-secondary)]'
-                      type='file'
-                      accept='image/*'
-                      onChange={(e) =>
-                        s.onBeforeFileChange(e.target.files?.[0] ?? null)
-                      }
-                    />
-
-                    <div className='mt-2 text-xs text-[var(--text-muted)]'>
-                      {s.beforeFile
-                        ? `Selected: ${s.beforeFile.name}`
-                        : 'No screenshot selected.'}
-                    </div>
-
-                    {s.beforePreviewUrl && (
-                      <button
-                        type='button'
-                        className='mt-3 block text-left'
-                        onClick={() => setPreviewOpen(true)}>
-                        <Image
-                          src={s.beforePreviewUrl}
-                          alt='Before screenshot preview'
-                          width={1200}
-                          height={700}
-                          unoptimized
-                          className='max-h-64 w-auto rounded-lg border border-[var(--border-default)] transition-opacity hover:opacity-90'
-                        />
-                        <span className='mt-1 block text-xs text-[var(--text-muted)]'>
-                          Click to open full-screen preview
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                  </div>
-                </SectionCard>
-
-                <SectionCard
-                  title='Performance Metrics'
-                  subtitle='Capture risk and result. P&L % is derived automatically.'>
-                  <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
-                  <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3'>
-                    <Field label='P&L ($)'>
-                      <input
-                        className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
-                        type='number'
-                        step='0.01'
-                        value={s.pnlAmount}
-                        onChange={(e) => s.setPnlAmount(e.target.value)}
-                        required
-                      />
-                    </Field>
-                  </div>
-
-                  <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3'>
-                    <Field label='P&L (%) (Auto)'>
-                      <input
-                        className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-muted)] p-3 text-sm font-semibold text-[var(--text-primary)]'
-                        value={percentText(s.pnlPercentNumber)}
-                        readOnly
-                        tabIndex={-1}
-                      />
-                    </Field>
-                  </div>
-
+              <SectionCard
+                title='Performance Metrics'
+                subtitle='Capture risk and result. P&L %, R-multiple are derived automatically.'>
+                <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
                   <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3'>
                     <Field label='Risk ($)'>
                       <input
@@ -696,6 +532,19 @@ export function NewTradeClient() {
                     </Field>
                   </div>
 
+                  <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3'>
+                    <Field label='P&L ($)'>
+                      <input
+                        className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
+                        type='number'
+                        step='0.01'
+                        value={s.pnlAmount}
+                        onChange={(e) => s.setPnlAmount(e.target.value)}
+                        required
+                      />
+                    </Field>
+                  </div>
+
                   <div
                     className='rounded-lg border p-3'
                     style={{
@@ -703,7 +552,7 @@ export function NewTradeClient() {
                       backgroundColor: `color-mix(in srgb, ${rTone} ${rBgMix}%, var(--bg-surface))`,
                     }}>
                     <div className='text-sm font-medium text-[var(--text-secondary)]'>
-                      R-Multiple
+                      R-Multiple (Auto)
                     </div>
                     <div
                       className='mt-1 text-4xl font-semibold leading-none'
@@ -713,34 +562,84 @@ export function NewTradeClient() {
                       {ratioText(s.rMultiple)}
                     </div>
                   </div>
-                  </div>
 
-                  {s.riskExceedsPolicy && (
-                    <div
-                      className='mt-3 rounded-lg border px-3 py-2 text-sm'
-                      style={{
-                        borderColor:
-                          'color-mix(in srgb, var(--loss) 32%, var(--border-default))',
-                        backgroundColor:
-                          'color-mix(in srgb, var(--loss) 10%, var(--bg-surface))',
-                        color: 'color-mix(in srgb, var(--loss) 88%, var(--text-primary))',
-                      }}>
-                      ⚠ Risk exceeds your defined max risk ({s.maxRiskPercent}% of account).
-                    </div>
-                  )}
-
-                  <div className='mt-4'>
-                    <Field label='Notes'>
-                      <textarea
-                        className='min-h-28 w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
-                        value={s.notes}
-                        onChange={(e) => s.setNotes(e.target.value)}
-                        placeholder='Trade context, execution notes, mistakes, ideas...'
+                  <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3'>
+                    <Field label='P&L (%) (Auto)'>
+                      <input
+                        className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-muted)] p-3 text-sm font-semibold text-[var(--text-primary)]'
+                        value={percentText(s.pnlPercentNumber)}
+                        readOnly
+                        tabIndex={-1}
                       />
                     </Field>
                   </div>
-                </SectionCard>
-              </div>
+                </div>
+
+                {s.riskExceedsPolicy && (
+                  <div
+                    className='mt-3 rounded-lg border px-3 py-2 text-sm'
+                    style={{
+                      borderColor:
+                        'color-mix(in srgb, var(--loss) 32%, var(--border-default))',
+                      backgroundColor:
+                        'color-mix(in srgb, var(--loss) 10%, var(--bg-surface))',
+                      color: 'color-mix(in srgb, var(--loss) 88%, var(--text-primary))',
+                    }}>
+                    ⚠ Risk exceeds your defined max risk ({s.maxRiskPercent}% of account).
+                  </div>
+                )}
+              </SectionCard>
+
+              <SectionCard
+                title='Before-Trade Screenshot'
+                subtitle='Upload your setup screenshot.'>
+                <input
+                  className='block text-sm text-[var(--text-secondary)]'
+                  type='file'
+                  accept='image/*'
+                  onChange={(e) =>
+                    s.onBeforeFileChange(e.target.files?.[0] ?? null)
+                  }
+                />
+
+                <div className='mt-2 text-xs text-[var(--text-muted)]'>
+                  {s.beforeFile
+                    ? `Selected: ${s.beforeFile.name}`
+                    : 'No screenshot selected.'}
+                </div>
+
+                {s.beforePreviewUrl && (
+                  <button
+                    type='button'
+                    className='mt-3 block text-left'
+                    onClick={() => setPreviewOpen(true)}>
+                    <Image
+                      src={s.beforePreviewUrl}
+                      alt='Before screenshot preview'
+                      width={1200}
+                      height={700}
+                      unoptimized
+                      className='max-h-64 w-auto rounded-lg border border-[var(--border-default)] transition-opacity hover:opacity-90'
+                    />
+                    <span className='mt-1 block text-xs text-[var(--text-muted)]'>
+                      Click to open full-screen preview
+                    </span>
+                  </button>
+                )}
+              </SectionCard>
+
+              <SectionCard
+                title='Trade Notes (Optional)'
+                subtitle='Add any context worth remembering for this trade.'>
+                <Field label='Notes'>
+                  <textarea
+                    className='min-h-28 w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
+                    value={s.notes}
+                    onChange={(e) => s.setNotes(e.target.value)}
+                    placeholder='Trade context, mistakes, ideas, reminders...'
+                  />
+                </Field>
+              </SectionCard>
 
               <div className='flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-4'>
                 <div className='text-sm text-[var(--text-muted)]'>
@@ -792,11 +691,6 @@ export function NewTradeClient() {
                     label='Account Impact'
                     value={summaryImpact}
                     tone={accountImpactTone}
-                  />
-                  <SummaryRow
-                    label='Execution Score'
-                    value={summaryExecution}
-                    tone={executionAccent}
                   />
                 </div>
               </section>

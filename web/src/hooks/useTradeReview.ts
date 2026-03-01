@@ -93,8 +93,17 @@ export function useTradeReview() {
 
   const netPnl = grossPnl - commissionNum;
 
+  function setCheck(itemId: string, checked: boolean) {
+    setChecks((prev) => ({ ...prev, [itemId]: checked }));
+  }
+
   function toggleCheck(itemId: string) {
     setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
+  }
+
+  function hasMinimumLessonSentence(text: string): boolean {
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    return words.length >= 4;
   }
 
   function onAfterFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -223,6 +232,11 @@ export function useTradeReview() {
     if (!trade) return;
     if (saving) return;
 
+    if (!hasMinimumLessonSentence(lessonLearned)) {
+      setMsg('Lesson Learned must be at least one full sentence (4+ words).');
+      return;
+    }
+
     setSaving(true);
     setMsg('Saving...');
 
@@ -271,6 +285,7 @@ export function useTradeReview() {
     items,
     activeItems,
     checks,
+    setCheck,
     toggleCheck,
     adherence,
     missedCount,
