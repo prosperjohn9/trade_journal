@@ -143,6 +143,7 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
             const pnlAmt = s.calcDisplayPnl(t);
             const isActionsOpen = effectiveOpenActionsTradeId === t.id;
             const isLastRow = index === s.trades.length - 1;
+            const shouldOpenUp = isLastRow;
 
             const pnlPct =
               s.monthStartingBalance && s.monthStartingBalance !== 0
@@ -209,7 +210,11 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
                   {reviewedBadge(t.reviewed_at)}
                 </td>
 
-                <td className='min-w-[220px] pl-4 pr-8 py-[18px] text-center'>
+                <td
+                  className={cx(
+                    'min-w-[220px] pl-4 pr-8 py-[18px] text-center',
+                    isActionsOpen && 'relative z-30',
+                  )}>
                   <div className='mx-auto flex w-full max-w-[220px] items-center justify-center gap-2'>
                     <button
                       className='rounded-lg border border-[var(--accent-soft)] px-3 py-2 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]'
@@ -253,8 +258,10 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
                         <div
                           role='menu'
                           className={cx(
-                            'absolute right-0 z-20 w-32 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-1 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.5)]',
-                            isLastRow ? 'bottom-full mb-1' : 'top-10',
+                            'absolute right-0 z-40 w-32 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-1 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.5)]',
+                            shouldOpenUp
+                              ? 'bottom-[calc(100%-14px)]'
+                              : 'top-10',
                           )}>
                           <button
                             role='menuitem'
