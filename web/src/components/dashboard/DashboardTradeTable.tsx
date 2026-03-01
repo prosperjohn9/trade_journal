@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatMoney } from '@/src/lib/utils/format';
 import { cx } from '@/src/lib/utils/ui';
@@ -68,6 +68,37 @@ function ChecklistCell({ score }: { score: number }) {
 
 export function DashboardTradeTable({ state: s }: { state: PropsState }) {
   const router = useRouter();
+  const [openActionsTradeId, setOpenActionsTradeId] = useState<string | null>(
+    null,
+  );
+  const openMenuRef = useRef<HTMLDivElement | null>(null);
+  const effectiveOpenActionsTradeId =
+    openActionsTradeId && s.trades.some((t) => t.id === openActionsTradeId)
+      ? openActionsTradeId
+      : null;
+
+  useEffect(() => {
+    if (!effectiveOpenActionsTradeId) return;
+
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (openMenuRef.current && !openMenuRef.current.contains(target)) {
+        setOpenActionsTradeId(null);
+      }
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenActionsTradeId(null);
+    };
+
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [effectiveOpenActionsTradeId]);
 
   return (
     <div className='max-h-[620px] overflow-auto rounded-xl border border-[var(--border-default)]'>
@@ -108,8 +139,10 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
         </thead>
 
         <tbody>
-          {s.trades.map((t: TradeRow) => {
+          {s.trades.map((t: TradeRow, index: number) => {
             const pnlAmt = s.calcDisplayPnl(t);
+            const isActionsOpen = effectiveOpenActionsTradeId === t.id;
+            const isLastRow = index === s.trades.length - 1;
 
             const pnlPct =
               s.monthStartingBalance && s.monthStartingBalance !== 0
@@ -180,49 +213,71 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
                   <div className='mx-auto flex w-full max-w-[220px] items-center justify-center gap-2'>
                     <button
                       className='rounded-lg border border-[var(--accent-soft)] px-3 py-2 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]'
-                      onClick={() => router.push(`/trades/${t.id}`)}>
+                      onClick={() => {
+                        setOpenActionsTradeId(null);
+                        router.push(`/trades/${t.id}`);
+                      }}>
                       View
                     </button>
 
                     <button
                       className='rounded-lg border border-[var(--border-default)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
-                      onClick={() =>
+                      onClick={() => {
+                        setOpenActionsTradeId(null);
                         router.push(
                           `/trades/${t.id}/edit?returnTo=${encodeURIComponent(
                             '/dashboard',
                           )}`,
-                        )
-                      }>
+                        );
+                      }}>
                       Edit
                     </button>
 
-                    <details className='relative'>
-                      <summary className='flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-[var(--border-default)] text-lg leading-none text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] [&::-webkit-details-marker]:hidden'>
+                    <div
+                      className='relative'
+                      ref={isActionsOpen ? openMenuRef : undefined}>
+                      <button
+                        type='button'
+                        aria-haspopup='menu'
+                        aria-expanded={isActionsOpen}
+                        className='flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border-default)] text-lg leading-none text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
+                        onClick={() =>
+                          setOpenActionsTradeId((prev) =>
+                            prev === t.id ? null : t.id,
+                          )
+                        }>
                         ⋯
-                      </summary>
+                      </button>
 
-                      <div className='absolute right-0 top-10 z-20 w-32 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-1'>
-                        <button
-                          className='w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
-                          onClick={(e) => {
-                            router.push(`/trades/${t.id}/review`);
-                            const detailsEl = e.currentTarget.closest('details');
-                            if (detailsEl) detailsEl.open = false;
-                          }}>
-                          Review
-                        </button>
+                      {isActionsOpen && (
+                        <div
+                          role='menu'
+                          className={cx(
+                            'absolute right-0 z-20 w-32 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-1 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.5)]',
+                            isLastRow ? 'bottom-full mb-1' : 'top-10',
+                          )}>
+                          <button
+                            role='menuitem'
+                            className='w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
+                            onClick={() => {
+                              setOpenActionsTradeId(null);
+                              router.push(`/trades/${t.id}/review`);
+                            }}>
+                            Review
+                          </button>
 
-                        <button
-                          className='mt-1 w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--loss)]'
-                          onClick={(e) => {
-                            s.requestDeleteTrade(t);
-                            const detailsEl = e.currentTarget.closest('details');
-                            if (detailsEl) detailsEl.open = false;
-                          }}>
-                          Delete
-                        </button>
-                      </div>
-                    </details>
+                          <button
+                            role='menuitem'
+                            className='mt-1 w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--loss)]'
+                            onClick={() => {
+                              setOpenActionsTradeId(null);
+                              s.requestDeleteTrade(t);
+                            }}>
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </td>
               </tr>
