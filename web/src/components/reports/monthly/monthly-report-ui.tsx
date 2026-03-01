@@ -101,11 +101,10 @@ type SignedSegment = {
   points: CartesianPoint[];
 };
 
-function smoothPath(points: Array<{ x: number; y: number }>): string {
-  if (!points.length) return '';
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+function smoothCurveCommands(points: Array<{ x: number; y: number }>): string {
+  if (points.length < 2) return '';
 
-  let d = `M ${points[0].x} ${points[0].y}`;
+  let d = '';
 
   for (let i = 1; i < points.length; i += 1) {
     const prev = points[i - 1];
@@ -121,6 +120,13 @@ function smoothPath(points: Array<{ x: number; y: number }>): string {
   }
 
   return d;
+}
+
+function smoothPath(points: Array<{ x: number; y: number }>): string {
+  if (!points.length) return '';
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+
+  return `M ${points[0].x} ${points[0].y}${smoothCurveCommands(points)}`;
 }
 
 function splitByBaseline(
@@ -177,15 +183,12 @@ function areaPath(points: CartesianPoint[], baselineY: number): string {
 
   const first = points[0];
   const last = points[points.length - 1];
-  const line = points
-    .slice(1)
-    .map((p) => `L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
-    .join(' ');
+  const curve = smoothCurveCommands(points);
 
   return [
     `M ${first.x.toFixed(2)} ${baselineY.toFixed(2)}`,
     `L ${first.x.toFixed(2)} ${first.y.toFixed(2)}`,
-    line,
+    curve,
     `L ${last.x.toFixed(2)} ${baselineY.toFixed(2)}`,
     'Z',
   ].join(' ');
