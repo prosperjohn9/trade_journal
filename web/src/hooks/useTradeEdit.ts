@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getErr } from '@/src/domain/errors';
 import { listAccounts } from '@/src/lib/services/accounts.service';
 import type { Account } from '@/src/domain/account';
@@ -11,18 +11,53 @@ import type { SetupItemWithActiveRow } from '@/src/lib/db/setupTemplateItems.rep
 import type {
   Direction,
   Outcome,
-  TradeEditRow,
 } from '@/src/lib/services/tradeEdit.service';
 import {
   loadTradeEditBootstrap,
   loadTradeEditChecklist,
   loadTradeEditTemplates,
   saveTradeEntryFlow,
-  saveTradeReviewFlow,
   toDatetimeLocalValue,
 } from '@/src/lib/services/tradeEdit.service';
 
-type AccountLite = Pick<Account, 'id' | 'name' | 'is_default'>;
+type AccountLite = Pick<Account, 'id' | 'name' | 'is_default' | 'starting_balance'>;
+
+function fileSignature(file: File | null): string {
+  if (!file) return '';
+  return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
+function buildDraftSnapshot(params: {
+  accountId: string;
+  openedAt: string;
+  instrument: string;
+  direction: Direction;
+  outcome: Outcome;
+  pnlAmount: string;
+  riskAmount: number;
+  notes: string;
+  templateId: string | null;
+  beforeFileSig: string;
+  afterFileSig: string;
+}) {
+  return JSON.stringify(params);
+}
+
+function buildPerformanceSnapshot(params: {
+  instrument: string;
+  direction: Direction;
+  outcome: Outcome;
+  pnlAmount: string;
+  riskAmount: number;
+}) {
+  return JSON.stringify({
+    instrument: params.instrument.trim().toUpperCase(),
+    direction: params.direction,
+    outcome: params.outcome,
+    pnlAmount: params.pnlAmount.trim(),
+    riskAmount: Number.isFinite(params.riskAmount) ? params.riskAmount : 0,
+  });
+}
 
 export function parseDirection(v: string): Direction {
   return v === 'SELL' ? 'SELL' : 'BUY';
@@ -37,7 +72,11 @@ export function parseOutcome(v: string): Outcome {
 export function useTradeEdit() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const tradeId = params.id;
+  const returnToParam = searchParams.get('returnTo');
+  const returnTo =
+    returnToParam && returnToParam.startsWith('/') ? returnToParam : null;
 
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
@@ -46,8 +85,6 @@ export function useTradeEdit() {
   const [entryMsgTone, setEntryMsgTone] = useState<
     'success' | 'error' | 'info'
   >('info');
-
-  const [trade, setTrade] = useState<TradeEditRow | null>(null);
 
   const [accounts, setAccounts] = useState<AccountLite[]>([]);
   const [accountId, setAccountId] = useState('');
@@ -90,13 +127,46 @@ export function useTradeEdit() {
   const [emotionTag, setEmotionTag] = useState('');
   const [lessonLearned, setLessonLearned] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
+  const [baselineDraft, setBaselineDraft] = useState<string | null>(null);
+  const [baselinePerformance, setBaselinePerformance] = useState<string | null>(
+    null,
+  );
+
+  const selectedAccount = useMemo(
+    () => accounts.find((a) => a.id === accountId) ?? null,
+    [accounts, accountId],
+  );
+
+  const selectedAccountBalance = useMemo(() => {
+    const n = Number(selectedAccount?.starting_balance ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  }, [selectedAccount?.starting_balance]);
+
+  const pnlAmountNumber = useMemo(() => Number(pnlAmount || 0), [pnlAmount]);
+
+  const normalizedPnlAmount = useMemo(() => {
+    if (!Number.isFinite(pnlAmountNumber)) return 0;
+    if (outcome === 'LOSS') return -Math.abs(pnlAmountNumber);
+    if (outcome === 'WIN') return Math.abs(pnlAmountNumber);
+    return pnlAmountNumber;
+  }, [outcome, pnlAmountNumber]);
+
+  const pnlPercentAuto = useMemo(() => {
+    if (!selectedAccountBalance) return null;
+    return (normalizedPnlAmount / selectedAccountBalance) * 100;
+  }, [normalizedPnlAmount, selectedAccountBalance]);
 
   const rMultiple = useMemo(() => {
-    const amountNum = Number(pnlAmount);
-    if (!riskAmount || Number.isNaN(riskAmount) || Number.isNaN(amountNum))
+    if (
+      !riskAmount ||
+      Number.isNaN(riskAmount) ||
+      Number.isNaN(normalizedPnlAmount)
+    ) {
       return null;
-    return amountNum / riskAmount;
-  }, [pnlAmount, riskAmount]);
+    }
+
+    return normalizedPnlAmount / riskAmount;
+  }, [normalizedPnlAmount, riskAmount]);
 
   const activeItems = useMemo(() => items.filter((i) => i.is_active), [items]);
 
@@ -113,7 +183,7 @@ export function useTradeEdit() {
     };
   }, [activeItems, checks]);
 
-  const grossPnlNumber = useMemo(() => Number(pnlAmount || 0), [pnlAmount]);
+  const grossPnlNumber = useMemo(() => normalizedPnlAmount, [normalizedPnlAmount]);
 
   const commissionNumber = useMemo(() => {
     const n = Number(commission || 0);
@@ -133,6 +203,65 @@ export function useTradeEdit() {
     () => !!templateId && !templates.some((t) => t.id === templateId),
     [templateId, templates],
   );
+  const beforeFileSig = useMemo(() => fileSignature(beforeFile), [beforeFile]);
+  const afterFileSig = useMemo(() => fileSignature(afterFile), [afterFile]);
+
+  const draftSnapshot = useMemo(
+    () =>
+      buildDraftSnapshot({
+        accountId,
+        openedAt,
+        instrument,
+        direction,
+        outcome,
+        pnlAmount,
+        riskAmount,
+        notes,
+        templateId,
+        beforeFileSig,
+        afterFileSig,
+      }),
+    [
+      accountId,
+      openedAt,
+      instrument,
+      direction,
+      outcome,
+      pnlAmount,
+      riskAmount,
+      notes,
+      templateId,
+      beforeFileSig,
+      afterFileSig,
+    ],
+  );
+
+  const performanceSnapshot = useMemo(
+    () =>
+      buildPerformanceSnapshot({
+        instrument,
+        direction,
+        outcome,
+        pnlAmount,
+        riskAmount,
+      }),
+    [instrument, direction, outcome, pnlAmount, riskAmount],
+  );
+
+  const isDirty = useMemo(() => {
+    if (baselineDraft === null) return false;
+    return draftSnapshot !== baselineDraft;
+  }, [baselineDraft, draftSnapshot]);
+
+  const performanceAffectsReview = useMemo(() => {
+    if (baselinePerformance === null) return false;
+    return performanceSnapshot !== baselinePerformance;
+  }, [baselinePerformance, performanceSnapshot]);
+
+  function confirmDiscardChanges() {
+    if (!isDirty) return true;
+    return window.confirm('Discard changes?');
+  }
 
   function toggleCheck(itemId: string) {
     setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
@@ -148,6 +277,13 @@ export function useTradeEdit() {
   }
 
   function goBackSafe() {
+    if (!confirmDiscardChanges()) return;
+
+    if (returnTo) {
+      router.push(returnTo);
+      return;
+    }
+
     if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back();
       return;
@@ -197,6 +333,20 @@ export function useTradeEdit() {
   }, []);
 
   useEffect(() => {
+    if (!isDirty) return;
+
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, [isDirty]);
+
+  useEffect(() => {
     let cancelled = false;
 
     (async () => {
@@ -217,8 +367,6 @@ export function useTradeEdit() {
           loadedAccounts.find((a) => a.is_default)?.id ??
           loadedAccounts[0]?.id ??
           '';
-
-        setTrade(res.trade);
 
         setAccountId(res.trade.account_id ?? fallbackAccountId);
         setOpenedAt(toDatetimeLocalValue(res.trade.opened_at));
@@ -260,6 +408,31 @@ export function useTradeEdit() {
         setEmotionTag(res.trade.emotion_tag ?? '');
         setLessonLearned(res.trade.lesson_learned ?? '');
         setReviewNotes(res.trade.review_notes ?? '');
+
+        setBaselineDraft(
+          buildDraftSnapshot({
+            accountId: res.trade.account_id ?? fallbackAccountId,
+            openedAt: toDatetimeLocalValue(res.trade.opened_at),
+            instrument: (res.trade.instrument ?? 'EURUSD').toUpperCase(),
+            direction: (res.trade.direction ?? 'BUY') as Direction,
+            outcome: (res.trade.outcome ?? 'WIN') as Outcome,
+            pnlAmount: String(res.trade.pnl_amount ?? 0),
+            riskAmount: res.trade.risk_amount ?? 1000,
+            notes: res.trade.notes ?? '',
+            templateId: res.trade.template_id ?? null,
+            beforeFileSig: '',
+            afterFileSig: '',
+          }),
+        );
+        setBaselinePerformance(
+          buildPerformanceSnapshot({
+            instrument: (res.trade.instrument ?? 'EURUSD').toUpperCase(),
+            direction: (res.trade.direction ?? 'BUY') as Direction,
+            outcome: (res.trade.outcome ?? 'WIN') as Outcome,
+            pnlAmount: String(res.trade.pnl_amount ?? 0),
+            riskAmount: res.trade.risk_amount ?? 1000,
+          }),
+        );
       } catch (e: unknown) {
         if (!cancelled) {
           setMsg(getErr(e, 'Failed to load trade'));
@@ -307,7 +480,15 @@ export function useTradeEdit() {
       return;
     }
 
-    setEntryFeedback('Saving entry...', 'info');
+    const shouldResetReview = !!reviewedAt && performanceAffectsReview;
+    if (shouldResetReview) {
+      const ok = window.confirm(
+        'Editing performance metrics will reset the review. Continue?',
+      );
+      if (!ok) return;
+    }
+
+    setEntryFeedback('Saving changes...', 'info');
     setMsg('');
 
     try {
@@ -319,61 +500,52 @@ export function useTradeEdit() {
         direction,
         outcome,
         pnlAmountRaw: pnlAmount,
-        pnlPercentRaw: pnlPercent,
+        pnlPercentRaw: String(pnlPercentAuto ?? 0),
         riskAmount,
         notes,
         templateId,
-        items,
-        checks,
         beforeFile,
+        afterFile,
+        resetReview: shouldResetReview,
       });
 
       setBeforeFileWithPreview(null);
+      setAfterFileWithPreview(null);
 
       if (res.beforeSignedUrl !== undefined)
         setBeforeSignedUrl(res.beforeSignedUrl);
-
-      setEntryFeedback('Entry saved successfully.', 'success');
-    } catch (e: unknown) {
-      setEntryFeedback(getErr(e, 'Failed to save entry'), 'error');
-    }
-  }
-
-  async function saveReview() {
-    setMsg('Saving review...');
-
-    try {
-      const res = await saveTradeReviewFlow({
-        tradeId,
-        pnlAmount: Number(trade?.pnl_amount ?? grossPnlNumber),
-
-        entryPrice,
-        stopLoss,
-        takeProfit,
-        exitPrice,
-        closedAtLocal,
-
-        commissionRaw: commission,
-        netPnlRaw: netPnl,
-
-        emotionTag,
-        lessonLearned,
-        reviewNotes,
-
-        afterFile,
-        reviewedAtExisting: reviewedAt,
-      });
-
-      setAfterFileWithPreview(null);
-      setReviewedAt(res.reviewedAt);
-
       if (res.afterSignedUrl !== undefined)
         setAfterSignedUrl(res.afterSignedUrl);
+      if (shouldResetReview) setReviewedAt(null);
 
-      setMsg('Review saved successfully.');
+      setBaselineDraft(
+        buildDraftSnapshot({
+          accountId,
+          openedAt,
+          instrument,
+          direction,
+          outcome,
+          pnlAmount,
+          riskAmount,
+          notes,
+          templateId,
+          beforeFileSig: '',
+          afterFileSig: '',
+        }),
+      );
+      setBaselinePerformance(
+        buildPerformanceSnapshot({
+          instrument,
+          direction,
+          outcome,
+          pnlAmount,
+          riskAmount,
+        }),
+      );
+
       goBackSafe();
     } catch (e: unknown) {
-      setMsg(getErr(e, 'Failed to save review'));
+      setEntryFeedback(getErr(e, 'Failed to save changes'), 'error');
     }
   }
 
@@ -392,12 +564,14 @@ export function useTradeEdit() {
     entryMsgClasses,
 
     goBackSafe,
+    confirmDiscardChanges,
     openFull,
 
     accounts,
     accountId,
     setAccountId,
     hasAccounts,
+    selectedAccount,
     isCurrentAccountMissing,
     openedAt,
     setOpenedAt,
@@ -410,7 +584,7 @@ export function useTradeEdit() {
     pnlAmount,
     setPnlAmount,
     pnlPercent,
-    setPnlPercent,
+    pnlPercentAuto,
     riskAmount,
     setRiskAmount,
     notes,
@@ -462,9 +636,9 @@ export function useTradeEdit() {
 
     grossPnlNumber,
     netPnlComputed,
+    isDirty,
 
     saveEntry,
-    saveReview,
   };
 }
 

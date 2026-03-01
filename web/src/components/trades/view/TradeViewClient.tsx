@@ -354,7 +354,13 @@ export function TradeViewClient() {
           <div className='flex flex-wrap gap-2'>
             <button
               className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
-              onClick={() => router.push(`/trades/${t.id}/edit`)}>
+              onClick={() =>
+                router.push(
+                  `/trades/${t.id}/edit?returnTo=${encodeURIComponent(
+                    `/trades/${t.id}`,
+                  )}`,
+                )
+              }>
               Edit Trade
             </button>
 

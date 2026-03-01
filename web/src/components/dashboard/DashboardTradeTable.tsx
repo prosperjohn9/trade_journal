@@ -186,7 +186,13 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
 
                     <button
                       className='rounded-lg border border-[var(--border-default)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
-                      onClick={() => router.push(`/trades/${t.id}/edit`)}>
+                      onClick={() =>
+                        router.push(
+                          `/trades/${t.id}/edit?returnTo=${encodeURIComponent(
+                            '/dashboard',
+                          )}`,
+                        )
+                      }>
                       Edit
                     </button>
 

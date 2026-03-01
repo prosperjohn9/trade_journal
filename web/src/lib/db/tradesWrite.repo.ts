@@ -72,7 +72,7 @@ export async function updateTradeEntryFields(
 export type TradeReviewUpdate = {
   template_id?: string | null;
 
-  reviewed_at?: string;
+  reviewed_at?: string | null;
 
   entry_price?: number | null;
   stop_loss?: number | null;

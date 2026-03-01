@@ -9,7 +9,6 @@ import {
 } from '@/src/lib/db/setupTemplateItems.repo';
 import {
   listTradeChecks,
-  upsertTradeCriteriaChecks,
 } from '@/src/lib/db/tradeCriteriaChecks.repo';
 import {
   signTradeScreenshotPath,
@@ -164,11 +163,16 @@ export async function saveTradeEntryFlow(params: {
   notes: string;
 
   templateId: string | null;
-  items: SetupItemWithActiveRow[];
-  checks: Record<string, boolean>;
 
   beforeFile: File | null;
-}): Promise<{ beforePath: string | null; beforeSignedUrl?: string }> {
+  afterFile: File | null;
+  resetReview: boolean;
+}): Promise<{
+  beforePath: string | null;
+  afterPath: string | null;
+  beforeSignedUrl?: string;
+  afterSignedUrl?: string;
+}> {
   const user = await requireUser();
 
   const pnlAmountNum = Number(params.pnlAmountRaw);
@@ -191,7 +195,9 @@ export async function saveTradeEntryFlow(params: {
   const r_multiple = risk && Number.isFinite(risk) ? pnl_amount / risk : null;
 
   let beforePath: string | null = null;
+  let afterPath: string | null = null;
   let beforeSignedUrl: string | undefined = undefined;
+  let afterSignedUrl: string | undefined = undefined;
 
   if (params.beforeFile) {
     beforePath = await uploadTradeBeforeScreenshot({
@@ -203,6 +209,18 @@ export async function saveTradeEntryFlow(params: {
     // optional immediate preview refresh
     beforeSignedUrl = beforePath
       ? await signTradeScreenshotPath(beforePath)
+      : '';
+  }
+
+  if (params.afterFile) {
+    afterPath = await uploadTradeAfterScreenshot({
+      userId: user.id,
+      tradeId: params.tradeId,
+      file: params.afterFile,
+    });
+
+    afterSignedUrl = afterPath
+      ? await signTradeScreenshotPath(afterPath)
       : '';
   }
 
@@ -220,22 +238,30 @@ export async function saveTradeEntryFlow(params: {
     template_id: params.templateId,
   });
 
+  if (params.resetReview) {
+    await updateTradeReviewFields(params.tradeId, {
+      reviewed_at: null,
+    });
+  }
+
   if (beforePath) {
     await updateTradeScreenshotPaths(params.tradeId, {
       before_screenshot_path: beforePath,
     });
   }
 
-  if (params.templateId && params.items.length) {
-    const rows = params.items.map((it) => ({
-      trade_id: params.tradeId,
-      item_id: it.id,
-      checked: !!params.checks[it.id],
-    }));
-    await upsertTradeCriteriaChecks(rows);
+  if (afterPath) {
+    await updateTradeScreenshotPaths(params.tradeId, {
+      after_trade_screenshot_url: afterPath,
+    });
   }
 
-  return { beforePath, ...(beforeSignedUrl ? { beforeSignedUrl } : {}) };
+  return {
+    beforePath,
+    afterPath,
+    ...(beforeSignedUrl ? { beforeSignedUrl } : {}),
+    ...(afterSignedUrl ? { afterSignedUrl } : {}),
+  };
 }
 
 export async function saveTradeReviewFlow(params: {
