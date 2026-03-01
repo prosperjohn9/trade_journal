@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { formatAccountTagLabel } from '@/src/domain/account';
 import { formatMoney } from '@/src/lib/utils/format';
 import { useNewTrade } from '@/src/hooks/useNewTrade';
 
@@ -343,6 +344,24 @@ export function NewTradeClient() {
                           </option>
                         ))}
                       </select>
+
+                      {s.selectedAccount && (
+                        <div className='mt-2 flex flex-wrap items-center gap-1.5'>
+                          {s.selectedAccount.tags.length > 0 ? (
+                            s.selectedAccount.tags.map((tag) => (
+                              <span
+                                key={`account-tag-${s.selectedAccount?.id}-${tag}`}
+                                className='inline-flex items-center rounded-full border border-[var(--border-default)] bg-[var(--surface-muted)] px-2 py-1 text-[11px] leading-none text-[var(--text-secondary)]'>
+                                {formatAccountTagLabel(tag)}
+                              </span>
+                            ))
+                          ) : (
+                            <span className='text-xs text-[var(--text-muted)]'>
+                              No account tags set.
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </Field>
 
                     <Field label='Instrument'>

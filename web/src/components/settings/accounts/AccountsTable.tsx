@@ -24,14 +24,25 @@ type AccountsState = Pick<
 >;
 
 export function AccountsTable({ state: s }: { state: AccountsState }) {
-  const defaultAccount = s.accounts.find((a) => a.is_default) ?? null;
-  const totalAccounts = s.accounts.length;
-  const totalStartingBalance = s.accounts.reduce(
+  const orderedAccounts = s.accounts
+    .map((account, index) => ({ account, index }))
+    .sort((left, right) => {
+      if (left.account.is_default === right.account.is_default) {
+        return left.index - right.index;
+      }
+
+      return left.account.is_default ? -1 : 1;
+    })
+    .map(({ account }) => account);
+
+  const defaultAccount = orderedAccounts.find((a) => a.is_default) ?? null;
+  const totalAccounts = orderedAccounts.length;
+  const totalStartingBalance = orderedAccounts.reduce(
     (sum, account) => sum + Number(account.starting_balance ?? 0),
     0,
   );
   const uniqueCurrencies = Array.from(
-    new Set(s.accounts.map((a) => a.base_currency ?? 'USD')),
+    new Set(orderedAccounts.map((a) => a.base_currency ?? 'USD')),
   );
   const totalCurrency = uniqueCurrencies.length === 1 ? uniqueCurrencies[0] : 'USD';
   const hasMixedCurrencies = uniqueCurrencies.length > 1;
@@ -57,7 +68,7 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
       </div>
 
       <div className='space-y-4'>
-        {s.accounts.map((a) => {
+        {orderedAccounts.map((a) => {
           const currency = a.base_currency ?? 'USD';
           const tradeCount = Number(a.trade_count ?? 0);
           const netPnl = Number(a.net_pnl ?? 0);
@@ -202,7 +213,7 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
           );
         })}
 
-        {!s.accounts.length && (
+        {!orderedAccounts.length && (
           <div className='rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-6 text-sm text-[var(--text-secondary)]'>
             No accounts yet. Click <span className='font-semibold'>Add Account</span>{' '}
             to create your first one.

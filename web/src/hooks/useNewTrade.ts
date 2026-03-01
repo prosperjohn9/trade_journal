@@ -24,6 +24,7 @@ export type AccountLite = {
   id: string;
   name: string;
   account_type: string;
+  tags: string[];
   is_default: boolean;
   base_currency: string | null;
   starting_balance: number;
