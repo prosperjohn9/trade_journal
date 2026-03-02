@@ -45,6 +45,7 @@ export type TradeView = {
     id: string;
     name: string;
     account_type?: string | null;
+    tags?: string[] | null;
     base_currency?: string | null;
     starting_balance?: number | null;
   } | null;

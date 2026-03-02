@@ -149,7 +149,7 @@ async function setAccountTags(
   if (error) throw error;
 }
 
-async function fetchAccountByUserAndId(
+export async function fetchAccountByUserAndId(
   userId: string,
   accountId: string,
 ): Promise<AccountRow> {

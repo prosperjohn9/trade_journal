@@ -3,13 +3,29 @@ import { getTradeById } from '@/src/lib/db/trades.repo';
 import { listTemplateItems } from '@/src/lib/db/setupTemplateItems.repo';
 import { listTradeChecks } from '@/src/lib/db/tradeCriteriaChecks.repo';
 import { signTradeScreenshotPath } from '@/src/lib/db/tradeScreenshots.repo';
+import { fetchAccountByUserAndId } from '@/src/lib/db/accounts.repo';
 import type { TradeChecklistItem, TradeView } from '@/src/hooks/useTradeView';
 
 export async function loadTradeView(params: { tradeId: string }) {
-  await requireUser();
+  const user = await requireUser();
 
   const raw = await getTradeById(params.tradeId);
   const trade = raw as unknown as TradeView;
+
+  if (trade.account_id && trade.account) {
+    try {
+      const account = await fetchAccountByUserAndId(user.id, trade.account_id);
+      trade.account = {
+        ...trade.account,
+        tags: account.tags ?? [],
+      };
+    } catch {
+      trade.account = {
+        ...trade.account,
+        tags: [],
+      };
+    }
+  }
 
   const beforeUrl = trade.before_screenshot_path
     ? await signTradeScreenshotPath(trade.before_screenshot_path)

@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTradeView, type TradeChecklistItem } from '@/src/hooks/useTradeView';
+import { formatAccountTagLabel } from '@/src/domain/account';
 import { formatMoney } from '@/src/lib/utils/format';
 
 type DashboardTheme = 'light' | 'dark';
@@ -256,21 +257,45 @@ export function TradeViewClient() {
   const t = s.trade;
 
   const currency = t.account?.base_currency ?? 'USD';
-  const pnlAmount = Number(t.pnl_amount ?? 0);
-  const pnlPercent = Number(t.pnl_percent ?? 0);
-  const rMultiple = t.r_multiple === null ? null : Number(t.r_multiple);
+  const grossPnl = Number(t.pnl_amount ?? 0);
+  const hasStoredNetPnl =
+    t.net_pnl !== null &&
+    t.net_pnl !== undefined &&
+    Number.isFinite(Number(t.net_pnl));
+  const netPnl = hasStoredNetPnl ? Number(t.net_pnl) : grossPnl;
+  const effectivePnl = hasStoredNetPnl ? netPnl : grossPnl;
+  const grossPnlPercent = Number(t.pnl_percent ?? 0);
+  const riskAmount = t.risk_amount === null ? null : Number(t.risk_amount);
 
   const balanceBeforeRaw =
-    Number.isFinite(pnlAmount) && Number.isFinite(pnlPercent) && pnlPercent !== 0
-      ? pnlAmount / (pnlPercent / 100)
+    Number.isFinite(grossPnl) &&
+    Number.isFinite(grossPnlPercent) &&
+    grossPnlPercent !== 0
+      ? grossPnl / (grossPnlPercent / 100)
       : null;
   const balanceBefore =
     balanceBeforeRaw !== null && Number.isFinite(balanceBeforeRaw)
       ? balanceBeforeRaw
       : null;
+  const pnlPercent =
+    hasStoredNetPnl &&
+    balanceBefore !== null &&
+    Number.isFinite(balanceBefore) &&
+    balanceBefore !== 0
+      ? (effectivePnl / balanceBefore) * 100
+      : grossPnlPercent;
+  const rMultiple =
+    riskAmount !== null &&
+    Number.isFinite(riskAmount) &&
+    riskAmount > 0 &&
+    Number.isFinite(effectivePnl)
+      ? effectivePnl / riskAmount
+      : t.r_multiple === null
+        ? null
+        : Number(t.r_multiple);
   const balanceAfter =
-    balanceBefore !== null && Number.isFinite(pnlAmount)
-      ? balanceBefore + pnlAmount
+    balanceBefore !== null && Number.isFinite(effectivePnl)
+      ? balanceBefore + effectivePnl
       : null;
 
   const executionScore = s.activeItems.length
@@ -280,9 +305,12 @@ export function TradeViewClient() {
 
   const followed = s.activeItems.filter((item) => !!s.checks[item.id]);
   const missed = s.activeItems.filter((item) => !s.checks[item.id]);
+  const accountTags = (t.account?.tags ?? []).filter(
+    (tag): tag is string => typeof tag === 'string' && tag.trim().length > 0,
+  );
 
   const pnlTone =
-    pnlAmount > 0 ? 'var(--profit)' : pnlAmount < 0 ? 'var(--loss)' : undefined;
+    netPnl > 0 ? 'var(--profit)' : netPnl < 0 ? 'var(--loss)' : undefined;
   const impactTone =
     pnlPercent > 0 ? 'var(--profit)' : pnlPercent < 0 ? 'var(--loss)' : undefined;
   const rTone =
@@ -293,9 +321,6 @@ export function TradeViewClient() {
         : rMultiple < 0
           ? 'var(--loss)'
           : undefined;
-
-  const grossPnl = Number(t.pnl_amount ?? 0);
-  const netPnl = Number.isFinite(s.netPnl) ? Number(s.netPnl) : Number(t.net_pnl ?? 0);
 
   const timelineExit = t.closed_at
     ? new Date(t.closed_at).toLocaleString()
@@ -382,6 +407,12 @@ export function TradeViewClient() {
                 {t.account?.account_type ? (
                   <MetaBadge text={t.account.account_type} />
                 ) : null}
+                {accountTags.map((tag, index) => (
+                  <MetaBadge
+                    key={`account-tag-${index}-${tag}`}
+                    text={formatAccountTagLabel(tag)}
+                  />
+                ))}
               </div>
 
               <div className='grid grid-cols-2 gap-3 sm:grid-cols-3'>
@@ -398,9 +429,9 @@ export function TradeViewClient() {
                   </div>
                 </div>
                 <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2.5'>
-                  <div className='text-xs text-[var(--text-muted)]'>P&L</div>
+                  <div className='text-xs text-[var(--text-muted)]'>Net P&L</div>
                   <div className='mt-1 text-xl'>
-                    <NumericValue value={formatMoney(pnlAmount, currency)} tone={pnlTone} />
+                    <NumericValue value={formatMoney(netPnl, currency)} tone={pnlTone} />
                   </div>
                 </div>
               </div>
@@ -449,8 +480,8 @@ export function TradeViewClient() {
               <div className='mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2'>
                 <DetailRow label='Account' value={t.account?.name ?? '—'} />
                 <DetailRow
-                  label='P&L ($)'
-                  value={<NumericValue value={formatMoney(pnlAmount, currency)} tone={pnlTone} />}
+                  label='Net P&L ($)'
+                  value={<NumericValue value={formatMoney(netPnl, currency)} tone={pnlTone} />}
                 />
                 <DetailRow
                   label='P&L (%)'

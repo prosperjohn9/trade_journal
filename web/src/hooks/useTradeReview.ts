@@ -101,11 +101,6 @@ export function useTradeReview() {
     setChecks((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
   }
 
-  function hasMinimumLessonSentence(text: string): boolean {
-    const words = text.trim().split(/\s+/).filter(Boolean);
-    return words.length >= 4;
-  }
-
   function onAfterFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
 
@@ -231,11 +226,6 @@ export function useTradeReview() {
   async function saveAndMarkReviewed() {
     if (!trade) return;
     if (saving) return;
-
-    if (!hasMinimumLessonSentence(lessonLearned)) {
-      setMsg('Lesson Learned must be at least one full sentence (4+ words).');
-      return;
-    }
 
     setSaving(true);
     setMsg('Saving...');

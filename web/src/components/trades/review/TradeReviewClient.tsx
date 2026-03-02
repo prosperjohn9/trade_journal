@@ -30,9 +30,6 @@ export function TradeReviewClient() {
   const [theme, setTheme] = useState<DashboardTheme>('light');
   const checklistScore = Math.round(s.adherence.pct);
   const hasChecklist = s.adherence.total > 0;
-  const lessonWordCount = s.lessonLearned.trim().split(/\s+/).filter(Boolean)
-    .length;
-  const lessonTooShort = s.lessonLearned.trim().length > 0 && lessonWordCount < 4;
   const hasCurrentScreenshot = !!(
     s.afterSignedUrl || s.trade?.after_trade_screenshot_url
   );
@@ -438,19 +435,10 @@ export function TradeReviewClient() {
             <Field label='Lesson Learned'>
               <textarea
                 className={`${controlClass} min-h-24`}
-                style={lessonTooShort ? { borderColor: 'var(--accent)' } : undefined}
                 value={s.lessonLearned}
                 onChange={(e) => s.setLessonLearned(e.target.value)}
-                placeholder='Write at least one full sentence.'
+                placeholder='Optional reflection on what you learned.'
               />
-              <div className='text-xs text-[var(--text-muted)]'>
-                Minimum: one sentence (4+ words).
-              </div>
-              {lessonTooShort && (
-                <div className='text-xs text-[var(--text-secondary)]'>
-                  Add a little more detail so it reads like a full sentence.
-                </div>
-              )}
             </Field>
           </div>
 
