@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(/Users/prosperosaigbovo/Desktop/repos/trade_journal/web/node_modules/.bin/tsc --noEmit)"
+    ]
+  }
+}

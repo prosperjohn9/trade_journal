@@ -45,56 +45,103 @@ function signColor(n: number) {
   return 'text-slate-800';
 }
 
-
 type LinePoint = {
   xLabel: string;
   y: number;
-
   meta?: {
     dayNet?: number;
     cumNet?: number;
   };
 };
 
+type CartesianPt = { x: number; y: number; value: number };
+type SignedSegment = { tone: 'profit' | 'loss'; points: CartesianPt[] };
+
+function smoothCurveCommands(pts: Array<{ x: number; y: number }>): string {
+  let d = '';
+  for (let i = 1; i < pts.length; i++) {
+    const prev = pts[i - 1];
+    const curr = pts[i];
+    const dx = curr.x - prev.x;
+    d += ` C ${prev.x + dx * 0.42} ${prev.y}, ${prev.x + dx * 0.58} ${curr.y}, ${curr.x} ${curr.y}`;
+  }
+  return d;
+}
+
+function smoothPath(pts: Array<{ x: number; y: number }>): string {
+  if (!pts.length) return '';
+  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+  return `M ${pts[0].x} ${pts[0].y}${smoothCurveCommands(pts)}`;
+}
+
+function splitByBaseline(pts: CartesianPt[], baselineVal: number): SignedSegment[] {
+  if (pts.length < 2) return [];
+  const segments: SignedSegment[] = [];
+  let tone: SignedSegment['tone'] = pts[0].value >= baselineVal ? 'profit' : 'loss';
+  let current: CartesianPt[] = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const p1 = current[current.length - 1];
+    const p2 = pts[i];
+    const p1Above = p1.value >= baselineVal;
+    const p2Above = p2.value >= baselineVal;
+    if (p1Above === p2Above || p1.value === p2.value) {
+      current.push(p2);
+      continue;
+    }
+    const t = (baselineVal - p1.value) / (p2.value - p1.value);
+    const cross: CartesianPt = {
+      x: p1.x + (p2.x - p1.x) * t,
+      y: p1.y + (p2.y - p1.y) * t,
+      value: baselineVal,
+    };
+    current.push(cross);
+    segments.push({ tone, points: current });
+    tone = p2Above ? 'profit' : 'loss';
+    current = [cross, p2];
+  }
+  if (current.length > 1) segments.push({ tone, points: current });
+  return segments;
+}
+
+function areaPath(pts: CartesianPt[], baselineY: number): string {
+  if (pts.length < 2) return '';
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  return [
+    `M ${first.x.toFixed(2)} ${baselineY.toFixed(2)}`,
+    `L ${first.x.toFixed(2)} ${first.y.toFixed(2)}`,
+    smoothCurveCommands(pts),
+    `L ${last.x.toFixed(2)} ${baselineY.toFixed(2)}`,
+    'Z',
+  ].join(' ');
+}
+
 function SvgLineChart({
   title,
   subtitle,
   points,
-  height = 220,
+  startingBalance,
+  hasStartingBalance,
+  height = 300,
   yFormatter,
-  tooltipFormatter,
+  currency = 'USD',
 }: {
   title: string;
   subtitle?: string;
   points: Array<LinePoint>;
+  startingBalance?: number;
+  hasStartingBalance?: boolean;
   height?: number;
   yFormatter: (y: number) => string;
-  tooltipFormatter?: (p: LinePoint, index: number, all: Array<LinePoint>) => string;
+  currency?: string;
 }) {
   const width = 820;
-
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const [hover, setHover] = useState<
-    | {
-        x: number;
-        y: number;
-        content: string;
-      }
-    | null
-  >(null);
-
-  const setHoverFromEvent = (e: React.MouseEvent, content: string) => {
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setHover({ x, y, content });
-  };
-
   const padL = 96;
   const padR = 24;
-  const padT = 24;
+  const padT = 20;
   const padB = 44;
+
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   if (!points.length) {
     return (
@@ -106,7 +153,6 @@ function SvgLineChart({
           </div>
           <div className='text-xs opacity-70'>—</div>
         </div>
-
         <div className='mt-6 border rounded-lg p-6 text-center text-sm opacity-70 bg-slate-50'>
           No data for selected filters.
         </div>
@@ -114,35 +160,58 @@ function SvgLineChart({
     );
   }
 
+  const baseVal = hasStartingBalance && startingBalance != null ? startingBalance : 0;
   const ys = points.map((p) => p.y);
-  const minY = ys.length ? Math.min(...ys) : 0;
-  const maxY = ys.length ? Math.max(...ys) : 1;
+  const minY = Math.min(...ys, baseVal);
+  const maxY = Math.max(...ys, baseVal);
   const range = maxY - minY || 1;
+  const yPadding = Math.max(range * 0.18, Math.abs(baseVal) * 0.006, 1);
+  const domainMin = minY - yPadding;
+  const domainMax = maxY + yPadding;
+  const domainRange = domainMax - domainMin || 1;
 
-  const xStep =
-    points.length > 1 ? (width - padL - padR) / (points.length - 1) : 0;
-  const toX = (i: number) => padL + i * xStep;
-  const toY = (y: number) =>
-    padT + (height - padT - padB) * (1 - (y - minY) / range);
+  const toX = (i: number) =>
+    padL + (i * (width - padL - padR)) / Math.max(points.length - 1, 1);
+  const toY = (val: number) =>
+    padT + (1 - (val - domainMin) / domainRange) * (height - padT - padB);
 
-  const path = points
-    .map(
-      (p, i) =>
-        `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(2)} ${toY(p.y).toFixed(2)}`
-    )
-    .join(' ');
+  const cartesian: CartesianPt[] = points.map((p, i) => ({
+    x: toX(i),
+    y: toY(p.y),
+    value: p.y,
+  }));
 
-  const y0 = toY(0);
-  const axisY = clamp(y0, padT, height - padB);
+  const baselineY = toY(baseVal);
+  const segments = splitByBaseline(cartesian, baseVal);
 
   const ticks = 4;
-  const tickVals = Array.from(
-    { length: ticks + 1 },
-    (_, i) => minY + (range * i) / ticks
+  const baseTicks = Array.from({ length: ticks + 1 }, (_, i) =>
+    Number((domainMin + (domainRange * i) / ticks).toFixed(2))
   );
+  const tickValues = Array.from(
+    new Set([...baseTicks, Number(baseVal.toFixed(2))]),
+  ).sort((a, b) => b - a);
+
+  const currentIndex =
+    selectedIndex === null ? points.length - 1 : Math.min(selectedIndex, points.length - 1);
+  const activePoint = points[currentIndex];
+  const activeXY = cartesian[currentIndex];
+
+  const tooltipW = 236;
+  const tooltipH = hasStartingBalance ? 120 : 96;
+  const tooltipXBase =
+    activeXY.x > width - tooltipW - 24 ? activeXY.x - tooltipW - 14 : activeXY.x + 14;
+  const tooltipYBase =
+    activeXY.y < tooltipH + 24 ? activeXY.y + 14 : activeXY.y - tooltipH - 14;
+  const tooltipX = Math.max(8, Math.min(tooltipXBase, width - tooltipW - 8));
+  const tooltipY = Math.max(8, Math.min(tooltipYBase, height - tooltipH - 8));
+
+  const labelStep = points.length > 14 ? Math.ceil((points.length - 1) / 10) : 1;
+  const dayNet = activePoint.meta?.dayNet ?? 0;
+  const cumNet = activePoint.meta?.cumNet ?? 0;
 
   return (
-    <div className='border rounded-xl p-4 relative'>
+    <div className='border rounded-xl p-4'>
       <div className='flex items-start justify-between gap-3'>
         <div>
           <div className='font-semibold'>{title}</div>
@@ -155,99 +224,116 @@ function SvgLineChart({
         </div>
       </div>
 
-      {hover && (
-        <div
-          className='pointer-events-none absolute z-10 rounded-lg border bg-white px-3 py-2 text-xs shadow-sm'
-          style={{
-            left: Math.max(8, Math.min(hover.x + 12, width - 220)),
-            top: Math.max(8, Math.min(hover.y + 12, height - 80)),
-            whiteSpace: 'pre-line',
-          }}>
-          {hover.content}
-        </div>
-      )}
-
-      <div className='mt-3 w-full overflow-x-auto'>
+      <div className='mt-3 relative w-full overflow-x-auto'>
         <svg
-          ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
           className='w-full min-w-[680px]'
           role='img'
           aria-label={title}>
           <rect x='0' y='0' width={width} height={height} fill='white' />
 
-          {tickVals.map((v, i) => {
-            const y = toY(v);
+          {tickValues.map((tick) => {
+            const y = toY(tick);
+            const isBaseline = Math.abs(tick - baseVal) < 0.005;
             return (
-              <g key={i}>
+              <g key={tick}>
                 <line
                   x1={padL}
                   y1={y}
                   x2={width - padR}
                   y2={y}
-                  stroke='rgba(0,0,0,0.08)'
+                  stroke='var(--chart-grid)'
+                  strokeDasharray={isBaseline ? '3 6' : '0'}
+                  strokeWidth='1'
+                  opacity={isBaseline ? '0.48' : '0.58'}
                 />
-                <text x={10} y={y + 4} fontSize='10' fill='rgba(0,0,0,0.55)'>
-                  {yFormatter(v)}
+                <text
+                  x={10}
+                  y={y + 4}
+                  fontSize='10'
+                  fill='rgba(0,0,0,0.55)'
+                  className='tabular-nums'>
+                  {yFormatter(tick)}
                 </text>
               </g>
             );
           })}
 
-          <line
-            x1={padL}
-            y1={axisY}
-            x2={width - padR}
-            y2={axisY}
-            stroke='rgba(0,0,0,0.18)'
-          />
-
-          <path
-            d={path}
-            fill='none'
-            stroke='currentColor'
-            strokeWidth='2'
-            className='text-slate-900'
-          />
-
-          {points.map((p, i) => {
-            const tip = tooltipFormatter
-              ? tooltipFormatter(p, i, points)
-              : `${p.xLabel}: ${yFormatter(p.y)}`;
-
+          {segments.map((seg, idx) => {
+            const fillD = areaPath(seg.points, baselineY);
+            const strokeD = smoothPath(seg.points);
             return (
-              <g key={i}>
-                <circle
-                  cx={toX(i)}
-                  cy={toY(p.y)}
-                  r='10'
-                  fill='transparent'
-                  style={{ pointerEvents: 'all' }}
-                  onMouseEnter={(e) => setHoverFromEvent(e, tip)}
-                  onMouseMove={(e) => setHoverFromEvent(e, tip)}
-                  onMouseLeave={() => setHover(null)}
-                />
-                <circle
-                  cx={toX(i)}
-                  cy={toY(p.y)}
-                  r='2.5'
-                  fill='currentColor'
-                  className='text-slate-900'
+              <g key={`${seg.tone}-${idx}`}>
+                {fillD && (
+                  <path
+                    d={fillD}
+                    fill={
+                      seg.tone === 'profit'
+                        ? 'var(--chart-profit-fill)'
+                        : 'var(--chart-loss-fill)'
+                    }
+                    opacity='0.8'
+                  />
+                )}
+                <path
+                  d={strokeD}
+                  fill='none'
+                  stroke={
+                    seg.tone === 'profit'
+                      ? 'var(--chart-profit-line)'
+                      : 'var(--chart-loss-line)'
+                  }
+                  strokeWidth='var(--chart-line-width)'
+                  strokeLinecap='round'
                 />
               </g>
             );
           })}
 
-          {points.map((p, i) => {
-            if (points.length > 20) {
-              const step = Math.ceil(points.length / 10);
-              if (i % step !== 0 && i !== points.length - 1) return null;
-            }
+          <line
+            x1={activeXY.x}
+            y1={padT}
+            x2={activeXY.x}
+            y2={height - padB}
+            stroke='var(--chart-grid)'
+            strokeDasharray='4 4'
+          />
+
+          {cartesian.map((pt, index) => {
+            const above = points[index].y >= baseVal;
+            const isActive = index === currentIndex;
+            return (
+              <g key={index}>
+                <circle
+                  cx={pt.x}
+                  cy={pt.y}
+                  r='10'
+                  fill='transparent'
+                  style={{ pointerEvents: 'all' }}
+                  onMouseEnter={() => setSelectedIndex(index)}
+                  onMouseMove={() => setSelectedIndex(index)}
+                  onClick={() => setSelectedIndex(index)}
+                />
+                <circle
+                  cx={pt.x}
+                  cy={pt.y}
+                  r={isActive ? '5.6' : '3.2'}
+                  fill={above ? 'var(--chart-profit-line)' : 'var(--chart-loss-line)'}
+                  stroke='white'
+                  strokeWidth={isActive ? '2.2' : '1.4'}
+                />
+              </g>
+            );
+          })}
+
+          {points.map((p, index) => {
+            if (index !== 0 && index !== points.length - 1 && index % labelStep !== 0)
+              return null;
             return (
               <text
-                key={i}
-                x={toX(i)}
-                y={height - 12}
+                key={index}
+                x={cartesian[index].x}
+                y={height - 10}
                 fontSize='10'
                 fill='rgba(0,0,0,0.55)'
                 textAnchor='middle'>
@@ -256,6 +342,35 @@ function SvgLineChart({
             );
           })}
         </svg>
+
+        <div
+          className='pointer-events-none absolute z-20 min-w-[200px] rounded-xl border bg-white px-3 py-2 text-xs shadow-sm'
+          style={{
+            left: `${(tooltipX / width) * 100}%`,
+            top: `${(tooltipY / height) * 100}%`,
+          }}>
+          <div className='font-semibold'>{activePoint.xLabel}</div>
+          <div className='mt-2 space-y-1.5'>
+            <div className='flex items-center justify-between gap-3'>
+              <span className='opacity-60'>{hasStartingBalance ? 'Equity' : 'Cum Net'}</span>
+              <span className='font-semibold tabular-nums'>{yFormatter(activePoint.y)}</span>
+            </div>
+            <div className='flex items-center justify-between gap-3'>
+              <span className='opacity-60'>Day Net</span>
+              <span className={cx('font-semibold tabular-nums', signColor(dayNet))}>
+                {formatMoney(dayNet, currency)}
+              </span>
+            </div>
+            {hasStartingBalance && (
+              <div className='flex items-center justify-between gap-3'>
+                <span className='opacity-60'>Cum Net</span>
+                <span className={cx('font-semibold tabular-nums', signColor(cumNet))}>
+                  {formatMoney(cumNet, currency)}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
