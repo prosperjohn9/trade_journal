@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   calcNetPnl,
   getSessionUTC,
@@ -8,6 +8,10 @@ import {
   type Filters,
   useAnalytics,
 } from '@/src/hooks/useAnalytics';
+import {
+  LineChart,
+  type EquityChartPoint,
+} from '@/src/components/reports/monthly/monthly-report-ui';
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
@@ -87,10 +91,10 @@ function SvgLineChart({
     setHover({ x, y, content });
   };
 
-  const padL = 96; 
+  const padL = 96;
   const padR = 24;
   const padT = 24;
-  const padB = 44; 
+  const padB = 44;
 
   if (!points.length) {
     return (
@@ -213,7 +217,6 @@ function SvgLineChart({
 
             return (
               <g key={i}>
-                {/* Invisible larger target to make hovering easier */}
                 <circle
                   cx={toX(i)}
                   cy={toY(p.y)}
@@ -224,8 +227,6 @@ function SvgLineChart({
                   onMouseMove={(e) => setHoverFromEvent(e, tip)}
                   onMouseLeave={() => setHover(null)}
                 />
-
-                {/* Visible dot */}
                 <circle
                   cx={toX(i)}
                   cy={toY(p.y)}
@@ -572,7 +573,25 @@ function CalendarHeatmap({
 }
 
 
+type DashboardTheme = 'light' | 'dark';
+const THEME_STORAGE_KEY = 'dashboard-theme';
+
 export function AnalyticsClient() {
+  const [theme, setTheme] = useState<DashboardTheme>('light');
+
+  useEffect(() => {
+    const rafId = window.requestAnimationFrame(() => {
+      const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (saved === 'light' || saved === 'dark') {
+        setTheme(saved);
+        return;
+      }
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setTheme(prefersDark ? 'dark' : 'light');
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, []);
+
   const {
     loading,
     msg,
@@ -622,7 +641,9 @@ export function AnalyticsClient() {
   } = useAnalytics();
 
   return (
-    <main className='p-6 space-y-6'>
+    <main
+      className='dashboard-theme min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] p-6 space-y-6'
+      data-theme={theme}>
       <header className='flex items-start justify-between gap-4'>
         <div className='space-y-1'>
           <h1 className='text-2xl font-semibold'>Analytics</h1>
@@ -870,39 +891,36 @@ export function AnalyticsClient() {
 
       {/* Equity curve (full width, shown before KPIs) */}
       <section className='grid grid-cols-1 gap-3'>
-        <SvgLineChart
-          title={
-            hasStartingBalance
-              ? 'Equity Curve (daily)'
-              : 'Cumulative Net PnL (daily)'
-          }
-          subtitle={
-            hasStartingBalance
-              ? `Starting balance: ${formatMoney(startingBalance, currency)}`
-              : 'Set starting balance for true equity'
-          }
-          points={equitySeries}
-          yFormatter={(y) => formatMoney(y, currency)}
-          tooltipFormatter={(p) => {
-            const dayNet = p.meta?.dayNet ?? 0;
-            const cumNet = p.meta?.cumNet ?? 0;
-            const equityLabel = hasStartingBalance
-              ? `Equity: ${formatMoney(p.y, currency)}`
-              : `Cum Net: ${formatMoney(p.y, currency)}`;
-
-            const lines = [
-              `Date: ${p.xLabel}`,
-              equityLabel,
-              `Day Net: ${formatMoney(dayNet, currency)}`,
-            ];
-
-            if (hasStartingBalance) {
-              lines.push(`Cum Net: ${formatMoney(cumNet, currency)}`);
-            }
-
-            return lines.join('\n');
-          }}
-        />
+        <div className='border rounded-xl p-4'>
+          <div className='flex items-start justify-between gap-3 mb-3'>
+            <div>
+              <div className='font-semibold'>
+                {hasStartingBalance ? 'Equity Curve (daily)' : 'Cumulative Net PnL (daily)'}
+              </div>
+              <div className='text-xs opacity-70'>
+                {hasStartingBalance
+                  ? `Starting balance: ${formatMoney(startingBalance, currency)}`
+                  : 'Set starting balance for true equity'}
+              </div>
+            </div>
+            <div className='text-xs opacity-70'>
+              {equitySeries.length
+                ? `${equitySeries[0].xLabel} → ${equitySeries[equitySeries.length - 1].xLabel}`
+                : '—'}
+            </div>
+          </div>
+          <LineChart
+            points={equitySeries.map((p): EquityChartPoint => ({
+              dayKey: p.xLabel,
+              xLabel: p.xLabel.slice(5),
+              equity: p.y,
+              dayNet: p.meta?.dayNet ?? 0,
+              cumNet: p.meta?.cumNet ?? 0,
+            }))}
+            startingBalance={hasStartingBalance ? startingBalance : equitySeries[0]?.y ?? 0}
+            currency={currency}
+          />
+        </div>
       </section>
 
       {/* Summary cards */}
