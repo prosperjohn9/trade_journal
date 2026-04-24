@@ -121,7 +121,7 @@ function SvgLineChart({
   points,
   startingBalance,
   hasStartingBalance,
-  height = 300,
+  height = 380,
   yFormatter,
   currency = 'USD',
 }: {
@@ -135,10 +135,10 @@ function SvgLineChart({
   currency?: string;
 }) {
   const width = 820;
-  const padL = 88;
-  const padR = 40;
-  const padT = 40;
-  const padB = 56;
+  const padL = 96;
+  const padR = 48;
+  const padT = 64;
+  const padB = 76;
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
@@ -379,7 +379,7 @@ function SvgBarChart({
   title,
   subtitle,
   bars,
-  height = 220,
+  height = 320,
   yFormatter,
   xLabelFormatter,
 }: {
@@ -410,10 +410,10 @@ function SvgBarChart({
     setHover({ x, y, content });
   };
 
-  const padL = 88;
-  const padR = 40;
-  const padT = 40;
-  const padB = 56;
+  const padL = 96;
+  const padR = 48;
+  const padT = 64;
+  const padB = 76;
 
   if (!bars.length) {
     return (
@@ -437,7 +437,7 @@ function SvgBarChart({
   const rawMinY = ys.length ? Math.min(...ys, 0) : 0;
   const rawMaxY = ys.length ? Math.max(...ys, 0) : 1;
   const rawRange = rawMaxY - rawMinY || 1;
-  const yPad = rawRange * 0.15;
+  const yPad = rawRange * 0.22;
   const minY = rawMinY - (rawMinY < 0 ? yPad : 0);
   const maxY = rawMaxY + (rawMaxY > 0 ? yPad : 0);
   const range = maxY - minY || 1;
@@ -801,13 +801,14 @@ export function AnalyticsClient() {
 
           <div className='flex gap-2 items-center flex-wrap'>
             {activeFilterCount > 0 && (
-              <span className='text-xs border rounded-full px-2 py-1 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <span className='inline-flex items-center gap-1.5 text-xs font-semibold border rounded-full px-3 py-1 bg-[var(--accent)]/10 border-[var(--accent)]/30 text-[var(--accent)]'>
                 {activeFilterCount} active
               </span>
             )}
 
             {hasUnsavedChanges && (
-              <span className='text-xs border rounded-full px-2 py-1 bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300'>
+              <span className='inline-flex items-center gap-1.5 text-xs font-semibold border rounded-full px-3 py-1 bg-amber-500 border-amber-600 text-white shadow-sm dark:bg-amber-400 dark:border-amber-500 dark:text-amber-950'>
+                <span className='h-1.5 w-1.5 rounded-full bg-white dark:bg-amber-950 animate-pulse' />
                 Unsaved changes
               </span>
             )}
