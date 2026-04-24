@@ -1372,7 +1372,7 @@ export function AnalyticsClient() {
               <div className='font-semibold'>Winners</div>
               <div className='text-xs opacity-70 mt-1'>Best win %, Avg PnL %, Avg duration</div>
             </div>
-            <div className='text-xs border rounded-full px-2 py-1 bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-900/20 dark:border-emerald-700 dark:text-emerald-300'>
+            <div className='text-sm font-semibold border rounded-full px-3 py-1 bg-emerald-500 border-emerald-600 text-white shadow-sm dark:bg-emerald-400 dark:border-emerald-500 dark:text-emerald-950'>
               {formatPercent(stats.winShare, 0)}
             </div>
           </div>
@@ -1413,7 +1413,7 @@ export function AnalyticsClient() {
               <div className='font-semibold'>Losers</div>
               <div className='text-xs opacity-70 mt-1'>Worst loss %, Avg PnL %, Avg duration</div>
             </div>
-            <div className='text-xs border rounded-full px-2 py-1 bg-rose-50 border-rose-200 text-rose-900 dark:bg-rose-900/20 dark:border-rose-700 dark:text-rose-300'>
+            <div className='text-sm font-semibold border rounded-full px-3 py-1 bg-rose-500 border-rose-600 text-white shadow-sm dark:bg-rose-400 dark:border-rose-500 dark:text-rose-950'>
               {formatPercent(stats.lossShare, 0)}
             </div>
           </div>
