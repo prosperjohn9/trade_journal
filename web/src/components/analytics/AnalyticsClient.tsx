@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   calcNetPnl,
   getSessionUTC,
@@ -8,6 +8,9 @@ import {
   type Filters,
   useAnalytics,
 } from '@/src/hooks/useAnalytics';
+
+type DashboardTheme = 'light' | 'dark';
+const THEME_STORAGE_KEY = 'dashboard-theme';
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
@@ -36,9 +39,9 @@ function clamp(n: number, a: number, b: number) {
 }
 
 function signColor(n: number) {
-  if (n > 0) return 'text-emerald-700';
-  if (n < 0) return 'text-rose-700';
-  return 'text-slate-800';
+  if (n > 0) return 'text-[var(--profit)]';
+  if (n < 0) return 'text-[var(--loss)]';
+  return 'text-[var(--text-primary)]';
 }
 
 type LinePoint = {
@@ -132,16 +135,16 @@ function SvgLineChart({
   currency?: string;
 }) {
   const width = 820;
-  const padL = 96;
-  const padR = 24;
-  const padT = 20;
-  const padB = 44;
+  const padL = 88;
+  const padR = 40;
+  const padT = 40;
+  const padB = 56;
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   if (!points.length) {
     return (
-      <div className='border rounded-xl p-4'>
+      <div className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
         <div className='flex items-start justify-between gap-3'>
           <div>
             <div className='font-semibold'>{title}</div>
@@ -149,7 +152,7 @@ function SvgLineChart({
           </div>
           <div className='text-xs opacity-70'>—</div>
         </div>
-        <div className='mt-6 border rounded-lg p-6 text-center text-sm opacity-70 bg-slate-50'>
+        <div className='mt-6 border rounded-lg p-6 text-center text-sm opacity-70 bg-[var(--surface-muted)] border-[var(--border-default)]'>
           No data for selected filters.
         </div>
       </div>
@@ -161,7 +164,7 @@ function SvgLineChart({
   const minY = Math.min(...ys, baseVal);
   const maxY = Math.max(...ys, baseVal);
   const range = maxY - minY || 1;
-  const yPadding = Math.max(range * 0.18, Math.abs(baseVal) * 0.006, 1);
+  const yPadding = Math.max(range * 0.3, Math.abs(baseVal) * 0.008, 1);
   const domainMin = minY - yPadding;
   const domainMax = maxY + yPadding;
   const domainRange = domainMax - domainMin || 1;
@@ -207,7 +210,7 @@ function SvgLineChart({
   const cumNet = activePoint.meta?.cumNet ?? 0;
 
   return (
-    <div className='border rounded-xl p-4'>
+    <div className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
       <div className='flex items-start justify-between gap-3'>
         <div>
           <div className='font-semibold'>{title}</div>
@@ -220,13 +223,13 @@ function SvgLineChart({
         </div>
       </div>
 
-      <div className='mt-3 relative w-full overflow-x-auto'>
+      <div className='mt-3 relative w-full'>
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          className='w-full min-w-[680px]'
+          className='w-full block'
           role='img'
           aria-label={title}>
-          <rect x='0' y='0' width={width} height={height} fill='white' />
+          <rect x='0' y='0' width={width} height={height} fill='var(--bg-surface)' />
 
           {tickValues.map((tick) => {
             const y = toY(tick);
@@ -247,7 +250,7 @@ function SvgLineChart({
                   x={10}
                   y={y + 4}
                   fontSize='10'
-                  fill='rgba(0,0,0,0.55)'
+                  fill='var(--text-secondary)'
                   className='tabular-nums'>
                   {yFormatter(tick)}
                 </text>
@@ -315,7 +318,7 @@ function SvgLineChart({
                   cy={pt.y}
                   r={isActive ? '5.6' : '3.2'}
                   fill={above ? 'var(--chart-profit-line)' : 'var(--chart-loss-line)'}
-                  stroke='white'
+                  stroke='var(--bg-surface)'
                   strokeWidth={isActive ? '2.2' : '1.4'}
                 />
               </g>
@@ -329,9 +332,9 @@ function SvgLineChart({
               <text
                 key={index}
                 x={cartesian[index].x}
-                y={height - 10}
+                y={height - 20}
                 fontSize='10'
-                fill='rgba(0,0,0,0.55)'
+                fill='var(--text-secondary)'
                 textAnchor='middle'>
                 {p.xLabel.slice(5)}
               </text>
@@ -340,7 +343,7 @@ function SvgLineChart({
         </svg>
 
         <div
-          className='pointer-events-none absolute z-20 min-w-[200px] rounded-xl border bg-white px-3 py-2 text-xs shadow-sm'
+          className='pointer-events-none absolute z-20 min-w-[200px] rounded-xl border px-3 py-2 text-xs shadow-sm bg-[var(--chart-tooltip-bg)] border-[var(--chart-tooltip-border)] text-[var(--text-primary)]'
           style={{
             left: `${(tooltipX / width) * 100}%`,
             top: `${(tooltipY / height) * 100}%`,
@@ -407,14 +410,14 @@ function SvgBarChart({
     setHover({ x, y, content });
   };
 
-  const padL = 96;
-  const padR = 24;
-  const padT = 24;
-  const padB = 44;
+  const padL = 88;
+  const padR = 40;
+  const padT = 40;
+  const padB = 56;
 
   if (!bars.length) {
     return (
-      <div className='border rounded-xl p-4'>
+      <div className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
         <div className='flex items-start justify-between gap-3'>
           <div>
             <div className='font-semibold'>{title}</div>
@@ -423,7 +426,7 @@ function SvgBarChart({
           <div className='text-xs opacity-70'>—</div>
         </div>
 
-        <div className='mt-6 border rounded-lg p-6 text-center text-sm opacity-70 bg-slate-50'>
+        <div className='mt-6 border rounded-lg p-6 text-center text-sm opacity-70 bg-[var(--surface-muted)] border-[var(--border-default)]'>
           No data for selected filters.
         </div>
       </div>
@@ -431,12 +434,18 @@ function SvgBarChart({
   }
 
   const ys = bars.map((b) => b.y);
-  const minY = ys.length ? Math.min(...ys, 0) : 0;
-  const maxY = ys.length ? Math.max(...ys, 0) : 1;
+  const rawMinY = ys.length ? Math.min(...ys, 0) : 0;
+  const rawMaxY = ys.length ? Math.max(...ys, 0) : 1;
+  const rawRange = rawMaxY - rawMinY || 1;
+  const yPad = rawRange * 0.15;
+  const minY = rawMinY - (rawMinY < 0 ? yPad : 0);
+  const maxY = rawMaxY + (rawMaxY > 0 ? yPad : 0);
   const range = maxY - minY || 1;
 
   const plotW = width - padL - padR;
-  const barW = bars.length ? plotW / bars.length : plotW;
+  const outerGap = Math.min(24, plotW * 0.03);
+  const usableW = Math.max(1, plotW - outerGap * 2);
+  const barW = bars.length ? usableW / bars.length : usableW;
   const gap = Math.min(10, barW * 0.2);
   const innerW = Math.max(2, barW - gap);
 
@@ -451,7 +460,7 @@ function SvgBarChart({
   );
 
   return (
-    <div className='border rounded-xl p-4 relative'>
+    <div className='border rounded-xl p-4 relative bg-[var(--bg-surface)] border-[var(--border-default)]'>
       <div className='flex items-start justify-between gap-3'>
         <div>
           <div className='font-semibold'>{title}</div>
@@ -466,7 +475,7 @@ function SvgBarChart({
 
       {hover && (
         <div
-          className='pointer-events-none absolute z-10 rounded-lg border bg-white px-3 py-2 text-xs shadow-sm'
+          className='pointer-events-none absolute z-10 rounded-lg border px-3 py-2 text-xs shadow-sm bg-[var(--chart-tooltip-bg)] border-[var(--chart-tooltip-border)] text-[var(--text-primary)]'
           style={{
             left: Math.max(8, Math.min(hover.x + 12, width - 220)),
             top: Math.max(8, Math.min(hover.y + 12, height - 80)),
@@ -476,14 +485,14 @@ function SvgBarChart({
         </div>
       )}
 
-      <div className='mt-3 w-full overflow-x-auto'>
+      <div className='mt-3 w-full'>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
-          className='w-full min-w-[680px]'
+          className='w-full block'
           role='img'
           aria-label={title}>
-          <rect x='0' y='0' width={width} height={height} fill='white' />
+          <rect x='0' y='0' width={width} height={height} fill='var(--bg-surface)' />
 
           {tickVals.map((v, i) => {
             const y = toY(v);
@@ -494,9 +503,10 @@ function SvgBarChart({
                   y1={y}
                   x2={width - padR}
                   y2={y}
-                  stroke='rgba(0,0,0,0.08)'
+                  stroke='var(--chart-grid)'
+                  opacity='0.6'
                 />
-                <text x={10} y={y + 4} fontSize='10' fill='rgba(0,0,0,0.55)'>
+                <text x={10} y={y + 4} fontSize='10' fill='var(--text-secondary)'>
                   {yFormatter(v)}
                 </text>
               </g>
@@ -508,11 +518,12 @@ function SvgBarChart({
             y1={y0}
             x2={width - padR}
             y2={y0}
-            stroke='rgba(0,0,0,0.18)'
+            stroke='var(--chart-grid)'
+            opacity='0.9'
           />
 
           {bars.map((b, i) => {
-            const x = padL + i * barW + gap / 2;
+            const x = padL + outerGap + i * barW + gap / 2;
             const yPos = toY(Math.max(b.y, 0));
             const yNeg = toY(Math.min(b.y, 0));
             const h = Math.abs(yNeg - yPos);
@@ -526,7 +537,7 @@ function SvgBarChart({
                   width={innerW}
                   height={Math.max(1, h)}
                   fill='currentColor'
-                  className={b.y >= 0 ? 'text-emerald-700' : 'text-rose-700'}
+                  className={b.y >= 0 ? 'text-emerald-500' : 'text-rose-500'}
                   opacity={0.9}
                   rx={3}
                   onMouseEnter={(e) =>
@@ -545,9 +556,9 @@ function SvgBarChart({
                 />
                 <text
                   x={x + innerW / 2}
-                  y={height - 12}
+                  y={height - 24}
                   fontSize='10'
-                  fill='rgba(0,0,0,0.55)'
+                  fill='var(--text-secondary)'
                   textAnchor='middle'>
                   {xLabelFormatter ? xLabelFormatter(b.xLabel) : b.xLabel}
                 </text>
@@ -568,7 +579,7 @@ function CalendarHeatmap({
   valueFormatter,
 }: {
   title: string;
-  month: string; 
+  month: string;
   valueByDay: Record<string, number>;
   modeLabel: string;
   valueFormatter: (n: number) => string;
@@ -576,7 +587,7 @@ function CalendarHeatmap({
   const [y, m] = month.split('-').map(Number);
   const first = new Date(y, m - 1, 1);
   const last = new Date(y, m, 0);
-  const firstDow = first.getDay(); 
+  const firstDow = first.getDay();
   const daysInMonth = last.getDate();
 
   const cells: Array<{ date: Date | null; key: string; value: number | null }> =
@@ -603,8 +614,8 @@ function CalendarHeatmap({
   const maxAbs = vals.length ? Math.max(...vals.map((v) => Math.abs(v))) : 0;
 
   function cellClass(v: number | null) {
-    if (v === null) return 'bg-slate-50';
-    if (!maxAbs) return 'bg-slate-100';
+    if (v === null) return 'bg-[var(--surface-muted)]';
+    if (!maxAbs) return 'bg-[var(--surface-muted)]';
 
     const intensity = clamp(Math.abs(v) / maxAbs, 0, 1);
     const step =
@@ -626,11 +637,11 @@ function CalendarHeatmap({
         : step === 2
         ? 'bg-rose-300'
         : 'bg-rose-200';
-    return 'bg-slate-200';
+    return 'bg-[var(--surface-muted)]';
   }
 
   return (
-    <div className='border rounded-xl p-4'>
+    <div className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
       <div className='flex items-center justify-between gap-3 flex-wrap'>
         <div className='font-semibold'>{title}</div>
         <div className='text-xs opacity-70'>
@@ -661,7 +672,7 @@ function CalendarHeatmap({
               title={tooltip}
               className={cx(
                 'h-10 rounded-lg border flex items-center justify-center text-xs',
-                c.date ? 'border-slate-200' : 'border-transparent',
+                c.date ? 'border-[var(--border-default)]' : 'border-transparent',
                 cellClass(v)
               )}>
               <span
@@ -685,6 +696,21 @@ function CalendarHeatmap({
 
 
 export function AnalyticsClient() {
+  const [theme, setTheme] = useState<DashboardTheme>('light');
+
+  useEffect(() => {
+    const apply = () => {
+      const stored = localStorage.getItem(THEME_STORAGE_KEY) as DashboardTheme | null;
+      if (stored === 'light' || stored === 'dark') {
+        setTheme(stored);
+      } else {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        setTheme(prefersDark ? 'dark' : 'light');
+      }
+    };
+    requestAnimationFrame(apply);
+  }, []);
+
   const {
     loading,
     msg,
@@ -734,7 +760,9 @@ export function AnalyticsClient() {
   } = useAnalytics();
 
   return (
-    <main className='p-6 space-y-6'>
+    <main
+      className='dashboard-theme min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] p-6 space-y-6'
+      data-theme={theme}>
       <header className='flex items-start justify-between gap-4'>
         <div className='space-y-1'>
           <h1 className='text-2xl font-semibold'>Analytics</h1>
@@ -751,18 +779,20 @@ export function AnalyticsClient() {
 
         <div className='flex gap-2 flex-wrap'>
           <button
-            className='border rounded-lg px-4 py-2'
+            className='border rounded-lg px-4 py-2 bg-[var(--bg-surface)] border-[var(--border-default)] hover:bg-[var(--surface-muted)]'
             onClick={goDashboard}>
             Back
           </button>
-          <button className='border rounded-lg px-4 py-2' onClick={logout}>
+          <button
+            className='border rounded-lg px-4 py-2 bg-[var(--bg-surface)] border-[var(--border-default)] hover:bg-[var(--surface-muted)]'
+            onClick={logout}>
             Logout
           </button>
         </div>
       </header>
 
       {/* Filters (collapsible) */}
-      <section className='border rounded-xl p-4 space-y-3'>
+      <section className='border rounded-xl p-4 space-y-3 bg-[var(--bg-surface)] border-[var(--border-default)]'>
         <div className='flex items-start justify-between gap-3 flex-wrap'>
           <div>
             <div className='font-semibold'>Filters</div>
@@ -771,13 +801,13 @@ export function AnalyticsClient() {
 
           <div className='flex gap-2 items-center flex-wrap'>
             {activeFilterCount > 0 && (
-              <span className='text-xs border rounded-full px-2 py-1 bg-slate-50'>
+              <span className='text-xs border rounded-full px-2 py-1 bg-[var(--surface-muted)] border-[var(--border-default)]'>
                 {activeFilterCount} active
               </span>
             )}
 
             {hasUnsavedChanges && (
-              <span className='text-xs border rounded-full px-2 py-1 bg-amber-50 border-amber-200 text-amber-900'>
+              <span className='text-xs border rounded-full px-2 py-1 bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300'>
                 Unsaved changes
               </span>
             )}
@@ -786,7 +816,9 @@ export function AnalyticsClient() {
               type='button'
               className={cx(
                 'border rounded-lg px-4 py-2',
-                hasUnsavedChanges ? 'bg-slate-900 text-white border-slate-900' : 'opacity-50 cursor-not-allowed'
+                hasUnsavedChanges
+                  ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                  : 'opacity-50 cursor-not-allowed bg-[var(--bg-surface)] border-[var(--border-default)]'
               )}
               disabled={!hasUnsavedChanges}
               onClick={applyDraftFilters}>
@@ -795,7 +827,7 @@ export function AnalyticsClient() {
 
             <button
               type='button'
-              className='border rounded-lg px-4 py-2'
+              className='border rounded-lg px-4 py-2 bg-[var(--bg-surface)] border-[var(--border-default)] hover:bg-[var(--surface-muted)]'
               onClick={() => setShowFilters((v) => !v)}>
               {showFilters ? 'Hide filters' : 'Show filters'}
             </button>
@@ -807,7 +839,7 @@ export function AnalyticsClient() {
             <div className='grid grid-cols-1 md:grid-cols-4 gap-3'>
               <Field label='Account'>
                 <select
-                  className='w-full border rounded-lg p-3'
+                  className='w-full border rounded-lg p-3 bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-primary)]'
                   value={draft.accountFilter}
                   onChange={(e) =>
                     setDraft((p) => ({
@@ -827,7 +859,7 @@ export function AnalyticsClient() {
 
               <Field label='Start'>
                 <input
-                  className='w-full border rounded-lg p-3'
+                  className='w-full border rounded-lg p-3 bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-primary)]'
                   type='date'
                   value={draft.rangeStart}
                   onChange={(e) => setDraft((p) => ({ ...p, rangeStart: e.target.value }))}
@@ -836,7 +868,7 @@ export function AnalyticsClient() {
 
               <Field label='End'>
                 <input
-                  className='w-full border rounded-lg p-3'
+                  className='w-full border rounded-lg p-3 bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-primary)]'
                   type='date'
                   value={draft.rangeEnd}
                   onChange={(e) => setDraft((p) => ({ ...p, rangeEnd: e.target.value }))}
@@ -845,7 +877,7 @@ export function AnalyticsClient() {
 
               <Field label='Instrument'>
                 <input
-                  className='w-full border rounded-lg p-3'
+                  className='w-full border rounded-lg p-3 bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-primary)]'
                   placeholder='Select or type…'
                   list='instrument-options'
                   value={draft.instrumentQuery}
@@ -865,7 +897,7 @@ export function AnalyticsClient() {
 
               <Field label='Reviewed'>
                 <select
-                  className='w-full border rounded-lg p-3'
+                  className='w-full border rounded-lg p-3 bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-primary)]'
                   value={draft.reviewedFilter}
                   onChange={(e) =>
                     setDraft((p) => ({
@@ -881,7 +913,7 @@ export function AnalyticsClient() {
 
               <Field label='Direction'>
                 <select
-                  className='w-full border rounded-lg p-3'
+                  className='w-full border rounded-lg p-3 bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-primary)]'
                   value={draft.directionFilter}
                   onChange={(e) =>
                     setDraft((p) => ({
@@ -897,7 +929,7 @@ export function AnalyticsClient() {
 
               <Field label='Session (UTC)'>
                 <select
-                  className='w-full border rounded-lg p-3'
+                  className='w-full border rounded-lg p-3 bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-primary)]'
                   value={draft.sessionFilter}
                   onChange={(e) =>
                     setDraft((p) => ({
@@ -915,7 +947,7 @@ export function AnalyticsClient() {
 
               <Field label='Setup'>
                 <select
-                  className='w-full border rounded-lg p-3'
+                  className='w-full border rounded-lg p-3 bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-primary)]'
                   value={draft.setupFilter}
                   onChange={(e) =>
                     setDraft((p) => ({
@@ -935,7 +967,7 @@ export function AnalyticsClient() {
 
               <Field label='Outcome'>
                 <select
-                  className='w-full border rounded-lg p-3'
+                  className='w-full border rounded-lg p-3 bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-primary)]'
                   value={draft.outcomeFilter}
                   onChange={(e) =>
                     setDraft((p) => ({
@@ -952,7 +984,7 @@ export function AnalyticsClient() {
 
               <div className='md:col-span-2 flex items-end gap-2'>
                 <button
-                  className='border rounded-lg px-4 py-3 w-full'
+                  className='border rounded-lg px-4 py-3 w-full bg-[var(--bg-surface)] border-[var(--border-default)] hover:bg-[var(--surface-muted)]'
                   type='button'
                   onClick={clearFilters}>
                   Clear filters
@@ -1024,12 +1056,12 @@ export function AnalyticsClient() {
         <Card
           title='Avg Profit'
           value={formatMoney(stats.avgWin, currency)}
-          valueClassName='text-emerald-700'
+          valueClassName='text-[var(--profit)]'
         />
         <Card
           title='Avg Loss'
           value={formatMoney(stats.avgLossAbs, currency)}
-          valueClassName='text-rose-700'
+          valueClassName='text-[var(--loss)]'
         />
         <Card
           title='RRR'
@@ -1054,12 +1086,12 @@ export function AnalyticsClient() {
         <Card
           title='Best Trade'
           value={formatMoney(stats.bestTrade, currency)}
-          valueClassName='text-emerald-700'
+          valueClassName='text-[var(--profit)]'
         />
         <Card
           title='Worst Trade'
           value={formatMoney(stats.worstTrade, currency)}
-          valueClassName='text-rose-700'
+          valueClassName='text-[var(--loss)]'
         />
         <Card
           title='Avg Duration'
@@ -1102,7 +1134,7 @@ export function AnalyticsClient() {
         />
       </section>
 
-      <section className='border rounded-xl p-4'>
+      <section className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
         <div className='flex items-center justify-between gap-3 flex-wrap'>
           <div>
             <div className='font-semibold'>Monthly advanced metrics</div>
@@ -1113,7 +1145,7 @@ export function AnalyticsClient() {
         <div className='overflow-auto mt-3'>
           <table className='w-full text-sm'>
             <thead>
-              <tr className='text-left border-b'>
+              <tr className='text-left border-b border-[var(--border-default)] text-[var(--text-secondary)]'>
                 <th className='p-2'>Month</th>
                 <th className='p-2'>Trades</th>
                 <th className='p-2'>Win %</th>
@@ -1126,7 +1158,7 @@ export function AnalyticsClient() {
             </thead>
             <tbody>
               {monthlyAdvanced.map((m) => (
-                <tr key={m.month} className='border-b'>
+                <tr key={m.month} className='border-b border-[var(--border-default)]'>
                   <td className='p-2 font-medium'>{m.month}</td>
                   <td className='p-2'>{m.trades}</td>
                   <td className='p-2'>{formatPercent(m.winRate, 0)}</td>
@@ -1184,7 +1216,7 @@ export function AnalyticsClient() {
           yFormatter={(y) => formatMoney(y, currency)}
         />
 
-        <div className='border rounded-xl p-4'>
+        <div className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
           <div className='flex items-center justify-between gap-3'>
             <div>
               <div className='font-semibold'>Session summary</div>
@@ -1194,7 +1226,7 @@ export function AnalyticsClient() {
 
           <div className='mt-3 space-y-2 text-sm'>
             {sessionPerf.map((s) => (
-              <div key={s.session} className='border rounded-lg p-3'>
+              <div key={s.session} className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
                 <div className='flex items-center justify-between gap-3'>
                   <div className='font-semibold'>{sessionLabel(s.session)}</div>
                   <div className={cx('font-semibold', signColor(s.pnl))}>
@@ -1222,161 +1254,69 @@ export function AnalyticsClient() {
         </div>
       </section>
 
-      {/* Direction + streaks + symbols */}
+      {/* Direction + Streaks + Symbols */}
       <section className='grid grid-cols-1 lg:grid-cols-3 gap-3'>
-        <div className='border rounded-xl p-4 lg:col-span-1 space-y-4'>
-          <div>
-            <div className='font-semibold'>Performance by Direction</div>
-            <div className='mt-3 space-y-2 text-sm'>
-              {directionPerf.map((d) => (
-                <div key={d.dir} className='border rounded-lg p-3'>
-                  <div className='flex items-center justify-between'>
-                    <div className='font-semibold'>{d.dir}</div>
-                    <div className={cx('font-semibold', signColor(d.pnl))}>
-                      {formatMoney(d.pnl, currency)}
-                    </div>
-                  </div>
-                  <div className='text-xs opacity-70 mt-1'>
-                    Trades: <span className='font-semibold'>{d.trades}</span> •
-                    Win rate:{' '}
-                    <span className='font-semibold'>
-                      {formatPercent(d.winRate, 0)}
-                    </span>
+        <div className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
+          <div className='font-semibold'>Performance by Direction</div>
+          <div className='mt-3 space-y-2 text-sm'>
+            {directionPerf.map((d) => (
+              <div key={d.dir} className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+                <div className='flex items-center justify-between'>
+                  <div className='font-semibold'>{d.dir}</div>
+                  <div className={cx('font-semibold', signColor(d.pnl))}>
+                    {formatMoney(d.pnl, currency)}
                   </div>
                 </div>
-              ))}
-            </div>
+                <div className='text-xs opacity-70 mt-1'>
+                  Trades: <span className='font-semibold'>{d.trades}</span> •
+                  Win rate:{' '}
+                  <span className='font-semibold'>
+                    {formatPercent(d.winRate, 0)}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
+        </div>
 
-          <div className='border-t pt-3'>
-            <div className='font-semibold'>Streaks</div>
-            <div className='text-sm mt-2 space-y-1'>
-              <div>
-                Max consecutive wins:{' '}
-                <span className='font-semibold'>
-                  {stats.maxConsecutiveWins}
-                </span>
-              </div>
-              <div>
-                Avg consecutive wins:{' '}
-                <span className='font-semibold'>
-                  {formatNumber(stats.avgConsecutiveWins, 1)}
-                </span>
-              </div>
-              <div className='mt-2'>
-                Max consecutive losses:{' '}
-                <span className='font-semibold'>
-                  {stats.maxConsecutiveLosses}
-                </span>
-              </div>
-              <div>
-                Avg consecutive losses:{' '}
-                <span className='font-semibold'>
-                  {formatNumber(stats.avgConsecutiveLosses, 1)}
-                </span>
+        <div className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
+          <div className='font-semibold'>Streaks</div>
+          <div className='mt-3 grid grid-cols-2 gap-3 text-sm'>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <div className='text-xs opacity-70'>Max consecutive wins</div>
+              <div className='text-lg font-semibold text-[var(--profit)]'>
+                {stats.maxConsecutiveWins}
               </div>
             </div>
-          </div>
-          <div className='border-t pt-3'>
-            <div className='font-semibold'>Winners vs Losers</div>
-            <div className='text-xs opacity-70 mt-1'>Counts, % stats, and average duration</div>
-
-            <div className='mt-3 grid grid-cols-1 gap-3'>
-              <div className='border rounded-xl p-4'>
-                <div className='flex items-center justify-between gap-3'>
-                  <div>
-                    <div className='font-semibold'>Winners</div>
-                    <div className='text-xs opacity-70 mt-1'>Best win %, Avg PnL %, Avg duration</div>
-                  </div>
-                  <div className='text-xs border rounded-full px-2 py-1 bg-emerald-50 border-emerald-200 text-emerald-900'>
-                    {formatPercent(stats.winShare, 0)}
-                  </div>
-                </div>
-
-                <div className='mt-4 grid grid-cols-2 gap-3 text-sm'>
-                  <div className='border rounded-lg p-3'>
-                    <div className='text-xs opacity-70'>Trades</div>
-                    <div className='text-lg font-semibold'>{stats.winCount}</div>
-                  </div>
-                  <div className='border rounded-lg p-3'>
-                    <div className='text-xs opacity-70'>Avg PnL %</div>
-                    <div className={cx('text-lg font-semibold', signColor(stats.winPctAvg))}>
-                      {formatPercent(stats.winPctAvg, 2)}
-                    </div>
-                  </div>
-
-                  <div className='border rounded-lg p-3'>
-                    <div className='text-xs opacity-70'>Best win %</div>
-                    <div className='text-lg font-semibold text-emerald-700'>
-                      {formatPercent(stats.bestWinPct, 2)}
-                    </div>
-                  </div>
-                  <div className='border rounded-lg p-3'>
-                    <div className='text-xs opacity-70'>Avg duration (wins)</div>
-                    <div className='text-lg font-semibold'>
-                      {stats.avgWinDurationMin ? `${formatNumber(stats.avgWinDurationMin, 0)} min` : '—'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className='mt-3 text-xs opacity-70'>
-                  Avg duration uses only trades with <span className='font-semibold'>exit date/time</span>.
-                </div>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <div className='text-xs opacity-70'>Avg consecutive wins</div>
+              <div className='text-lg font-semibold'>
+                {formatNumber(stats.avgConsecutiveWins, 1)}
               </div>
-
-              <div className='border rounded-xl p-4'>
-                <div className='flex items-center justify-between gap-3'>
-                  <div>
-                    <div className='font-semibold'>Losers</div>
-                    <div className='text-xs opacity-70 mt-1'>Worst loss %, Avg PnL %, Avg duration</div>
-                  </div>
-                  <div className='text-xs border rounded-full px-2 py-1 bg-rose-50 border-rose-200 text-rose-900'>
-                    {formatPercent(stats.lossShare, 0)}
-                  </div>
-                </div>
-
-                <div className='mt-4 grid grid-cols-2 gap-3 text-sm'>
-                  <div className='border rounded-lg p-3'>
-                    <div className='text-xs opacity-70'>Trades</div>
-                    <div className='text-lg font-semibold'>{stats.lossCount}</div>
-                  </div>
-                  <div className='border rounded-lg p-3'>
-                    <div className='text-xs opacity-70'>Avg PnL %</div>
-                    <div className={cx('text-lg font-semibold', signColor(stats.lossPctAvg))}>
-                      {formatPercent(stats.lossPctAvg, 2)}
-                    </div>
-                  </div>
-
-                  <div className='border rounded-lg p-3'>
-                    <div className='text-xs opacity-70'>Worst loss %</div>
-                    <div className='text-lg font-semibold text-rose-700'>
-                      {formatPercent(stats.worstLossPct, 2)}
-                    </div>
-                  </div>
-                  <div className='border rounded-lg p-3'>
-                    <div className='text-xs opacity-70'>Avg duration (losses)</div>
-                    <div className='text-lg font-semibold'>
-                      {stats.avgLossDurationMin ? `${formatNumber(stats.avgLossDurationMin, 0)} min` : '—'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className='mt-3 text-xs opacity-70'>
-                  Breakeven share: <span className='font-semibold'>{formatPercent(stats.beShare, 0)}</span>
-                </div>
+            </div>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <div className='text-xs opacity-70'>Max consecutive losses</div>
+              <div className='text-lg font-semibold text-[var(--loss)]'>
+                {stats.maxConsecutiveLosses}
+              </div>
+            </div>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <div className='text-xs opacity-70'>Avg consecutive losses</div>
+              <div className='text-lg font-semibold'>
+                {formatNumber(stats.avgConsecutiveLosses, 1)}
               </div>
             </div>
           </div>
         </div>
 
-        <div className='border rounded-xl p-4 lg:col-span-2'>
+        <div className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
           <div className='flex items-center justify-between gap-3'>
             <div className='font-semibold'>Best performing symbols</div>
-            <div className='text-xs opacity-70'>Top / Bottom by net PnL</div>
+            <div className='text-xs opacity-70'>Top / Bottom</div>
           </div>
 
-          <div className='mt-3 grid grid-cols-1 md:grid-cols-2 gap-3'>
-            <div className='border rounded-lg p-3'>
+          <div className='mt-3 grid grid-cols-2 gap-3'>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
               <div className='font-semibold text-sm'>Winners</div>
               <div className='mt-2 space-y-2 text-sm'>
                 {topSymbols.length ? (
@@ -1396,7 +1336,7 @@ export function AnalyticsClient() {
               </div>
             </div>
 
-            <div className='border rounded-lg p-3'>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
               <div className='font-semibold text-sm'>Losers</div>
               <div className='mt-2 space-y-2 text-sm'>
                 {bottomSymbols.length ? (
@@ -1423,20 +1363,105 @@ export function AnalyticsClient() {
         </div>
       </section>
 
+      {/* Winners vs Losers */}
+      <section className='grid grid-cols-1 lg:grid-cols-2 gap-3'>
+        <div className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
+          <div className='flex items-center justify-between gap-3'>
+            <div>
+              <div className='font-semibold'>Winners</div>
+              <div className='text-xs opacity-70 mt-1'>Best win %, Avg PnL %, Avg duration</div>
+            </div>
+            <div className='text-xs border rounded-full px-2 py-1 bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-900/20 dark:border-emerald-700 dark:text-emerald-300'>
+              {formatPercent(stats.winShare, 0)}
+            </div>
+          </div>
+
+          <div className='mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm'>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <div className='text-xs opacity-70'>Trades</div>
+              <div className='text-lg font-semibold'>{stats.winCount}</div>
+            </div>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <div className='text-xs opacity-70'>Avg PnL %</div>
+              <div className={cx('text-lg font-semibold', signColor(stats.winPctAvg))}>
+                {formatPercent(stats.winPctAvg, 2)}
+              </div>
+            </div>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <div className='text-xs opacity-70'>Best win %</div>
+              <div className='text-lg font-semibold text-[var(--profit)]'>
+                {formatPercent(stats.bestWinPct, 2)}
+              </div>
+            </div>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <div className='text-xs opacity-70'>Avg duration</div>
+              <div className='text-lg font-semibold'>
+                {stats.avgWinDurationMin ? `${formatNumber(stats.avgWinDurationMin, 0)} min` : '—'}
+              </div>
+            </div>
+          </div>
+
+          <div className='mt-3 text-xs opacity-70'>
+            Avg duration uses only trades with <span className='font-semibold'>exit date/time</span>.
+          </div>
+        </div>
+
+        <div className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
+          <div className='flex items-center justify-between gap-3'>
+            <div>
+              <div className='font-semibold'>Losers</div>
+              <div className='text-xs opacity-70 mt-1'>Worst loss %, Avg PnL %, Avg duration</div>
+            </div>
+            <div className='text-xs border rounded-full px-2 py-1 bg-rose-50 border-rose-200 text-rose-900 dark:bg-rose-900/20 dark:border-rose-700 dark:text-rose-300'>
+              {formatPercent(stats.lossShare, 0)}
+            </div>
+          </div>
+
+          <div className='mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm'>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <div className='text-xs opacity-70'>Trades</div>
+              <div className='text-lg font-semibold'>{stats.lossCount}</div>
+            </div>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <div className='text-xs opacity-70'>Avg PnL %</div>
+              <div className={cx('text-lg font-semibold', signColor(stats.lossPctAvg))}>
+                {formatPercent(stats.lossPctAvg, 2)}
+              </div>
+            </div>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <div className='text-xs opacity-70'>Worst loss %</div>
+              <div className='text-lg font-semibold text-[var(--loss)]'>
+                {formatPercent(stats.worstLossPct, 2)}
+              </div>
+            </div>
+            <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+              <div className='text-xs opacity-70'>Avg duration</div>
+              <div className='text-lg font-semibold'>
+                {stats.avgLossDurationMin ? `${formatNumber(stats.avgLossDurationMin, 0)} min` : '—'}
+              </div>
+            </div>
+          </div>
+
+          <div className='mt-3 text-xs opacity-70'>
+            Breakeven share: <span className='font-semibold'>{formatPercent(stats.beShare, 0)}</span>
+          </div>
+        </div>
+      </section>
+
       {/* Calendar */}
-      <section className='border rounded-xl p-4 space-y-3'>
+      <section className='border rounded-xl p-4 space-y-3 bg-[var(--bg-surface)] border-[var(--border-default)]'>
         <div className='flex items-center justify-between gap-3 flex-wrap'>
           <div className='font-semibold'>Performance calendar</div>
 
           <div className='flex gap-2 items-center'>
             <input
-              className='border rounded-lg p-2'
+              className='border rounded-lg p-2 bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-primary)]'
               type='month'
               value={calendarMonth}
               onChange={(e) => setCalendarMonth(e.target.value)}
             />
             <select
-              className='border rounded-lg p-2'
+              className='border rounded-lg p-2 bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-primary)]'
               value={calendarMode}
               onChange={(e) =>
                 setCalendarMode(e.target.value as 'PNL_PERCENT' | 'PNL_DOLLAR')
@@ -1465,11 +1490,11 @@ export function AnalyticsClient() {
       </section>
 
       {/* Quick table */}
-      <section className='border rounded-xl p-4'>
+      <section className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
         <div className='flex items-center justify-between gap-3'>
           <div className='font-semibold'>Trades (filtered)</div>
           <button
-            className='border rounded-lg px-4 py-2'
+            className='border rounded-lg px-4 py-2 bg-[var(--bg-surface)] border-[var(--border-default)] hover:bg-[var(--surface-muted)]'
             onClick={goDashboard}>
             Back
           </button>
@@ -1478,7 +1503,7 @@ export function AnalyticsClient() {
         <div className='overflow-auto mt-3'>
           <table className='w-full text-sm'>
             <thead>
-              <tr className='text-left border-b'>
+              <tr className='text-left border-b border-[var(--border-default)] text-[var(--text-secondary)]'>
                 <th className='p-2'>Date</th>
                 <th className='p-2'>Instrument</th>
                 <th className='p-2'>Dir</th>
@@ -1500,7 +1525,7 @@ export function AnalyticsClient() {
                     : setupTemplates.find((s) => s.id === t.template_id)
                         ?.name || 'Unknown';
                 return (
-                  <tr key={t.id} className='border-b'>
+                  <tr key={t.id} className='border-b border-[var(--border-default)]'>
                     <td className='p-2'>
                       {new Date(t.opened_at).toLocaleString()}
                     </td>
@@ -1545,7 +1570,7 @@ function Card({
   valueClassName?: string;
 }) {
   return (
-    <div className='border rounded-xl p-4'>
+    <div className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
       <div className='text-sm opacity-70'>{title}</div>
       <div className={cx('text-xl font-semibold', valueClassName)}>{value}</div>
     </div>
