@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTradeReview } from '@/src/hooks/useTradeReview';
+import { TradeReviewSkeleton } from '@/src/components/ui/Skeleton';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -62,11 +63,9 @@ export function TradeReviewClient() {
   if (s.loading && !s.trade) {
     return (
       <main
-        className='dashboard-theme min-h-screen bg-[var(--bg-app)] p-6 text-[var(--text-primary)]'
+        className='dashboard-theme min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]'
         data-theme={theme}>
-        <div className='text-sm text-[var(--text-secondary)]'>
-          {s.msg || 'Loading...'}
-        </div>
+        <TradeReviewSkeleton />
       </main>
     );
   }

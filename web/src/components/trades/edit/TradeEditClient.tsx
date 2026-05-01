@@ -8,6 +8,7 @@ import {
   parseOutcome,
   useTradeEdit,
 } from '@/src/hooks/useTradeEdit';
+import { TradeEditSkeleton } from '@/src/components/ui/Skeleton';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -125,9 +126,9 @@ export function TradeEditClient() {
   if (s.loading) {
     return (
       <main
-        className='dashboard-theme min-h-screen bg-[var(--bg-app)] p-6 text-[var(--text-primary)]'
+        className='dashboard-theme min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]'
         data-theme={theme}>
-        <p className='text-sm text-[var(--text-secondary)]'>Loading...</p>
+        <TradeEditSkeleton />
       </main>
     );
   }

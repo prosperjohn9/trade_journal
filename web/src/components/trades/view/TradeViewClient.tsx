@@ -180,7 +180,6 @@ function ScreenshotCard({
               alt={title}
               width={1400}
               height={860}
-              unoptimized
               className='max-h-80 w-auto transition-opacity hover:opacity-95'
             />
           </div>
@@ -367,7 +366,6 @@ export function TradeViewClient() {
                 alt={preview.title}
                 width={1800}
                 height={1100}
-                unoptimized
                 className='h-auto max-h-[78vh] w-auto rounded'
               />
             </div>
