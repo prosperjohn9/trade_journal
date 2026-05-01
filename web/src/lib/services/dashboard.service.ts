@@ -1,12 +1,10 @@
+'use client';
+
+import { apiFetch, buildQuery } from '@/src/lib/api/fetcher';
+import { deleteTradeById } from '@/src/lib/db/trades.repo';
 import { requireUser } from '@/src/lib/supabase/auth';
-import { getOrCreateProfile } from '@/src/lib/db/profiles.repo';
-import { fetchAccountsByUser } from '@/src/lib/db/accounts.repo';
-import {
-  deleteTradeById,
-  fetchTradesBeforeMonth,
-  fetchTradesForMonth,
-} from '@/src/lib/db/trades.repo';
 import { toNumberSafe } from '@/src/lib/utils/number';
+import type { Profile } from '@/src/domain/profile';
 
 export type TradeDisplay = {
   id: string;
@@ -24,105 +22,67 @@ export type TradeDisplay = {
   reviewed_at: string | null;
 };
 
-type PriorPnlRow = {
+export type AccountDisplay = {
+  id: string;
+  user_id: string;
+  name: string;
+  account_type?: string | null;
+  tags?: string[] | null;
+  starting_balance: number;
+  base_currency: string | null;
+  is_default: boolean;
+  created_at: string;
+};
+
+export function calcDisplayPnlFromRow(r: {
   net_pnl: number | null;
   pnl_amount: number | null;
   commission: number | null;
   reviewed_at: string | null;
-};
-
-export function calcDisplayPnlFromRow(r: PriorPnlRow): number {
+}): number {
   const gross = toNumberSafe(r.pnl_amount, 0);
   if (!r.reviewed_at) return gross;
-
   const net = Number(r.net_pnl);
   if (Number.isFinite(net)) return net;
-
-  const comm = toNumberSafe(r.commission, 0);
-  return gross - comm;
+  return gross - toNumberSafe(r.commission, 0);
 }
 
 export async function loadDashboard(params: {
   month: string;
   accountId: string | 'all';
-}) {
-  await requireUser();
-
-  const { userId, profile } = await getOrCreateProfile();
-
-  const [accounts, monthTradesRaw, priorRows] = await Promise.all([
-    fetchAccountsByUser(userId),
-    fetchTradesForMonth({ userId, month: params.month, accountId: params.accountId }),
-    fetchTradesBeforeMonth({ userId, month: params.month, accountId: params.accountId }),
-  ]);
-
-  const selectedAccount =
-    params.accountId === 'all'
-      ? null
-      : (accounts.find((a) => a.id === params.accountId) ?? null);
-
-  const currency = profile.base_currency ?? 'USD';
-
-  const trades: TradeDisplay[] = monthTradesRaw.map((t) => ({
-    id: t.id,
-    account_id: t.account_id ?? '',
-    opened_at: t.opened_at,
-    instrument: (t.instrument ?? '').toUpperCase(),
-    direction: t.direction === 'SELL' ? 'SELL' : 'BUY',
-    outcome:
-      t.outcome === 'WIN' ? 'WIN' : t.outcome === 'LOSS' ? 'LOSS' : 'BREAKEVEN',
-    pnl_amount: toNumberSafe(t.pnl_amount, 0),
-    pnl_percent: toNumberSafe(t.pnl_percent, 0),
-    commission: t.commission,
-    net_pnl: t.net_pnl,
-    r_multiple: t.r_multiple,
-    template_id: t.template_id,
-    reviewed_at: t.reviewed_at,
-  }));
-
-  const priorPnlDollar = priorRows.reduce((acc, row) => {
-    return (
-      acc +
-      calcDisplayPnlFromRow({
-        net_pnl: row.net_pnl ?? null,
-        pnl_amount: row.pnl_amount ?? null,
-        commission: row.commission ?? null,
-        reviewed_at: row.reviewed_at ?? null,
-      })
-    );
-  }, 0);
-
-  const allAccountsStartingBalance = accounts.reduce(
-    (acc, a) => acc + toNumberSafe(a.starting_balance, 0),
-    0,
-  );
-
-  const hasStartingBalance =
-    params.accountId === 'all'
-      ? true
-      : selectedAccount?.starting_balance !== null &&
-        selectedAccount?.starting_balance !== undefined;
-
-  const startingBalance = selectedAccount
-    ? toNumberSafe(selectedAccount.starting_balance, 0)
-    : 0;
-
-  const monthStartingBalance =
-    params.accountId === 'all'
-      ? allAccountsStartingBalance + priorPnlDollar
-      : hasStartingBalance
-        ? startingBalance + priorPnlDollar
-        : null;
+}): Promise<{
+  userId: string;
+  profile: Profile;
+  accounts: AccountDisplay[];
+  trades: TradeDisplay[];
+  priorPnlDollar: number;
+}> {
+  const qs = buildQuery({ month: params.month, accountId: params.accountId });
+  const raw = await apiFetch<{
+    userId: string;
+    profile: Profile;
+    accounts: AccountDisplay[];
+    trades: Array<Record<string, unknown>>;
+    priorPnlDollar: number;
+  }>(`/api/dashboard${qs}`);
 
   return {
-    userId,
-    profile,
-    currency,
-    accounts,
-    selectedAccount,
-    trades,
-    priorPnlDollar,
-    monthStartingBalance,
+    ...raw,
+    trades: raw.trades.map((t) => ({
+      id: String(t.id ?? ''),
+      account_id: String(t.account_id ?? ''),
+      opened_at: String(t.opened_at ?? ''),
+      instrument: String(t.instrument ?? '').toUpperCase(),
+      direction: t.direction === 'SELL' ? 'SELL' : 'BUY',
+      outcome: t.outcome === 'WIN' ? 'WIN' : t.outcome === 'LOSS' ? 'LOSS' : 'BREAKEVEN',
+      pnl_amount: toNumberSafe(t.pnl_amount, 0),
+      pnl_percent: toNumberSafe(t.pnl_percent, 0),
+      commission: t.commission != null ? Number(t.commission) : null,
+      net_pnl: t.net_pnl != null ? Number(t.net_pnl) : null,
+      r_multiple: t.r_multiple != null ? Number(t.r_multiple) : null,
+      template_id: t.template_id != null ? String(t.template_id) : null,
+      reviewed_at: t.reviewed_at != null ? String(t.reviewed_at) : null,
+    })),
   };
 }
 

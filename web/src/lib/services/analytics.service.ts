@@ -1,9 +1,8 @@
+'use client';
+
 import type { Profile } from '@/src/domain/profile';
-import { fetchAccountsByUser } from '@/src/lib/db/accounts.repo';
-import { getOrCreateProfile } from '@/src/lib/db/profiles.repo';
-import { fetchSetupTemplates } from '@/src/lib/db/setupTemplates.repo';
-import { requireUser } from '@/src/lib/supabase/auth';
 import { supabase } from '@/src/lib/supabase/client';
+import { apiFetch, buildQuery } from '@/src/lib/api/fetcher';
 
 export type AnalyticsTrade = {
   id: string;
@@ -42,28 +41,7 @@ export async function loadAnalyticsBootstrap(): Promise<{
   setupTemplates: AnalyticsSetupTemplate[];
   accounts: AnalyticsAccount[];
 }> {
-  await requireUser();
-
-  const { profile, userId } = await getOrCreateProfile();
-
-  const [setupTemplates, accounts] = await Promise.all([
-    fetchSetupTemplates(),
-    fetchAccountsByUser(userId),
-  ]);
-
-  return {
-    profile,
-    setupTemplates: setupTemplates.map((t) => ({
-      id: t.id,
-      name: t.name,
-      is_default: !!t.is_default,
-    })),
-    accounts: accounts.map((a) => ({
-      id: a.id,
-      name: a.name,
-      is_default: !!a.is_default,
-    })),
-  };
+  return apiFetch('/api/analytics/bootstrap');
 }
 
 export async function loadAnalyticsTradesInRange(params: {
@@ -76,47 +54,17 @@ export async function loadAnalyticsTradesInRange(params: {
   setupFilter?: string;
   instrumentQuery?: string;
 }): Promise<AnalyticsTrade[]> {
-  await requireUser();
-
-  let q = supabase
-    .from('trades')
-    .select(
-      `id, opened_at, closed_at,
-       instrument, direction, outcome,
-       pnl_amount, pnl_percent,
-       commission, net_pnl, r_multiple,
-       reviewed_at, template_id`,
-    )
-    .gte('opened_at', params.startIso)
-    .lte('opened_at', params.endIso);
-
-  if (params.accountId && params.accountId !== 'all') {
-    q = q.eq('account_id', params.accountId);
-  }
-  if (params.direction) {
-    q = q.eq('direction', params.direction);
-  }
-  if (params.outcome) {
-    q = q.eq('outcome', params.outcome);
-  }
-  if (params.reviewedFilter === 'REVIEWED') {
-    q = q.not('reviewed_at', 'is', null);
-  } else if (params.reviewedFilter === 'NOT_REVIEWED') {
-    q = q.is('reviewed_at', null);
-  }
-  if (params.setupFilter === 'NO_SETUP') {
-    q = q.is('template_id', null);
-  } else if (params.setupFilter) {
-    q = q.eq('template_id', params.setupFilter);
-  }
-  if (params.instrumentQuery) {
-    q = q.ilike('instrument', `%${params.instrumentQuery}%`);
-  }
-
-  const { data, error } = await q.order('opened_at', { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as AnalyticsTrade[];
+  const qs = buildQuery({
+    startIso: params.startIso,
+    endIso: params.endIso,
+    accountId: params.accountId,
+    direction: params.direction,
+    outcome: params.outcome,
+    reviewedFilter: params.reviewedFilter,
+    setupFilter: params.setupFilter,
+    instrumentQuery: params.instrumentQuery,
+  });
+  return apiFetch(`/api/analytics/trades${qs}`);
 }
 
 export async function logoutAnalytics(): Promise<void> {
