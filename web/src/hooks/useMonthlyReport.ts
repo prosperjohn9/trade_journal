@@ -1,77 +1,38 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import { getErr } from '@/src/domain/errors';
 import {
   getDefaultMonth,
   loadMonthlyReport,
 } from '@/src/lib/services/monthlyReport.service';
 import type { CoreReport } from '@/src/lib/analytics/core';
-import type { AccountRow } from '@/src/lib/db/accounts.repo';
 
 export function useMonthlyReport() {
   const router = useRouter();
 
   const [month, setMonth] = useState(getDefaultMonth);
   const [accountId, setAccountId] = useState<string | 'all'>('all');
-  const [accounts, setAccounts] = useState<AccountRow[]>([]);
-
-  const [loading, setLoading] = useState(true);
-  const [loadingPrior, setLoadingPrior] = useState(false);
-  const [msg, setMsg] = useState('');
 
   const timeZone = useMemo(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     [],
   );
 
-  const [data, setData] = useState<{
-    baseCurrency: string;
-    monthStartingBalance: number | null;
-    hasStartingBalance: boolean;
-    report: CoreReport;
-    selectedAccount: AccountRow | null;
-  } | null>(null);
+  const { data, error, isLoading } = useSWR(
+    ['monthly-report', month, timeZone, accountId],
+    () => loadMonthlyReport({ month, timeZone, accountId }),
+    { revalidateOnFocus: false, dedupingInterval: 30_000 },
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setLoading(true);
-      setMsg('');
-      setLoadingPrior(true);
-
-      try {
-        const res = await loadMonthlyReport({ month, timeZone, accountId });
-        if (cancelled) return;
-
-        setAccounts(res.accounts);
-
-        setData({
-          baseCurrency: res.baseCurrency,
-          monthStartingBalance: res.monthStartingBalance,
-          hasStartingBalance: res.hasStartingBalance,
-          report: res.report,
-          selectedAccount: res.selectedAccount,
-        });
-      } catch (e: unknown) {
-        if (!cancelled) {
-          setMsg(getErr(e, 'Failed to load monthly report'));
-          router.push('/auth');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-          setLoadingPrior(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [month, timeZone, accountId, router]);
+  if (error) {
+    const message = getErr(error, 'Failed to load monthly report');
+    if (message.toLowerCase().includes('not authenticated')) {
+      router.push('/auth');
+    }
+  }
 
   const emptyReport: CoreReport = {
     timeZone,
@@ -110,13 +71,13 @@ export function useMonthlyReport() {
     month,
     setMonth,
 
-    accounts,
+    accounts: data?.accounts ?? [],
     accountId,
     setAccountId,
 
-    loading,
-    loadingPrior,
-    msg,
+    loading: isLoading,
+    loadingPrior: isLoading,
+    msg: error ? getErr(error, 'Failed to load monthly report') : '',
 
     baseCurrency: data?.baseCurrency ?? 'USD',
     monthStartingBalance: data?.monthStartingBalance ?? null,

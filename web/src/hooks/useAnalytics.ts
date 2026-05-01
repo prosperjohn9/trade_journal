@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import { getErr } from '@/src/domain/errors';
 import type { Profile } from '@/src/domain/profile';
 import { toNumberSafe } from '@/src/lib/utils/number';
@@ -117,17 +118,6 @@ export function calcNetPnl(t: AnalyticsTrade) {
 export function useAnalytics() {
   const router = useRouter();
 
-  const [profile, setProfile] = useState<Profile | null>(null);
-
-  const currency = profile?.base_currency ?? 'USD';
-  const startingBalanceRaw = profile?.starting_balance;
-  const hasStartingBalance =
-    startingBalanceRaw !== null && startingBalanceRaw !== undefined;
-  const startingBalance = hasStartingBalance ? toNumberSafe(startingBalanceRaw) : 0;
-
-  const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState('');
-
   const today = useMemo(() => new Date(), []);
 
   const initialFilters = useMemo<Filters>(() => {
@@ -147,9 +137,6 @@ export function useAnalytics() {
   const [draft, setDraft] = useState<Filters>(() => initialFilters);
   const [applied, setApplied] = useState<Filters>(() => initialFilters);
 
-  const [accounts, setAccounts] = useState<AnalyticsAccount[]>([]);
-  const [setupTemplates, setSetupTemplates] = useState<AnalyticsSetupTemplate[]>([]);
-
   const [calendarMonth, setCalendarMonth] = useState(() =>
     yyyyMm(today.toISOString()),
   );
@@ -157,8 +144,48 @@ export function useAnalytics() {
     'PNL_PERCENT',
   );
 
-  const [trades, setTrades] = useState<AnalyticsTrade[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+
+  const { data: bootstrap, error: bootstrapError } = useSWR(
+    'analytics-bootstrap',
+    loadAnalyticsBootstrap,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+
+  const rangeStart = startOfDay(new Date(`${applied.rangeStart}T00:00:00`));
+  const rangeEnd = endOfDay(new Date(`${applied.rangeEnd}T00:00:00`));
+
+  const { data: tradesData, error: tradesError, isLoading: loading } = useSWR(
+    ['analytics-trades', applied.rangeStart, applied.rangeEnd, applied.accountFilter],
+    () => loadAnalyticsTradesInRange({
+      startIso: rangeStart.toISOString(),
+      endIso: rangeEnd.toISOString(),
+      accountId: applied.accountFilter,
+    }),
+    { revalidateOnFocus: false, dedupingInterval: 30_000 },
+  );
+
+  const profile = bootstrap?.profile ?? null;
+  const accounts = bootstrap?.accounts ?? [];
+  const setupTemplates = bootstrap?.setupTemplates ?? [];
+  const trades = tradesData ?? [];
+
+  const currency = profile?.base_currency ?? 'USD';
+  const startingBalanceRaw = profile?.starting_balance;
+  const hasStartingBalance =
+    startingBalanceRaw !== null && startingBalanceRaw !== undefined;
+  const startingBalance = hasStartingBalance ? toNumberSafe(startingBalanceRaw) : 0;
+
+  const anyError = bootstrapError ?? tradesError;
+  const msg = anyError ? getErr(anyError, 'Failed to load analytics') : '';
+
+  useEffect(() => {
+    if (!anyError) return;
+    const message = getErr(anyError, 'Failed to load analytics');
+    if (message.toLowerCase().includes('not authenticated')) {
+      router.push('/auth');
+    }
+  }, [anyError, router]);
 
   const activeFilterCount = useMemo(() => {
     let c = 0;
@@ -215,73 +242,6 @@ export function useAnalytics() {
     return Array.from(set).sort();
   }, [trades]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const res = await loadAnalyticsBootstrap();
-        if (cancelled) return;
-
-        setProfile(res.profile);
-        setAccounts(res.accounts);
-        setSetupTemplates(res.setupTemplates);
-      } catch (e: unknown) {
-        if (cancelled) return;
-
-        const message = getErr(e, 'Failed to load analytics');
-        if (message.toLowerCase().includes('not authenticated')) {
-          router.push('/auth');
-          return;
-        }
-
-        setMsg(message);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setLoading(true);
-      setMsg('');
-
-      try {
-        const start = startOfDay(new Date(`${applied.rangeStart}T00:00:00`));
-        const end = endOfDay(new Date(`${applied.rangeEnd}T00:00:00`));
-
-        const rows = await loadAnalyticsTradesInRange({
-          startIso: start.toISOString(),
-          endIso: end.toISOString(),
-          accountId: applied.accountFilter,
-        });
-
-        if (cancelled) return;
-        setTrades(rows);
-      } catch (e: unknown) {
-        if (cancelled) return;
-
-        const message = getErr(e, 'Failed to load trades');
-        setMsg(message);
-        setTrades([]);
-
-        if (message.toLowerCase().includes('not authenticated')) {
-          router.push('/auth');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applied.accountFilter, applied.rangeStart, applied.rangeEnd, router]);
 
   const filteredTrades = useMemo(() => {
     const q = applied.instrumentQuery.trim().toUpperCase();

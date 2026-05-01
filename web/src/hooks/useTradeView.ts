@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import { getErr } from '@/src/domain/errors';
 import { loadTradeView } from '@/src/lib/services/tradeView.service';
 
@@ -63,15 +64,25 @@ export function useTradeView() {
   const params = useParams<{ id: string }>();
   const tradeId = params.id;
 
-  const [trade, setTrade] = useState<TradeView | null>(null);
-  const [msg, setMsg] = useState('Loading…');
+  const { data, error, isLoading } = useSWR(
+    tradeId ? ['trade-view', tradeId] : null,
+    () => loadTradeView({ tradeId }),
+    { revalidateOnFocus: false, dedupingInterval: 30_000 },
+  );
 
-  const [items, setItems] = useState<TradeChecklistItem[]>([]);
-  const [checks, setChecks] = useState<Record<string, boolean>>({});
+  if (error) {
+    const message = getErr(error, 'Trade not found');
+    if (message.toLowerCase().includes('not authenticated')) {
+      router.push('/auth');
+    }
+  }
 
-  const [beforeUrl, setBeforeUrl] = useState('');
-  const [afterUrl, setAfterUrl] = useState('');
-  const [equityBefore, setEquityBefore] = useState<number | null>(null);
+  const trade = data?.trade ?? null;
+  const items = data?.items ?? [];
+  const checks = data?.checks ?? {};
+  const beforeUrl = data?.beforeUrl ?? '';
+  const afterUrl = data?.afterUrl ?? '';
+  const equityBefore = data?.equityBefore ?? null;
 
   const isReviewed = !!trade?.reviewed_at;
 
@@ -99,47 +110,16 @@ export function useTradeView() {
       ? Number(trade.net_pnl)
       : grossPnl - commission;
 
+  const msg = isLoading
+    ? 'Loading…'
+    : error
+      ? getErr(error, 'Trade not found')
+      : '';
+
   function openFull(url: string) {
     if (!url) return;
     window.open(url, '_blank');
   }
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setMsg('Loading…');
-
-      try {
-        const res = await loadTradeView({ tradeId });
-
-        if (cancelled) return;
-
-        setTrade(res.trade);
-        setItems(res.items);
-        setChecks(res.checks);
-        setBeforeUrl(res.beforeUrl);
-        setAfterUrl(res.afterUrl);
-        setEquityBefore(res.equityBefore);
-
-        setMsg('');
-      } catch (e: unknown) {
-        if (cancelled) return;
-        setTrade(null);
-
-        const message = getErr(e, 'Trade not found');
-        setMsg(message);
-
-        if (message.toLowerCase().includes('not authenticated')) {
-          router.push('/auth');
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [tradeId, router]);
 
   return {
     trade,

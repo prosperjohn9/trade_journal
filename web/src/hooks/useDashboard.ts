@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import useSWR, { mutate } from 'swr';
 import { supabase } from '@/src/lib/supabase/client';
 import { getErr } from '@/src/domain/errors';
 import type { Profile } from '@/src/domain/profile';
@@ -39,13 +40,6 @@ export type AccountRow = {
   base_currency: string | null;
   is_default: boolean;
   created_at: string;
-};
-
-type DashboardLoadResult = {
-  profile: Profile | null;
-  accounts: AccountRow[];
-  trades: TradeRow[];
-  priorPnlDollar: number;
 };
 
 type UpdateProfileInput = { display_name: string | null };
@@ -127,23 +121,14 @@ async function fetchChecklistScores(
   }
 
   const out: Record<string, number | null> = { ...base };
-
   const templateIdByTrade: Record<string, string | null> = {};
   for (const t of trades) templateIdByTrade[t.id] = t.template_id ?? null;
 
   for (const tradeId of tradeIds) {
     const tpl = templateIdByTrade[tradeId];
-    if (!tpl) {
-      out[tradeId] = null;
-      continue;
-    }
-
+    if (!tpl) { out[tradeId] = null; continue; }
     const denom = denomByTemplate[tpl] || 0;
-    if (!denom) {
-      out[tradeId] = null;
-      continue;
-    }
-
+    if (!denom) { out[tradeId] = null; continue; }
     const num = checkedTrueByTrade[tradeId] || 0;
     out[tradeId] = (num / denom) * 100;
   }
@@ -155,9 +140,47 @@ export function useDashboard() {
   const router = useRouter();
 
   const [month, setMonth] = useState(getDefaultMonth);
+  const [accountId, setAccountId] = useState<string>('all');
 
-  const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState('');
+  const dashKey = ['dashboard', month, accountId];
+
+  const { data: dashData, error: dashError, isLoading } = useSWR(
+    dashKey,
+    () => loadDashboard({ month, accountId }),
+    { revalidateOnFocus: false, dedupingInterval: 30_000 },
+  );
+
+  const trades = dashData?.trades ?? [];
+
+  const scoresKey = trades.length
+    ? ['dashboard-scores', trades.map((t) => t.id).join(',')]
+    : null;
+
+  const { data: scoresData } = useSWR(
+    scoresKey,
+    () => fetchChecklistScores(trades.map((t) => ({ id: t.id, template_id: t.template_id }))),
+    { revalidateOnFocus: false, dedupingInterval: 30_000 },
+  );
+
+  const accounts = dashData?.accounts ?? [];
+
+  // Normalize accountId when accounts change (e.g. selected account no longer exists)
+  useEffect(() => {
+    if (!accounts.length) return;
+    setAccountId((prev) => {
+      if (prev === 'all') return prev;
+      if (accounts.some((a) => a.id === prev)) return prev;
+      const def = accounts.find((a) => a.is_default) ?? accounts[0];
+      return def?.id ?? 'all';
+    });
+  }, [accounts]);
+
+  if (dashError) {
+    const message = getErr(dashError, 'Failed to load dashboard');
+    if (message.toLowerCase().includes('not authenticated')) {
+      router.push('/auth');
+    }
+  }
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [displayNameDraft, setDisplayNameDraft] = useState('');
@@ -165,20 +188,14 @@ export function useDashboard() {
   const [profileMsg, setProfileMsg] = useState('');
   const [showProfile, setShowProfile] = useState(false);
 
-  const [accounts, setAccounts] = useState<AccountRow[]>([]);
-  const [accountId, setAccountId] = useState<string>('all');
+  useEffect(() => {
+    if (dashData?.profile) {
+      setProfile(dashData.profile);
+      setDisplayNameDraft(dashData.profile.display_name ?? '');
+    }
+  }, [dashData?.profile]);
 
-  const [trades, setTrades] = useState<TradeRow[]>([]);
-  const [priorPnlDollar, setPriorPnlDollar] = useState(0);
-  const [loadingPriorPnl, setLoadingPriorPnl] = useState(false);
-
-  const [checklistScoreByTrade, setChecklistScoreByTrade] = useState<
-    Record<string, number | null>
-  >({});
-
-  const [deleteTradeTarget, setDeleteTradeTarget] = useState<TradeRow | null>(
-    null,
-  );
+  const [deleteTradeTarget, setDeleteTradeTarget] = useState<TradeRow | null>(null);
   const [deletingTrade, setDeletingTrade] = useState(false);
 
   const [showLogout, setShowLogout] = useState(false);
@@ -195,8 +212,7 @@ export function useDashboard() {
   );
 
   const allAccountsStartingBalance = useMemo(
-    () =>
-      accounts.reduce((acc, a) => acc + toNumberSafe(a.starting_balance, 0), 0),
+    () => accounts.reduce((acc, a) => acc + toNumberSafe(a.starting_balance, 0), 0),
     [accounts],
   );
 
@@ -209,74 +225,6 @@ export function useDashboard() {
       ? true
       : selectedAccount?.starting_balance !== null &&
         selectedAccount?.starting_balance !== undefined;
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setLoading(true);
-      setMsg('');
-      setLoadingPriorPnl(true);
-
-      try {
-        const res = (await loadDashboard({
-          month,
-          accountId,
-        })) as DashboardLoadResult;
-        if (cancelled) return;
-
-        setProfile(res.profile);
-        setDisplayNameDraft(res.profile?.display_name ?? '');
-
-        setAccounts(res.accounts);
-
-        if (res.accounts.length) {
-          setAccountId((prev) => {
-            if (prev === 'all') return prev;
-            if (res.accounts.some((a) => a.id === prev)) return prev;
-
-            const def =
-              res.accounts.find((a) => a.is_default) ?? res.accounts[0];
-            return def?.id ?? 'all';
-          });
-        }
-
-        setTrades(res.trades);
-        setPriorPnlDollar(
-          Number.isFinite(res.priorPnlDollar) ? res.priorPnlDollar : 0,
-        );
-
-        try {
-          const scores = await fetchChecklistScores(
-            res.trades.map((t) => ({ id: t.id, template_id: t.template_id })),
-          );
-          if (!cancelled) setChecklistScoreByTrade(scores);
-        } catch {
-          const base: Record<string, number | null> = {};
-          for (const t of res.trades) base[t.id] = null;
-          if (!cancelled) setChecklistScoreByTrade(base);
-        }
-      } catch (e: unknown) {
-        if (!cancelled) {
-          const message = getErr(e, 'Failed to load dashboard');
-          setMsg(message);
-
-          if (message.toLowerCase().includes('not authenticated')) {
-            router.push('/auth');
-          }
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-          setLoadingPriorPnl(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [month, accountId, router]);
 
   const stats = useMemo(() => {
     const total = trades.length;
@@ -296,6 +244,8 @@ export function useDashboard() {
     return { total, wins, losses, be, pnlDollar, winRate, commissionsPaid };
   }, [trades]);
 
+  const priorPnlDollar = dashData?.priorPnlDollar ?? 0;
+
   const monthStartingBalance =
     accountId === 'all'
       ? allAccountsStartingBalance + priorPnlDollar
@@ -308,9 +258,7 @@ export function useDashboard() {
     : 0;
 
   const equity =
-    monthStartingBalance === null
-      ? null
-      : monthStartingBalance + stats.pnlDollar;
+    monthStartingBalance === null ? null : monthStartingBalance + stats.pnlDollar;
 
   const displayName =
     profile?.display_name?.trim() || profile?.display_name || 'Trader';
@@ -326,7 +274,6 @@ export function useDashboard() {
       const updated = await updateProfile(payload);
       setProfile(updated);
       setDisplayNameDraft(updated.display_name ?? '');
-
       setProfileMsg('Saved');
       setShowProfile(false);
     } catch (e: unknown) {
@@ -348,8 +295,9 @@ export function useDashboard() {
     setDeletingTrade(true);
     try {
       await removeTrade(deleteTradeTarget.id);
-      setTrades((prev) => prev.filter((t) => t.id !== deleteTradeTarget.id));
       setDeleteTradeTarget(null);
+      // Invalidate cache so the dashboard reloads with the trade removed
+      await mutate(dashKey);
     } catch (e: unknown) {
       alert(getErr(e, 'Failed to delete trade'));
     } finally {
@@ -375,8 +323,8 @@ export function useDashboard() {
   }
 
   return {
-    loading,
-    msg,
+    loading: isLoading,
+    msg: dashError ? getErr(dashError, 'Failed to load dashboard') : '',
 
     month,
     setMonth,
@@ -388,7 +336,7 @@ export function useDashboard() {
     selectedAccount,
 
     trades,
-    checklistScoreByTrade,
+    checklistScoreByTrade: scoresData ?? {},
 
     profile,
     currency,
@@ -402,7 +350,7 @@ export function useDashboard() {
     saveProfile,
 
     priorPnlDollar,
-    loadingPriorPnl,
+    loadingPriorPnl: isLoading,
     monthStartingBalance,
     monthPnlPct,
     equity,
