@@ -156,11 +156,26 @@ export function useAnalytics() {
   const rangeEnd = endOfDay(new Date(`${applied.rangeEnd}T00:00:00`));
 
   const { data: tradesData, error: tradesError, isLoading: loading } = useSWR(
-    ['analytics-trades', applied.rangeStart, applied.rangeEnd, applied.accountFilter],
+    [
+      'analytics-trades',
+      applied.rangeStart,
+      applied.rangeEnd,
+      applied.accountFilter,
+      applied.directionFilter,
+      applied.outcomeFilter,
+      applied.reviewedFilter,
+      applied.setupFilter,
+      applied.instrumentQuery.trim(),
+    ],
     () => loadAnalyticsTradesInRange({
       startIso: rangeStart.toISOString(),
       endIso: rangeEnd.toISOString(),
       accountId: applied.accountFilter,
+      direction: applied.directionFilter || undefined,
+      outcome: applied.outcomeFilter || undefined,
+      reviewedFilter: applied.reviewedFilter || undefined,
+      setupFilter: applied.setupFilter || undefined,
+      instrumentQuery: applied.instrumentQuery.trim() || undefined,
     }),
     { revalidateOnFocus: false, dedupingInterval: 30_000 },
   );
@@ -243,33 +258,14 @@ export function useAnalytics() {
   }, [trades]);
 
 
+  // Direction, outcome, reviewed, setup, and instrument are pushed to Supabase.
+  // Session filter stays client-side — it's derived from the UTC hour of opened_at.
   const filteredTrades = useMemo(() => {
-    const q = applied.instrumentQuery.trim().toUpperCase();
-
-    return trades.filter((t) => {
-      if (q && !t.instrument?.toUpperCase().includes(q)) return false;
-      if (applied.directionFilter && t.direction !== applied.directionFilter)
-        return false;
-      if (applied.sessionFilter && getSessionUTC(t.opened_at) !== applied.sessionFilter)
-        return false;
-      if (applied.outcomeFilter && t.outcome !== applied.outcomeFilter)
-        return false;
-      if (applied.reviewedFilter === 'REVIEWED' && !t.reviewed_at) return false;
-      if (applied.reviewedFilter === 'NOT_REVIEWED' && !!t.reviewed_at)
-        return false;
-
-      if (applied.setupFilter === 'NO_SETUP' && t.template_id !== null) return false;
-      if (
-        applied.setupFilter &&
-        applied.setupFilter !== 'NO_SETUP' &&
-        t.template_id !== applied.setupFilter
-      ) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [trades, applied]);
+    if (!applied.sessionFilter) return trades;
+    return trades.filter(
+      (t) => getSessionUTC(t.opened_at) === applied.sessionFilter,
+    );
+  }, [trades, applied.sessionFilter]);
 
   const stats = useMemo(() => {
     const list = filteredTrades;

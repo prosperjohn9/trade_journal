@@ -70,6 +70,11 @@ export async function loadAnalyticsTradesInRange(params: {
   startIso: string;
   endIso: string;
   accountId?: string | 'all';
+  direction?: string;
+  outcome?: string;
+  reviewedFilter?: '' | 'REVIEWED' | 'NOT_REVIEWED';
+  setupFilter?: string;
+  instrumentQuery?: string;
 }): Promise<AnalyticsTrade[]> {
   await requireUser();
 
@@ -87,6 +92,25 @@ export async function loadAnalyticsTradesInRange(params: {
 
   if (params.accountId && params.accountId !== 'all') {
     q = q.eq('account_id', params.accountId);
+  }
+  if (params.direction) {
+    q = q.eq('direction', params.direction);
+  }
+  if (params.outcome) {
+    q = q.eq('outcome', params.outcome);
+  }
+  if (params.reviewedFilter === 'REVIEWED') {
+    q = q.not('reviewed_at', 'is', null);
+  } else if (params.reviewedFilter === 'NOT_REVIEWED') {
+    q = q.is('reviewed_at', null);
+  }
+  if (params.setupFilter === 'NO_SETUP') {
+    q = q.is('template_id', null);
+  } else if (params.setupFilter) {
+    q = q.eq('template_id', params.setupFilter);
+  }
+  if (params.instrumentQuery) {
+    q = q.ilike('instrument', `%${params.instrumentQuery}%`);
   }
 
   const { data, error } = await q.order('opened_at', { ascending: true });
