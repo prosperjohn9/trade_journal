@@ -1,6 +1,9 @@
-'use client';
+import dynamic from 'next/dynamic';
 
-import { MonthlyReportClient } from '@/src/components/reports/monthly/MonthlyReportClient';
+const MonthlyReportClient = dynamic(
+  () => import('@/src/components/reports/monthly/MonthlyReportClient').then((m) => m.MonthlyReportClient),
+  { ssr: false },
+);
 
 export default function MonthlyReportPage() {
   return <MonthlyReportClient />;

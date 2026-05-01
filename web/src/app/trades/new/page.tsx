@@ -1,6 +1,9 @@
-'use client';
+import dynamic from 'next/dynamic';
 
-import { NewTradeClient } from '@/src/components/trades/new/NewTradeClient';
+const NewTradeClient = dynamic(
+  () => import('@/src/components/trades/new/NewTradeClient').then((m) => m.NewTradeClient),
+  { ssr: false },
+);
 
 export default function NewTradePage() {
   return <NewTradeClient />;

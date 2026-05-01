@@ -1,6 +1,9 @@
-'use client';
+import dynamic from 'next/dynamic';
 
-import { AnalyticsClient } from '@/src/components/analytics/AnalyticsClient';
+const AnalyticsClient = dynamic(
+  () => import('@/src/components/analytics/AnalyticsClient').then((m) => m.AnalyticsClient),
+  { ssr: false },
+);
 
 export default function AnalyticsPage() {
   return <AnalyticsClient />;
