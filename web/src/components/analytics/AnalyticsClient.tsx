@@ -392,22 +392,28 @@ function SvgBarChart({
 }) {
   const width = 820;
 
-  const svgRef = useRef<SVGSVGElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [hover, setHover] = useState<
     | {
         x: number;
         y: number;
+        w: number;
+        h: number;
         content: string;
       }
     | null
   >(null);
 
   const setHoverFromEvent = (e: React.MouseEvent, content: string) => {
-    const rect = svgRef.current?.getBoundingClientRect();
+    const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setHover({ x, y, content });
+    setHover({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      w: rect.width,
+      h: rect.height,
+      content,
+    });
   };
 
   const padL = 96;
@@ -460,7 +466,7 @@ function SvgBarChart({
   );
 
   return (
-    <div className='border rounded-xl p-4 relative bg-[var(--bg-surface)] border-[var(--border-default)]'>
+    <div ref={containerRef} className='border rounded-xl p-4 relative bg-[var(--bg-surface)] border-[var(--border-default)]'>
       <div className='flex items-start justify-between gap-3'>
         <div>
           <div className='font-semibold'>{title}</div>
@@ -477,8 +483,8 @@ function SvgBarChart({
         <div
           className='pointer-events-none absolute z-10 rounded-lg border px-3 py-2 text-xs shadow-sm bg-[var(--chart-tooltip-bg)] border-[var(--chart-tooltip-border)] text-[var(--text-primary)]'
           style={{
-            left: Math.max(8, Math.min(hover.x + 12, width - 220)),
-            top: Math.max(8, Math.min(hover.y + 12, height - 80)),
+            left: Math.max(8, Math.min(hover.x + 12, hover.w - 160)),
+            top: Math.max(8, Math.min(hover.y - 36, hover.h - 48)),
             whiteSpace: 'pre-line',
           }}>
           {hover.content}
@@ -487,7 +493,6 @@ function SvgBarChart({
 
       <div className='mt-3 w-full'>
         <svg
-          ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
           className='w-full block'
           role='img'
