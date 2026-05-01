@@ -164,21 +164,13 @@ export async function fetchCumulativePnlBeforeDate(params: {
   accountId: string;
   beforeDate: string;
 }): Promise<number> {
-  const { data, error } = await supabase
-    .from('trades')
-    .select('pnl_amount, commission, net_pnl')
-    .eq('account_id', params.accountId)
-    .lt('opened_at', params.beforeDate);
+  const { data, error } = await supabase.rpc('get_cumulative_pnl_before_date', {
+    p_account_id: params.accountId,
+    p_before_date: params.beforeDate,
+  });
 
   if (error) throw error;
-
-  return (data ?? []).reduce((sum, row) => {
-    const effective =
-      row.net_pnl !== null
-        ? Number(row.net_pnl)
-        : Number(row.pnl_amount ?? 0) - Number(row.commission ?? 0);
-    return sum + effective;
-  }, 0);
+  return Number(data ?? 0);
 }
 
 export async function getTradeById(tradeId: string) {
