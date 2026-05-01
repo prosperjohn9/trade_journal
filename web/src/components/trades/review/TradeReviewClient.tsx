@@ -322,6 +322,7 @@ export function TradeReviewClient() {
               <input
                 className={controlClass}
                 type='datetime-local'
+                step='1'
                 value={s.closedAt}
                 onChange={(e) => s.setClosedAt(e.target.value)}
               />

@@ -445,6 +445,7 @@ export function NewTradeClient() {
                       <input
                         className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
                         type='datetime-local'
+                        step='1'
                         value={s.openedAt}
                         onChange={(e) => s.setOpenedAt(e.target.value)}
                         required

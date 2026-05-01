@@ -280,21 +280,10 @@ export function TradeViewClient() {
   const grossPnlPercent = Number(t.pnl_percent ?? 0);
   const riskAmount = t.risk_amount === null ? null : Number(t.risk_amount);
 
-  const balanceBeforeRaw =
-    Number.isFinite(grossPnl) &&
-    Number.isFinite(grossPnlPercent) &&
-    grossPnlPercent !== 0
-      ? grossPnl / (grossPnlPercent / 100)
-      : null;
   const balanceBefore =
-    balanceBeforeRaw !== null && Number.isFinite(balanceBeforeRaw)
-      ? balanceBeforeRaw
-      : null;
+    s.equityBefore !== null ? s.equityBefore : null;
   const pnlPercent =
-    hasStoredNetPnl &&
-    balanceBefore !== null &&
-    Number.isFinite(balanceBefore) &&
-    balanceBefore !== 0
+    balanceBefore !== null && Number.isFinite(balanceBefore) && balanceBefore !== 0
       ? (effectivePnl / balanceBefore) * 100
       : grossPnlPercent;
   const rMultiple =

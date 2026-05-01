@@ -160,6 +160,27 @@ const TRADE_VIEW_SELECT = `
   before_screenshot_path, after_trade_screenshot_url
 `;
 
+export async function fetchCumulativePnlBeforeDate(params: {
+  accountId: string;
+  beforeDate: string;
+}): Promise<number> {
+  const { data, error } = await supabase
+    .from('trades')
+    .select('pnl_amount, commission, net_pnl')
+    .eq('account_id', params.accountId)
+    .lt('opened_at', params.beforeDate);
+
+  if (error) throw error;
+
+  return (data ?? []).reduce((sum, row) => {
+    const effective =
+      row.net_pnl !== null
+        ? Number(row.net_pnl)
+        : Number(row.pnl_amount ?? 0) - Number(row.commission ?? 0);
+    return sum + effective;
+  }, 0);
+}
+
 export async function getTradeById(tradeId: string) {
   const { data, error } = await supabase
     .from('trades')

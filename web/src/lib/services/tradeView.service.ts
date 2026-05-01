@@ -1,5 +1,5 @@
 import { requireUser } from '@/src/lib/supabase/auth';
-import { getTradeById } from '@/src/lib/db/trades.repo';
+import { getTradeById, fetchCumulativePnlBeforeDate } from '@/src/lib/db/trades.repo';
 import { listTemplateItems } from '@/src/lib/db/setupTemplateItems.repo';
 import { listTradeChecks } from '@/src/lib/db/tradeCriteriaChecks.repo';
 import { signTradeScreenshotPath } from '@/src/lib/db/tradeScreenshots.repo';
@@ -56,5 +56,15 @@ export async function loadTradeView(params: { tradeId: string }) {
     }
   }
 
-  return { trade, beforeUrl, afterUrl, items, checks };
+  let equityBefore: number | null = null;
+  const startingBalance = trade.account?.starting_balance ?? null;
+  if (trade.account_id && startingBalance !== null) {
+    const cumulativePnl = await fetchCumulativePnlBeforeDate({
+      accountId: trade.account_id,
+      beforeDate: trade.opened_at,
+    });
+    equityBefore = startingBalance + cumulativePnl;
+  }
+
+  return { trade, beforeUrl, afterUrl, items, checks, equityBefore };
 }

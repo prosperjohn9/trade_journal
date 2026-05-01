@@ -71,6 +71,7 @@ export function useTradeView() {
 
   const [beforeUrl, setBeforeUrl] = useState('');
   const [afterUrl, setAfterUrl] = useState('');
+  const [equityBefore, setEquityBefore] = useState<number | null>(null);
 
   const isReviewed = !!trade?.reviewed_at;
 
@@ -119,6 +120,7 @@ export function useTradeView() {
         setChecks(res.checks);
         setBeforeUrl(res.beforeUrl);
         setAfterUrl(res.afterUrl);
+        setEquityBefore(res.equityBefore);
 
         setMsg('');
       } catch (e: unknown) {
@@ -150,6 +152,7 @@ export function useTradeView() {
 
     beforeUrl,
     afterUrl,
+    equityBefore,
 
     isReviewed,
     grossPnl,
