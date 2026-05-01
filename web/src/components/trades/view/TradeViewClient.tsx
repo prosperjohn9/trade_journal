@@ -25,6 +25,19 @@ function executionTone(score: number | null): string {
   return 'var(--profit)';
 }
 
+function formatDuration(openedAt: string, closedAt: string | null): string {
+  if (!closedAt) return '—';
+  const ms = new Date(closedAt).getTime() - new Date(openedAt).getTime();
+  if (ms <= 0) return '—';
+  const totalMinutes = Math.floor(ms / 60_000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  return `${minutes}m`;
+}
+
 function signedPercent(value: number | null, digits = 2): string {
   if (value === null || Number.isNaN(value)) return '—';
   return `${value > 0 ? '+' : ''}${value.toFixed(digits)}%`;
@@ -415,11 +428,17 @@ export function TradeViewClient() {
                 ))}
               </div>
 
-              <div className='grid grid-cols-2 gap-3 sm:grid-cols-3'>
+              <div className='grid grid-cols-2 gap-3 sm:grid-cols-4'>
                 <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2.5'>
                   <div className='text-xs text-[var(--text-muted)]'>R Multiple</div>
                   <div className='mt-1 text-xl'>
                     <NumericValue value={signedR(rMultiple)} tone={rTone} />
+                  </div>
+                </div>
+                <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2.5'>
+                  <div className='text-xs text-[var(--text-muted)]'>Trade Duration</div>
+                  <div className='mt-1 text-xl'>
+                    <NumericValue value={formatDuration(t.opened_at, t.closed_at ?? null)} />
                   </div>
                 </div>
                 <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2.5'>
