@@ -60,7 +60,12 @@ export async function loadMonthlyReport(params: {
   await requireUser();
 
   const { userId, profile } = await getOrCreateProfile();
-  const accounts = await fetchAccountsByUser(userId);
+
+  const [accounts, monthRows, priorRows] = await Promise.all([
+    fetchAccountsByUser(userId),
+    fetchTradesForMonth({ userId, month: params.month, accountId: params.accountId }),
+    fetchTradesBeforeMonth({ userId, month: params.month, accountId: params.accountId }),
+  ]);
 
   const selectedAccount =
     params.accountId === 'all'
@@ -81,12 +86,6 @@ export async function loadMonthlyReport(params: {
       : selectedAccount?.starting_balance !== null &&
         selectedAccount?.starting_balance !== undefined;
 
-  const monthRows = await fetchTradesForMonth({
-    userId,
-    month: params.month,
-    accountId: params.accountId,
-  });
-
   const trades: TradeRow[] = monthRows.map((r) => {
     const { netPnl, netPct } = calcNetPnl(r);
     return {
@@ -102,19 +101,9 @@ export async function loadMonthlyReport(params: {
     };
   });
 
-  let priorNetPnl = 0;
-  if (hasStartingBalance) {
-    const priorRows = await fetchTradesBeforeMonth({
-      userId,
-      month: params.month,
-      accountId: params.accountId,
-    });
-
-    priorNetPnl = priorRows.reduce(
-      (acc, row) => acc + calcNetPnl(row).netPnl,
-      0,
-    );
-  }
+  const priorNetPnl = hasStartingBalance
+    ? priorRows.reduce((acc, row) => acc + calcNetPnl(row).netPnl, 0)
+    : 0;
 
   const selectedStartingBalance = selectedAccount
     ? toNumberSafe(selectedAccount.starting_balance, 0)

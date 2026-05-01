@@ -49,7 +49,12 @@ export async function loadDashboard(params: {
   await requireUser();
 
   const { userId, profile } = await getOrCreateProfile();
-  const accounts = await fetchAccountsByUser(userId);
+
+  const [accounts, monthTradesRaw, priorRows] = await Promise.all([
+    fetchAccountsByUser(userId),
+    fetchTradesForMonth({ userId, month: params.month, accountId: params.accountId }),
+    fetchTradesBeforeMonth({ userId, month: params.month, accountId: params.accountId }),
+  ]);
 
   const selectedAccount =
     params.accountId === 'all'
@@ -57,12 +62,6 @@ export async function loadDashboard(params: {
       : (accounts.find((a) => a.id === params.accountId) ?? null);
 
   const currency = profile.base_currency ?? 'USD';
-
-  const monthTradesRaw = await fetchTradesForMonth({
-    userId,
-    month: params.month,
-    accountId: params.accountId,
-  });
 
   const trades: TradeDisplay[] = monthTradesRaw.map((t) => ({
     id: t.id,
@@ -80,12 +79,6 @@ export async function loadDashboard(params: {
     template_id: t.template_id,
     reviewed_at: t.reviewed_at,
   }));
-
-  const priorRows = await fetchTradesBeforeMonth({
-    userId,
-    month: params.month,
-    accountId: params.accountId,
-  });
 
   const priorPnlDollar = priorRows.reduce((acc, row) => {
     return (
