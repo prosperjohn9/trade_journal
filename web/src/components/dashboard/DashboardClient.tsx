@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/src/components/ui/Modal';
+import { DashboardSkeleton } from '@/src/components/ui/Skeleton';
 import { useDashboard } from '@/src/hooks/useDashboard';
 import { DashboardCards } from './DashboardCards';
 import { DashboardTradeTable } from './DashboardTradeTable';
@@ -404,11 +405,7 @@ export default function DashboardClient() {
           </section>
         )}
 
-        {s.loading && (
-          <section className='text-sm text-[var(--text-secondary)]'>
-            Loading dashboard...
-          </section>
-        )}
+        {s.loading && <DashboardSkeleton />}
 
         {/* KPI cards + insights */}
         <div className='pt-2'>

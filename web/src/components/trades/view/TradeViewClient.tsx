@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useTradeView, type TradeChecklistItem } from '@/src/hooks/useTradeView';
 import { formatAccountTagLabel } from '@/src/domain/account';
 import { formatMoney } from '@/src/lib/utils/format';
+import { TradeViewSkeleton } from '@/src/components/ui/Skeleton';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -256,13 +257,18 @@ export function TradeViewClient() {
       <main
         className='dashboard-theme min-h-screen bg-[var(--bg-app)] p-6 text-[var(--text-primary)]'
         data-theme={theme}>
-        <p className='text-sm text-[var(--text-secondary)]'>{s.msg || 'Loading…'}</p>
-
-        <button
-          className='mt-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
-          onClick={() => router.push('/dashboard')}>
-          Back
-        </button>
+        {s.msg ? (
+          <>
+            <p className='text-sm text-[var(--text-secondary)]'>{s.msg}</p>
+            <button
+              className='mt-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
+              onClick={() => router.push('/dashboard')}>
+              Back
+            </button>
+          </>
+        ) : (
+          <TradeViewSkeleton />
+        )}
       </main>
     );
   }

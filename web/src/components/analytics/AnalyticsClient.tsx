@@ -8,6 +8,7 @@ import {
   type Filters,
   useAnalytics,
 } from '@/src/hooks/useAnalytics';
+import { AnalyticsSkeleton } from '@/src/components/ui/Skeleton';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -1040,7 +1041,7 @@ export function AnalyticsClient() {
       </section>
 
       {msg && <p className='text-sm opacity-80'>{msg}</p>}
-      {loading && <p className='text-sm opacity-80'>Loading…</p>}
+      {loading && <AnalyticsSkeleton />}
 
       {/* Equity curve (full width, shown before KPIs) */}
       <section className='grid grid-cols-1 gap-3'>

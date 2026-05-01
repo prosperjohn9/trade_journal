@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useMonthlyReport } from '@/src/hooks/useMonthlyReport';
+import { MonthlyReportSkeleton } from '@/src/components/ui/Skeleton';
 import { MonthlyReportHeader } from './MonthlyReportHeader';
 import { MonthlyReportEquitySection } from './MonthlyReportEquitySection';
 import { MonthlyReportPerformanceCards } from './MonthlyReportPerformanceCards';
@@ -55,9 +56,7 @@ export function MonthlyReportClient() {
           </p>
         )}
 
-        {s.loading && (
-          <p className='text-sm text-[var(--text-secondary)]'>Loading report...</p>
-        )}
+        {s.loading && <MonthlyReportSkeleton />}
 
         {s.msg && (
           <p className='rounded-xl border border-[var(--report-border)] bg-[var(--surface-elevated)] p-4 text-sm text-[var(--loss)]'>

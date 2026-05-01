@@ -57,17 +57,20 @@ export async function GET(request: Request) {
   if (accountsRes.error)
     return NextResponse.json({ error: accountsRes.error.message }, { status: 500 });
 
-  return NextResponse.json({
-    profile,
-    setupTemplates: (templatesRes.data ?? []).map((t: { id: string; name: string; is_default: boolean }) => ({
-      id: t.id,
-      name: t.name,
-      is_default: !!t.is_default,
-    })),
-    accounts: (accountsRes.data ?? []).map((a: { id: string; name: string; is_default: boolean }) => ({
-      id: a.id,
-      name: a.name,
-      is_default: !!a.is_default,
-    })),
-  });
+  return NextResponse.json(
+    {
+      profile,
+      setupTemplates: (templatesRes.data ?? []).map((t: { id: string; name: string; is_default: boolean }) => ({
+        id: t.id,
+        name: t.name,
+        is_default: !!t.is_default,
+      })),
+      accounts: (accountsRes.data ?? []).map((a: { id: string; name: string; is_default: boolean }) => ({
+        id: a.id,
+        name: a.name,
+        is_default: !!a.is_default,
+      })),
+    },
+    { headers: { 'Cache-Control': 'private, max-age=300, stale-while-revalidate=60' } },
+  );
 }

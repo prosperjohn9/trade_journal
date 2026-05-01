@@ -89,11 +89,14 @@ export async function GET(request: Request) {
     return acc + gross - toNumberSafe(row.commission, 0);
   }, 0);
 
-  return NextResponse.json({
-    userId: user.id,
-    profile,
-    accounts: accountsRes.data ?? [],
-    trades: monthTradesRes.data ?? [],
-    priorPnlDollar,
-  });
+  return NextResponse.json(
+    {
+      userId: user.id,
+      profile,
+      accounts: accountsRes.data ?? [],
+      trades: monthTradesRes.data ?? [],
+      priorPnlDollar,
+    },
+    { headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=10' } },
+  );
 }
