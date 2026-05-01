@@ -615,6 +615,9 @@ function CalendarHeatmap({
   while (cells.length % 7 !== 0)
     cells.push({ date: null, key: `pad-end-${cells.length}`, value: null });
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [hover, setHover] = useState<{ x: number; y: number; w: number; content: string } | null>(null);
+
   const vals = Object.values(valueByDay);
   const maxAbs = vals.length ? Math.max(...vals.map((v) => Math.abs(v))) : 0;
 
@@ -646,13 +649,24 @@ function CalendarHeatmap({
   }
 
   return (
-    <div className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
+    <div ref={containerRef} className='relative border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
       <div className='flex items-center justify-between gap-3 flex-wrap'>
         <div className='font-semibold'>{title}</div>
         <div className='text-xs opacity-70'>
           {month} • {modeLabel}
         </div>
       </div>
+
+      {hover && (
+        <div
+          className='pointer-events-none absolute z-10 rounded-lg border px-3 py-2 text-xs shadow-sm bg-[var(--chart-tooltip-bg)] border-[var(--chart-tooltip-border)] text-[var(--text-primary)]'
+          style={{
+            left: Math.max(8, Math.min(hover.x + 12, hover.w - 160)),
+            top: Math.max(8, hover.y - 36),
+          }}>
+          {hover.content}
+        </div>
+      )}
 
       <div className='mt-3 grid grid-cols-7 gap-2'>
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
@@ -664,7 +678,7 @@ function CalendarHeatmap({
         {cells.map((c) => {
           const label = c.date ? c.date.getDate() : '';
           const v = c.value;
-          const tooltip =
+          const tooltipText =
             c.date && v !== null
               ? `${c.key}: ${valueFormatter(v)}`
               : c.date
@@ -674,12 +688,22 @@ function CalendarHeatmap({
           return (
             <div
               key={c.key}
-              title={tooltip}
               className={cx(
                 'h-10 rounded-lg border flex items-center justify-center text-xs',
-                c.date ? 'border-[var(--border-default)]' : 'border-transparent',
+                c.date ? 'border-[var(--border-default)] cursor-default' : 'border-transparent',
                 cellClass(v)
-              )}>
+              )}
+              onMouseEnter={c.date ? (e) => {
+                const rect = containerRef.current?.getBoundingClientRect();
+                if (!rect) return;
+                setHover({ x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, content: tooltipText });
+              } : undefined}
+              onMouseMove={c.date ? (e) => {
+                const rect = containerRef.current?.getBoundingClientRect();
+                if (!rect) return;
+                setHover((prev) => prev ? { ...prev, x: e.clientX - rect.left, y: e.clientY - rect.top } : null);
+              } : undefined}
+              onMouseLeave={c.date ? () => setHover(null) : undefined}>
               <span
                 className={cx(
                   'font-medium',
