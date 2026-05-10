@@ -37,7 +37,7 @@ export type CopyEntry = {
   openedAt: string;
   outcome: Outcome;
   pnlAmount: string;
-  riskAmount: number;
+  riskAmount: string;
 };
 
 function defaultCopyEntry(): CopyEntry {
@@ -45,7 +45,7 @@ function defaultCopyEntry(): CopyEntry {
     openedAt: getDefaultMonthDatetimeLocal(),
     outcome: 'WIN',
     pnlAmount: '2000',
-    riskAmount: 1000,
+    riskAmount: '1000',
   };
 }
 
@@ -88,7 +88,12 @@ export function useNewTrade() {
   const [outcome, setOutcome] = useState<Outcome>('WIN');
 
   const [pnlAmount, setPnlAmount] = useState<string>('2000');
-  const [riskAmount, setRiskAmount] = useState<number>(1000);
+  const [riskAmount, setRiskAmount] = useState<string>('1000');
+
+  const riskNumber = useMemo(() => {
+    const n = Number(riskAmount);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }, [riskAmount]);
 
   const [accounts, setAccounts] = useState<AccountLite[]>([]);
   const [accountId, setAccountId] = useState<string>('');
@@ -136,16 +141,14 @@ export function useNewTrade() {
   }, [pnlPercentNumber]);
 
   const rMultiple = useMemo(() => {
-    if (!riskAmount || Number.isNaN(riskAmount)) return null;
-    return normalizedPnlAmount / riskAmount;
-  }, [normalizedPnlAmount, riskAmount]);
+    if (!riskNumber) return null;
+    return normalizedPnlAmount / riskNumber;
+  }, [normalizedPnlAmount, riskNumber]);
 
   const riskPercentOfAccount = useMemo(() => {
-    if (!selectedAccountBalance || !riskAmount || Number.isNaN(riskAmount)) {
-      return null;
-    }
-    return (riskAmount / selectedAccountBalance) * 100;
-  }, [riskAmount, selectedAccountBalance]);
+    if (!selectedAccountBalance || !riskNumber) return null;
+    return (riskNumber / selectedAccountBalance) * 100;
+  }, [riskNumber, selectedAccountBalance]);
 
   const riskExceedsPolicy = useMemo(
     () =>
@@ -238,13 +241,14 @@ export function useNewTrade() {
       const copies = copyAccountIds.map((id) => {
         const acc = accounts.find((a) => a.id === id);
         const entry = copyEntries[id];
+        const r = Number(entry.riskAmount);
         return {
           accountId: id,
           accountStartingBalance: toNumberSafe(acc?.starting_balance, 0),
           openedAtLocal: entry.openedAt,
           outcome: entry.outcome,
           pnlAmountRaw: entry.pnlAmount,
-          riskAmount: entry.riskAmount,
+          riskAmount: Number.isFinite(r) && r > 0 ? r : 0,
         };
       });
 
@@ -403,7 +407,7 @@ export function useNewTrade() {
         outcome,
         pnlAmountRaw: pnlAmount,
         pnlPercentRaw,
-        riskAmount,
+        riskAmount: riskNumber,
         notes,
         templateId: templateId || null,
         beforeFile,

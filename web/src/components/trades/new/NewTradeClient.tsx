@@ -146,8 +146,9 @@ export function NewTradeClient() {
   const rBgMix = s.rMultiple !== null && s.rMultiple < 0 ? 18 : 8;
 
   const summaryInstrument = s.instrument || '—';
-  const summaryRisk = Number.isFinite(s.riskAmount)
-    ? formatMoney(Number(s.riskAmount || 0), s.selectedCurrency)
+  const summaryRiskNum = Number(s.riskAmount);
+  const summaryRisk = Number.isFinite(summaryRiskNum) && summaryRiskNum > 0
+    ? formatMoney(summaryRiskNum, s.selectedCurrency)
     : '—';
   const summaryPnl = formatMoney(Number(s.pnlAmount || 0), s.selectedCurrency);
   const summaryImpact = percentText(s.pnlPercentNumber);
@@ -622,17 +623,19 @@ export function NewTradeClient() {
                           : entry.outcome === 'WIN'
                             ? Math.abs(pnlNum)
                             : pnlNum;
+                      const riskNum = Number(entry.riskAmount);
+                      const riskValid = Number.isFinite(riskNum) && riskNum > 0;
                       const pnlPct =
                         balance > 0 && Number.isFinite(signedPnl)
                           ? (signedPnl / balance) * 100
                           : null;
                       const rMul =
-                        entry.riskAmount > 0 && Number.isFinite(signedPnl)
-                          ? signedPnl / entry.riskAmount
+                        riskValid && Number.isFinite(signedPnl)
+                          ? signedPnl / riskNum
                           : null;
                       const riskPct =
-                        balance > 0 && entry.riskAmount > 0
-                          ? (entry.riskAmount / balance) * 100
+                        balance > 0 && riskValid
+                          ? (riskNum / balance) * 100
                           : null;
                       const currency = account.base_currency ?? 'USD';
 
@@ -704,7 +707,7 @@ export function NewTradeClient() {
                                 value={entry.riskAmount}
                                 onChange={(e) =>
                                   s.updateCopyEntry(id, {
-                                    riskAmount: Number(e.target.value),
+                                    riskAmount: e.target.value,
                                   })
                                 }
                               />
@@ -755,7 +758,7 @@ export function NewTradeClient() {
                         step='0.01'
                         min='0'
                         value={s.riskAmount}
-                        onChange={(e) => s.setRiskAmount(Number(e.target.value))}
+                        onChange={(e) => s.setRiskAmount(e.target.value)}
                       />
                       <div className='text-xs text-[var(--text-muted)]'>
                         {riskPercentTextValue}
