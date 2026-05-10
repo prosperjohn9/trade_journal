@@ -448,18 +448,39 @@ export function TradeViewClient() {
                             : undefined
                         }>
                         <td className='py-2 pr-3'>
-                          {isThis ? (
-                            <span className='font-semibold text-[var(--text-primary)]'>
-                              ◉ {sib.account?.name ?? '—'}
+                          <button
+                            type='button'
+                            disabled={isThis}
+                            onClick={() => {
+                              if (!isThis) router.push(`/trades/${sib.id}`);
+                            }}
+                            className='flex items-center gap-2 text-left transition-colors disabled:cursor-default'
+                            style={{
+                              color: isThis
+                                ? 'var(--text-primary)'
+                                : 'var(--text-secondary)',
+                            }}>
+                            <span
+                              aria-hidden
+                              className='inline-flex h-4 w-4 flex-none items-center justify-center rounded-full border'
+                              style={{
+                                borderColor: isThis
+                                  ? 'var(--accent)'
+                                  : 'var(--border-default)',
+                                backgroundColor: 'transparent',
+                              }}>
+                              {isThis && (
+                                <span
+                                  className='h-2 w-2 rounded-full'
+                                  style={{ backgroundColor: 'var(--accent)' }}
+                                />
+                              )}
                             </span>
-                          ) : (
-                            <button
-                              type='button'
-                              className='text-left hover:text-[var(--accent)] hover:underline'
-                              onClick={() => router.push(`/trades/${sib.id}`)}>
+                            <span
+                              className={isThis ? 'font-semibold' : 'font-normal'}>
                               {sib.account?.name ?? '—'}
-                            </button>
-                          )}
+                            </span>
+                          </button>
                         </td>
                         <td className='py-2 pr-3 text-[var(--text-muted)]'>
                           {new Date(sib.opened_at).toLocaleString()}
