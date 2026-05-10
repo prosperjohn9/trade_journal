@@ -305,8 +305,9 @@ export function TradeEditClient() {
                   className={controlClass}
                   type='number'
                   step='0.01'
+                  min='0'
                   value={s.riskAmount}
-                  onChange={(e) => s.setRiskAmount(Number(e.target.value))}
+                  onChange={(e) => s.setRiskAmount(e.target.value)}
                 />
               </Field>
 
@@ -522,7 +523,6 @@ function ScreenshotEditor({
             alt={title}
             width={1200}
             height={700}
-            unoptimized
             className='max-h-64 w-auto cursor-pointer rounded-lg border border-[var(--border-default)]'
             onClick={onOpen}
             title='Click to view full screen'
@@ -551,6 +551,7 @@ function ScreenshotEditor({
             unoptimized
             className='max-h-64 w-auto rounded-lg border border-[var(--border-default)]'
           />
+          {/* Note: previewUrl is a blob: URL from URL.createObjectURL — keeping unoptimized */}
         </div>
       )}
     </section>

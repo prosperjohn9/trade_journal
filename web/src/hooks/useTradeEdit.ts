@@ -34,13 +34,13 @@ function buildDraftSnapshot(params: {
   direction: Direction;
   outcome: Outcome;
   pnlAmount: string;
-  riskAmount: number;
+  riskAmount: string;
   notes: string;
   templateId: string | null;
   beforeFileSig: string;
   afterFileSig: string;
 }) {
-  return JSON.stringify(params);
+  return JSON.stringify({ ...params, riskAmount: params.riskAmount.trim() });
 }
 
 function buildPerformanceSnapshot(params: {
@@ -48,14 +48,14 @@ function buildPerformanceSnapshot(params: {
   direction: Direction;
   outcome: Outcome;
   pnlAmount: string;
-  riskAmount: number;
+  riskAmount: string;
 }) {
   return JSON.stringify({
     instrument: params.instrument.trim().toUpperCase(),
     direction: params.direction,
     outcome: params.outcome,
     pnlAmount: params.pnlAmount.trim(),
-    riskAmount: Number.isFinite(params.riskAmount) ? params.riskAmount : 0,
+    riskAmount: params.riskAmount.trim(),
   });
 }
 
@@ -96,8 +96,13 @@ export function useTradeEdit() {
 
   const [pnlAmount, setPnlAmount] = useState('0');
   const [pnlPercent, setPnlPercent] = useState('0');
-  const [riskAmount, setRiskAmount] = useState<number>(1000);
+  const [riskAmount, setRiskAmount] = useState<string>('1000');
   const [notes, setNotes] = useState('');
+
+  const riskNumber = useMemo(() => {
+    const n = Number(riskAmount);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }, [riskAmount]);
 
   const [templates, setTemplates] = useState<SetupTemplateRow[]>([]);
   const [templateId, setTemplateId] = useState<string | null>(null);
@@ -157,16 +162,9 @@ export function useTradeEdit() {
   }, [normalizedPnlAmount, selectedAccountBalance]);
 
   const rMultiple = useMemo(() => {
-    if (
-      !riskAmount ||
-      Number.isNaN(riskAmount) ||
-      Number.isNaN(normalizedPnlAmount)
-    ) {
-      return null;
-    }
-
-    return normalizedPnlAmount / riskAmount;
-  }, [normalizedPnlAmount, riskAmount]);
+    if (!riskNumber || Number.isNaN(normalizedPnlAmount)) return null;
+    return normalizedPnlAmount / riskNumber;
+  }, [normalizedPnlAmount, riskNumber]);
 
   const activeItems = useMemo(() => items.filter((i) => i.is_active), [items]);
 
@@ -276,9 +274,9 @@ export function useTradeEdit() {
     if (tone === 'success') window.setTimeout(() => setEntryMsg(''), 2500);
   }
 
-  function goBackSafe() {
-    if (!confirmDiscardChanges()) return;
-
+  function navigateBack() {
+    // Unconditional navigation — used after a successful save where there are
+    // no unsaved changes to confirm.
     if (returnTo) {
       router.push(returnTo);
       return;
@@ -289,6 +287,11 @@ export function useTradeEdit() {
       return;
     }
     router.push(`/trades/${tradeId}`);
+  }
+
+  function goBackSafe() {
+    if (!confirmDiscardChanges()) return;
+    navigateBack();
   }
 
   function openFull(url: string) {
@@ -375,7 +378,9 @@ export function useTradeEdit() {
         setOutcome((res.trade.outcome ?? 'WIN') as Outcome);
         setPnlAmount(String(res.trade.pnl_amount ?? 0));
         setPnlPercent(String(res.trade.pnl_percent ?? 0));
-        setRiskAmount(res.trade.risk_amount ?? 1000);
+        setRiskAmount(
+          res.trade.risk_amount == null ? '1000' : String(res.trade.risk_amount),
+        );
         setNotes(res.trade.notes ?? '');
 
         setTemplateId(res.trade.template_id ?? null);
@@ -409,6 +414,9 @@ export function useTradeEdit() {
         setLessonLearned(res.trade.lesson_learned ?? '');
         setReviewNotes(res.trade.review_notes ?? '');
 
+        const initialRisk =
+          res.trade.risk_amount == null ? '1000' : String(res.trade.risk_amount);
+
         setBaselineDraft(
           buildDraftSnapshot({
             accountId: res.trade.account_id ?? fallbackAccountId,
@@ -417,7 +425,7 @@ export function useTradeEdit() {
             direction: (res.trade.direction ?? 'BUY') as Direction,
             outcome: (res.trade.outcome ?? 'WIN') as Outcome,
             pnlAmount: String(res.trade.pnl_amount ?? 0),
-            riskAmount: res.trade.risk_amount ?? 1000,
+            riskAmount: initialRisk,
             notes: res.trade.notes ?? '',
             templateId: res.trade.template_id ?? null,
             beforeFileSig: '',
@@ -430,13 +438,17 @@ export function useTradeEdit() {
             direction: (res.trade.direction ?? 'BUY') as Direction,
             outcome: (res.trade.outcome ?? 'WIN') as Outcome,
             pnlAmount: String(res.trade.pnl_amount ?? 0),
-            riskAmount: res.trade.risk_amount ?? 1000,
+            riskAmount: initialRisk,
           }),
         );
       } catch (e: unknown) {
         if (!cancelled) {
-          setMsg(getErr(e, 'Failed to load trade'));
-          router.push('/auth');
+          const message = getErr(e, 'Failed to load trade');
+          setMsg(message);
+          // Only bounce to /auth on auth failures — not on 404s, network blips, etc.
+          if (message.toLowerCase().includes('not authenticated')) {
+            router.push('/auth');
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -501,7 +513,7 @@ export function useTradeEdit() {
         outcome,
         pnlAmountRaw: pnlAmount,
         pnlPercentRaw: String(pnlPercentAuto ?? 0),
-        riskAmount,
+        riskAmount: riskNumber,
         notes,
         templateId,
         beforeFile,
@@ -543,7 +555,10 @@ export function useTradeEdit() {
         }),
       );
 
-      goBackSafe();
+      // Navigate without re-checking isDirty — the baseline setters above
+      // are async and isDirty is still stale in this tick. Without this,
+      // saving triggers a spurious "Discard changes?" confirm dialog.
+      navigateBack();
     } catch (e: unknown) {
       setEntryFeedback(getErr(e, 'Failed to save changes'), 'error');
     }
