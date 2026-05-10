@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getErr } from '@/src/domain/errors';
 import { listAccounts } from '@/src/lib/services/accounts.service';
 import {
+  createCopyTradeFlow,
   createTradeFlow,
   getDefaultMonthDatetimeLocal,
   loadNewTradeBootstrap,
@@ -29,6 +30,24 @@ export type AccountLite = {
   base_currency: string | null;
   starting_balance: number;
 };
+
+export type TradeMode = 'single' | 'copy';
+
+export type CopyEntry = {
+  openedAt: string;
+  outcome: Outcome;
+  pnlAmount: string;
+  riskAmount: number;
+};
+
+function defaultCopyEntry(): CopyEntry {
+  return {
+    openedAt: getDefaultMonthDatetimeLocal(),
+    outcome: 'WIN',
+    pnlAmount: '2000',
+    riskAmount: 1000,
+  };
+}
 
 const RECENT_INSTRUMENTS_KEY = 'new-trade-recent-instruments-v1';
 const MAX_RECENT_INSTRUMENTS = 8;
@@ -155,6 +174,100 @@ export function useNewTrade() {
     const pnlNum = Number(pnlAmount);
     return Number.isFinite(pnlNum);
   }, [accountId, hasAccounts, instrument, openedAt, pnlAmount]);
+
+  // ─── Copy-trade mode ───────────────────────────────────────────────
+  const [mode, setMode] = useState<TradeMode>('single');
+  const [copyAccountIds, setCopyAccountIds] = useState<string[]>([]);
+  const [copyEntries, setCopyEntries] = useState<Record<string, CopyEntry>>({});
+
+  function toggleCopyAccount(id: string) {
+    setCopyAccountIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      return [...prev, id];
+    });
+    setCopyEntries((prev) => {
+      if (prev[id]) {
+        // Already had an entry; toggling off, remove it; toggling on we'd already have it.
+        const { [id]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [id]: defaultCopyEntry() };
+    });
+  }
+
+  function clearCopyAccounts() {
+    setCopyAccountIds([]);
+    setCopyEntries({});
+  }
+
+  function updateCopyEntry(id: string, patch: Partial<CopyEntry>) {
+    setCopyEntries((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] ?? defaultCopyEntry()), ...patch },
+    }));
+  }
+
+  const canSaveCopy = useMemo(() => {
+    if (mode !== 'copy') return false;
+    if (copyAccountIds.length < 2) return false;
+    if (!normalizeInstrument(instrument)) return false;
+    for (const id of copyAccountIds) {
+      const e = copyEntries[id];
+      if (!e) return false;
+      if (!e.openedAt) return false;
+      const n = Number(e.pnlAmount);
+      if (!Number.isFinite(n)) return false;
+    }
+    return true;
+  }, [mode, copyAccountIds, copyEntries, instrument]);
+
+  async function onSaveCopyTrade(e: FormEvent) {
+    e.preventDefault();
+    if (saving) return;
+    if (!canSaveCopy) {
+      setMsg('Pick at least 2 accounts and fill every copy.');
+      return;
+    }
+
+    const nextInstrument = normalizeInstrument(instrument);
+
+    setSaving(true);
+    setMsg('Saving...');
+
+    try {
+      const copies = copyAccountIds.map((id) => {
+        const acc = accounts.find((a) => a.id === id);
+        const entry = copyEntries[id];
+        return {
+          accountId: id,
+          accountStartingBalance: toNumberSafe(acc?.starting_balance, 0),
+          openedAtLocal: entry.openedAt,
+          outcome: entry.outcome,
+          pnlAmountRaw: entry.pnlAmount,
+          riskAmount: entry.riskAmount,
+        };
+      });
+
+      await createCopyTradeFlow({
+        shared: {
+          instrument: nextInstrument,
+          direction,
+          templateId: templateId || null,
+          notes,
+          beforeFile,
+        },
+        copies,
+      });
+
+      recordRecentInstrument(nextInstrument);
+      setMsg('Saved');
+      router.push('/dashboard');
+    } catch (err: unknown) {
+      setMsg(getErr(err, 'Failed to save copy trade'));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function persistRecentInstruments(next: string[]) {
     setRecentInstruments(next);
@@ -353,5 +466,16 @@ export function useNewTrade() {
     initialized,
     canSave,
     onSaveTrade,
+
+    // copy-trade
+    mode,
+    setMode,
+    copyAccountIds,
+    copyEntries,
+    toggleCopyAccount,
+    clearCopyAccounts,
+    updateCopyEntry,
+    canSaveCopy,
+    onSaveCopyTrade,
   };
 }

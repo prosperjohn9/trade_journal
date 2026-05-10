@@ -403,6 +403,104 @@ export function TradeViewClient() {
           </div>
         </header>
 
+        {s.siblings && s.siblings.length > 1 && (
+          <section className='rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5'>
+            <div className='mb-3 flex items-center gap-2'>
+              <div className='text-sm font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]'>
+                Copy-trade idea
+              </div>
+              <span className='rounded-full border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]'>
+                {s.siblings.length} accounts
+              </span>
+            </div>
+
+            <div className='overflow-x-auto'>
+              <table className='w-full text-sm'>
+                <thead>
+                  <tr className='text-left text-[var(--text-muted)]'>
+                    <th className='pb-2 pr-3 font-medium'>Account</th>
+                    <th className='pb-2 pr-3 font-medium'>Opened</th>
+                    <th className='pb-2 pr-3 font-medium'>Risk</th>
+                    <th className='pb-2 pr-3 font-medium'>Outcome</th>
+                    <th className='pb-2 pr-3 font-medium text-right'>P&L</th>
+                    <th className='pb-2 font-medium text-right'>R</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.siblings.map((sib) => {
+                    const isThis = sib.id === t.id;
+                    const sibPnl =
+                      sib.net_pnl !== null && sib.net_pnl !== undefined
+                        ? Number(sib.net_pnl)
+                        : Number(sib.pnl_amount ?? 0);
+                    const sibCurrency = t.account?.base_currency ?? 'USD';
+                    const tone = OUTCOME_TONES[sib.outcome];
+                    return (
+                      <tr
+                        key={sib.id}
+                        className='border-t border-[var(--border-default)] text-[var(--text-secondary)]'
+                        style={
+                          isThis
+                            ? {
+                                backgroundColor:
+                                  'color-mix(in srgb, var(--accent) 6%, transparent)',
+                              }
+                            : undefined
+                        }>
+                        <td className='py-2 pr-3'>
+                          {isThis ? (
+                            <span className='font-semibold text-[var(--text-primary)]'>
+                              ◉ {sib.account?.name ?? '—'}
+                            </span>
+                          ) : (
+                            <button
+                              type='button'
+                              className='text-left hover:text-[var(--accent)] hover:underline'
+                              onClick={() => router.push(`/trades/${sib.id}`)}>
+                              {sib.account?.name ?? '—'}
+                            </button>
+                          )}
+                        </td>
+                        <td className='py-2 pr-3 text-[var(--text-muted)]'>
+                          {new Date(sib.opened_at).toLocaleString()}
+                        </td>
+                        <td className='py-2 pr-3'>
+                          {sib.risk_amount !== null && sib.risk_amount !== undefined
+                            ? formatMoney(Number(sib.risk_amount), sibCurrency)
+                            : '—'}
+                        </td>
+                        <td className='py-2 pr-3'>
+                          <span
+                            className='rounded-full border px-2 py-0.5 text-[11px] font-semibold'
+                            style={{
+                              borderColor: `color-mix(in srgb, ${tone} 30%, transparent)`,
+                              backgroundColor: `color-mix(in srgb, ${tone} 10%, transparent)`,
+                              color: `color-mix(in srgb, ${tone} 90%, var(--text-primary))`,
+                            }}>
+                            {sib.outcome === 'BREAKEVEN' ? 'BE' : sib.outcome}
+                          </span>
+                        </td>
+                        <td
+                          className='py-2 pr-3 text-right font-semibold'
+                          style={{ color: `color-mix(in srgb, ${tone} 90%, var(--text-primary))` }}>
+                          {formatMoney(sibPnl, sibCurrency)}
+                        </td>
+                        <td
+                          className='py-2 text-right font-semibold tabular-nums'
+                          style={{ color: `color-mix(in srgb, ${tone} 90%, var(--text-primary))` }}>
+                          {sib.r_multiple !== null && sib.r_multiple !== undefined
+                            ? `${Number(sib.r_multiple).toFixed(2)}R`
+                            : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
         <section className='rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5 sm:p-6'>
           <div className='flex flex-wrap items-start justify-between gap-5'>
             <div className='space-y-3'>

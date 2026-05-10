@@ -42,6 +42,7 @@ export type TradeView = {
   before_screenshot_path: string | null;
   after_trade_screenshot_url: string | null;
   account_id: string | null;
+  trade_group_id?: string | null;
   account: {
     id: string;
     name: string;
@@ -50,6 +51,21 @@ export type TradeView = {
     base_currency?: string | null;
     starting_balance?: number | null;
   } | null;
+};
+
+export type TradeSibling = {
+  id: string;
+  account_id: string;
+  opened_at: string;
+  outcome: TradeViewOutcome;
+  pnl_amount: number;
+  pnl_percent: number;
+  net_pnl: number | null;
+  r_multiple: number | null;
+  risk_amount: number | null;
+  commission: number | null;
+  reviewed_at: string | null;
+  account: { id: string; name: string } | null;
 };
 
 export type TradeChecklistItem = {
@@ -83,6 +99,7 @@ export function useTradeView() {
   const beforeUrl = data?.beforeUrl ?? '';
   const afterUrl = data?.afterUrl ?? '';
   const equityBefore = data?.equityBefore ?? null;
+  const siblings = (data?.siblings ?? []) as TradeSibling[];
 
   const isReviewed = !!trade?.reviewed_at;
 
@@ -133,6 +150,7 @@ export function useTradeView() {
     beforeUrl,
     afterUrl,
     equityBefore,
+    siblings,
 
     isReviewed,
     grossPnl,

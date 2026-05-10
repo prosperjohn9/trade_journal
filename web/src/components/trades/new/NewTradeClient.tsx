@@ -320,7 +320,34 @@ export function NewTradeClient() {
           </div>
         )}
 
-        <form onSubmit={s.onSaveTrade}>
+        {/* Single / Copy mode toggle */}
+        {s.hasAccounts && (
+          <div className='flex items-center gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-1'>
+            {(['single', 'copy'] as const).map((m) => {
+              const active = s.mode === m;
+              return (
+                <button
+                  key={m}
+                  type='button'
+                  className='flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition-all'
+                  style={
+                    active
+                      ? {
+                          backgroundColor:
+                            'color-mix(in srgb, var(--accent) 14%, var(--bg-surface))',
+                          color: 'var(--accent)',
+                        }
+                      : { color: 'var(--text-secondary)' }
+                  }
+                  onClick={() => s.setMode(m)}>
+                  {m === 'single' ? 'Single Trade' : 'Copy Trade'}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <form onSubmit={s.mode === 'copy' ? s.onSaveCopyTrade : s.onSaveTrade}>
           <div className='grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]'>
             <div className='space-y-6'>
               <SectionCard
@@ -328,41 +355,43 @@ export function NewTradeClient() {
                 subtitle='Core trade facts and setup selection.'>
                 <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
                   <div className='space-y-4'>
-                    <Field
-                      label='Account'
-                      hint='Trades must belong to an account.'>
-                      <select
-                        className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
-                        value={s.accountId}
-                        onChange={(e) => s.setAccountId(e.target.value)}
-                        disabled={!s.hasAccounts}>
-                        {!s.hasAccounts && <option value=''>No accounts</option>}
-                        {s.accounts.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.name}
-                            {a.is_default ? ' (default)' : ''}
-                          </option>
-                        ))}
-                      </select>
+                    {s.mode === 'single' && (
+                      <Field
+                        label='Account'
+                        hint='Trades must belong to an account.'>
+                        <select
+                          className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
+                          value={s.accountId}
+                          onChange={(e) => s.setAccountId(e.target.value)}
+                          disabled={!s.hasAccounts}>
+                          {!s.hasAccounts && <option value=''>No accounts</option>}
+                          {s.accounts.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.name}
+                              {a.is_default ? ' (default)' : ''}
+                            </option>
+                          ))}
+                        </select>
 
-                      {s.selectedAccount && (
-                        <div className='mt-2 flex flex-wrap items-center gap-1.5'>
-                          {s.selectedAccount.tags.length > 0 ? (
-                            s.selectedAccount.tags.map((tag) => (
-                              <span
-                                key={`account-tag-${s.selectedAccount?.id}-${tag}`}
-                                className='inline-flex items-center rounded-full border border-[var(--border-default)] bg-[var(--surface-muted)] px-2 py-1 text-[11px] leading-none text-[var(--text-secondary)]'>
-                                {formatAccountTagLabel(tag)}
+                        {s.selectedAccount && (
+                          <div className='mt-2 flex flex-wrap items-center gap-1.5'>
+                            {s.selectedAccount.tags.length > 0 ? (
+                              s.selectedAccount.tags.map((tag) => (
+                                <span
+                                  key={`account-tag-${s.selectedAccount?.id}-${tag}`}
+                                  className='inline-flex items-center rounded-full border border-[var(--border-default)] bg-[var(--surface-muted)] px-2 py-1 text-[11px] leading-none text-[var(--text-secondary)]'>
+                                  {formatAccountTagLabel(tag)}
+                                </span>
+                              ))
+                            ) : (
+                              <span className='text-xs text-[var(--text-muted)]'>
+                                No account tags set.
                               </span>
-                            ))
-                          ) : (
-                            <span className='text-xs text-[var(--text-muted)]'>
-                              No account tags set.
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </Field>
+                            )}
+                          </div>
+                        )}
+                      </Field>
+                    )}
 
                     <Field label='Instrument'>
                       <input
@@ -441,16 +470,18 @@ export function NewTradeClient() {
                       </div>
                     </Field>
 
-                    <Field label='Date/Time'>
-                      <input
-                        className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
-                        type='datetime-local'
-                        step='1'
-                        value={s.openedAt}
-                        onChange={(e) => s.setOpenedAt(e.target.value)}
-                        required
-                      />
-                    </Field>
+                    {s.mode === 'single' && (
+                      <Field label='Date/Time'>
+                        <input
+                          className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
+                          type='datetime-local'
+                          step='1'
+                          value={s.openedAt}
+                          onChange={(e) => s.setOpenedAt(e.target.value)}
+                          required
+                        />
+                      </Field>
+                    )}
                   </div>
 
                   <div className='space-y-4'>
@@ -483,36 +514,38 @@ export function NewTradeClient() {
                       </div>
                     </Field>
 
-                    <Field label='Outcome'>
-                      <div className='grid grid-cols-3 gap-2 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-1'>
-                        {(['WIN', 'LOSS', 'BREAKEVEN'] as const).map((value) => {
-                          const tone = outcomeTone(value);
-                          const active = s.outcome === value;
+                    {s.mode === 'single' && (
+                      <Field label='Outcome'>
+                        <div className='grid grid-cols-3 gap-2 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-1'>
+                          {(['WIN', 'LOSS', 'BREAKEVEN'] as const).map((value) => {
+                            const tone = outcomeTone(value);
+                            const active = s.outcome === value;
 
-                          return (
-                            <button
-                              key={value}
-                              type='button'
-                              className='rounded-md border px-2 py-2 text-sm font-semibold transition-all duration-200 ease-out'
-                              style={{
-                                color: active
-                                  ? `color-mix(in srgb, ${tone} 90%, var(--text-primary))`
-                                  : `color-mix(in srgb, ${tone} 70%, var(--text-secondary))`,
-                                borderColor: active
-                                  ? `color-mix(in srgb, ${tone} 42%, transparent)`
-                                  : 'transparent',
-                                backgroundColor: active
-                                  ? `color-mix(in srgb, ${tone} 14%, var(--bg-surface))`
-                                  : `color-mix(in srgb, ${tone} 6%, var(--bg-surface))`,
-                                transform: active ? 'translateY(-1px)' : 'translateY(0px)',
-                              }}
-                              onClick={() => s.setOutcome(value)}>
-                              {value === 'BREAKEVEN' ? 'BE' : value}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </Field>
+                            return (
+                              <button
+                                key={value}
+                                type='button'
+                                className='rounded-md border px-2 py-2 text-sm font-semibold transition-all duration-200 ease-out'
+                                style={{
+                                  color: active
+                                    ? `color-mix(in srgb, ${tone} 90%, var(--text-primary))`
+                                    : `color-mix(in srgb, ${tone} 70%, var(--text-secondary))`,
+                                  borderColor: active
+                                    ? `color-mix(in srgb, ${tone} 42%, transparent)`
+                                    : 'transparent',
+                                  backgroundColor: active
+                                    ? `color-mix(in srgb, ${tone} 14%, var(--bg-surface))`
+                                    : `color-mix(in srgb, ${tone} 6%, var(--bg-surface))`,
+                                  transform: active ? 'translateY(-1px)' : 'translateY(0px)',
+                                }}
+                                onClick={() => s.setOutcome(value)}>
+                                {value === 'BREAKEVEN' ? 'BE' : value}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </Field>
+                    )}
 
                     <Field label='Setup'>
                       <select
@@ -532,6 +565,184 @@ export function NewTradeClient() {
                 </div>
               </SectionCard>
 
+              {s.mode === 'copy' && (
+                <SectionCard
+                  title='Copy to accounts'
+                  subtitle='Pick the accounts that took this trade and fill in each variant.'>
+                  {/* Account picker (chips) */}
+                  <div className='flex flex-wrap gap-2'>
+                    {s.accounts.map((a) => {
+                      const selected = s.copyAccountIds.includes(a.id);
+                      return (
+                        <button
+                          key={a.id}
+                          type='button'
+                          onClick={() => s.toggleCopyAccount(a.id)}
+                          className='rounded-full border px-3 py-1.5 text-sm font-medium transition-colors'
+                          style={
+                            selected
+                              ? {
+                                  borderColor:
+                                    'color-mix(in srgb, var(--accent) 48%, transparent)',
+                                  backgroundColor:
+                                    'color-mix(in srgb, var(--accent) 16%, var(--bg-surface))',
+                                  color:
+                                    'color-mix(in srgb, var(--accent) 90%, var(--text-primary))',
+                                }
+                              : {
+                                  borderColor: 'var(--border-default)',
+                                  backgroundColor: 'var(--bg-surface)',
+                                  color: 'var(--text-secondary)',
+                                }
+                          }>
+                          {selected ? '✓ ' : ''}{a.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {s.copyAccountIds.length < 2 && (
+                    <div className='mt-3 text-xs text-[var(--text-muted)]'>
+                      Pick at least 2 accounts to record a copy trade.
+                    </div>
+                  )}
+
+                  {/* Per-account cards */}
+                  <div className='mt-4 space-y-3'>
+                    {s.copyAccountIds.map((id) => {
+                      const account = s.accounts.find((a) => a.id === id);
+                      const entry = s.copyEntries[id];
+                      if (!account || !entry) return null;
+
+                      const balance = Number(account.starting_balance ?? 0);
+                      const pnlNum = Number(entry.pnlAmount);
+                      const signedPnl =
+                        entry.outcome === 'LOSS'
+                          ? -Math.abs(pnlNum)
+                          : entry.outcome === 'WIN'
+                            ? Math.abs(pnlNum)
+                            : pnlNum;
+                      const pnlPct =
+                        balance > 0 && Number.isFinite(signedPnl)
+                          ? (signedPnl / balance) * 100
+                          : null;
+                      const rMul =
+                        entry.riskAmount > 0 && Number.isFinite(signedPnl)
+                          ? signedPnl / entry.riskAmount
+                          : null;
+                      const riskPct =
+                        balance > 0 && entry.riskAmount > 0
+                          ? (entry.riskAmount / balance) * 100
+                          : null;
+                      const currency = account.base_currency ?? 'USD';
+
+                      return (
+                        <div
+                          key={id}
+                          className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4'>
+                          <div className='mb-3 flex items-center justify-between'>
+                            <div className='font-semibold text-[var(--text-primary)]'>
+                              {account.name}
+                            </div>
+                            <button
+                              type='button'
+                              className='text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                              onClick={() => s.toggleCopyAccount(id)}>
+                              Remove
+                            </button>
+                          </div>
+
+                          <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+                            <Field label='Date/Time'>
+                              <input
+                                className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]'
+                                type='datetime-local'
+                                step='1'
+                                value={entry.openedAt}
+                                onChange={(e) =>
+                                  s.updateCopyEntry(id, { openedAt: e.target.value })
+                                }
+                                required
+                              />
+                            </Field>
+
+                            <Field label='Outcome'>
+                              <div className='grid grid-cols-3 gap-2 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-1'>
+                                {(['WIN', 'LOSS', 'BREAKEVEN'] as const).map((value) => {
+                                  const tone = outcomeTone(value);
+                                  const active = entry.outcome === value;
+                                  return (
+                                    <button
+                                      key={value}
+                                      type='button'
+                                      className='rounded-md border px-2 py-2 text-sm font-semibold transition-all'
+                                      style={{
+                                        color: active
+                                          ? `color-mix(in srgb, ${tone} 90%, var(--text-primary))`
+                                          : `color-mix(in srgb, ${tone} 70%, var(--text-secondary))`,
+                                        borderColor: active
+                                          ? `color-mix(in srgb, ${tone} 42%, transparent)`
+                                          : 'transparent',
+                                        backgroundColor: active
+                                          ? `color-mix(in srgb, ${tone} 14%, var(--bg-surface))`
+                                          : `color-mix(in srgb, ${tone} 6%, var(--bg-surface))`,
+                                      }}
+                                      onClick={() => s.updateCopyEntry(id, { outcome: value })}>
+                                      {value === 'BREAKEVEN' ? 'BE' : value}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </Field>
+
+                            <Field label='Risk ($)'>
+                              <input
+                                className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]'
+                                type='number'
+                                step='0.01'
+                                min='0'
+                                value={entry.riskAmount}
+                                onChange={(e) =>
+                                  s.updateCopyEntry(id, {
+                                    riskAmount: Number(e.target.value),
+                                  })
+                                }
+                              />
+                              <div className='text-xs text-[var(--text-muted)]'>
+                                {riskPct === null
+                                  ? 'Set starting balance for %'
+                                  : `${riskPct.toFixed(2)}% of account`}
+                              </div>
+                            </Field>
+
+                            <Field label='P&L ($)'>
+                              <input
+                                className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]'
+                                type='number'
+                                step='0.01'
+                                value={entry.pnlAmount}
+                                onChange={(e) =>
+                                  s.updateCopyEntry(id, { pnlAmount: e.target.value })
+                                }
+                                required
+                              />
+                              <div className='text-xs text-[var(--text-muted)]'>
+                                {pnlPct === null
+                                  ? '— %'
+                                  : `${pnlPct.toFixed(2)}% • R: ${rMul === null ? '—' : rMul.toFixed(2)}`}
+                                {' • '}
+                                {formatMoney(signedPnl, currency)}
+                              </div>
+                            </Field>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </SectionCard>
+              )}
+
+              {s.mode === 'single' && (
               <SectionCard
                 title='Performance Metrics'
                 subtitle='Capture risk and result. P&L %, R-multiple are derived automatically.'>
@@ -609,6 +820,7 @@ export function NewTradeClient() {
                   </div>
                 )}
               </SectionCard>
+              )}
 
               <SectionCard
                 title='Before-Trade Screenshot'
@@ -670,50 +882,102 @@ export function NewTradeClient() {
                 </div>
                 <button
                   className='rounded-lg border border-transparent bg-[var(--accent-cta)] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60'
-                  disabled={s.saving || !s.canSave}
+                  disabled={
+                    s.saving ||
+                    (s.mode === 'single' ? !s.canSave : !s.canSaveCopy)
+                  }
                   style={
-                    hasUnsavedChanges && !s.saving && s.canSave
+                    hasUnsavedChanges && !s.saving && (s.mode === 'single' ? s.canSave : s.canSaveCopy)
                       ? {
                           boxShadow:
                             '0 0 0 1px color-mix(in srgb, var(--accent-cta) 20%, transparent), 0 0 24px -10px color-mix(in srgb, var(--accent-cta) 90%, transparent)',
                         }
                       : undefined
                   }>
-                  {s.saving ? 'Saving...' : 'Save Trade'}
+                  {s.saving
+                    ? 'Saving...'
+                    : s.mode === 'copy'
+                      ? `Save Copy Trade (${s.copyAccountIds.length})`
+                      : 'Save Trade'}
                 </button>
               </div>
             </div>
 
             <aside className='xl:sticky xl:top-6 xl:self-start'>
-              <section className='rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5'>
-                <div className='text-sm font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]'>
-                  Trade Summary
-                </div>
+              {s.mode === 'single' ? (
+                <section className='rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5'>
+                  <div className='text-sm font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]'>
+                    Trade Summary
+                  </div>
 
-                <div className='mt-3 flex items-center gap-2 text-base font-semibold text-[var(--text-primary)]'>
-                  <span>{summaryInstrument}</span>
-                  <span className='text-[var(--text-muted)]'>•</span>
-                  <span>{s.direction}</span>
-                </div>
+                  <div className='mt-3 flex items-center gap-2 text-base font-semibold text-[var(--text-primary)]'>
+                    <span>{summaryInstrument}</span>
+                    <span className='text-[var(--text-muted)]'>•</span>
+                    <span>{s.direction}</span>
+                  </div>
 
-                <div className='mt-2 flex items-center gap-2'>
-                  <OutcomeBadge outcome={s.outcome} />
-                  <AccountTypeBadge accountType={s.selectedAccount?.account_type} />
-                </div>
+                  <div className='mt-2 flex items-center gap-2'>
+                    <OutcomeBadge outcome={s.outcome} />
+                    <AccountTypeBadge accountType={s.selectedAccount?.account_type} />
+                  </div>
 
-                <div className='mt-4 space-y-2 text-sm'>
-                  <SummaryRow label='Account' value={s.selectedAccount?.name ?? '—'} />
-                  <SummaryRow label='Starting Balance' value={summaryStartingBalance} />
-                  <SummaryRow label='Risk' value={summaryRisk} />
-                  <SummaryRow label='Result' value={summaryR} />
-                  <SummaryRow label='P&L' value={summaryPnl} />
-                  <SummaryRow
-                    label='Account Impact'
-                    value={summaryImpact}
-                    tone={accountImpactTone}
-                  />
-                </div>
-              </section>
+                  <div className='mt-4 space-y-2 text-sm'>
+                    <SummaryRow label='Account' value={s.selectedAccount?.name ?? '—'} />
+                    <SummaryRow label='Starting Balance' value={summaryStartingBalance} />
+                    <SummaryRow label='Risk' value={summaryRisk} />
+                    <SummaryRow label='Result' value={summaryR} />
+                    <SummaryRow label='P&L' value={summaryPnl} />
+                    <SummaryRow
+                      label='Account Impact'
+                      value={summaryImpact}
+                      tone={accountImpactTone}
+                    />
+                  </div>
+                </section>
+              ) : (
+                <section className='rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5'>
+                  <div className='text-sm font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]'>
+                    Copy Trade Summary
+                  </div>
+
+                  <div className='mt-3 flex items-center gap-2 text-base font-semibold text-[var(--text-primary)]'>
+                    <span>{summaryInstrument}</span>
+                    <span className='text-[var(--text-muted)]'>•</span>
+                    <span>{s.direction}</span>
+                  </div>
+
+                  <div className='mt-4 space-y-2 text-sm'>
+                    <SummaryRow
+                      label='Accounts selected'
+                      value={String(s.copyAccountIds.length)}
+                    />
+                    <SummaryRow
+                      label='Setup'
+                      value={
+                        s.templates.find((t) => t.id === s.templateId)?.name ?? '—'
+                      }
+                    />
+                  </div>
+
+                  {s.copyAccountIds.length > 0 && (
+                    <div className='mt-4 space-y-1 text-xs text-[var(--text-muted)]'>
+                      {s.copyAccountIds.map((id) => {
+                        const acc = s.accounts.find((a) => a.id === id);
+                        return (
+                          <div key={id} className='flex items-center justify-between gap-2'>
+                            <span className='truncate'>{acc?.name ?? id}</span>
+                            <span className='text-[var(--text-secondary)]'>
+                              {s.copyEntries[id]?.outcome === 'BREAKEVEN'
+                                ? 'BE'
+                                : s.copyEntries[id]?.outcome ?? '—'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              )}
             </aside>
           </div>
         </form>

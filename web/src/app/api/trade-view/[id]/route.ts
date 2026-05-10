@@ -5,7 +5,7 @@ const TRADE_VIEW_SELECT = `
   id, opened_at,
   instrument, direction, outcome,
   pnl_amount, pnl_percent, risk_amount, r_multiple,
-  account_id,
+  account_id, trade_group_id,
   account:accounts(id, name, account_type, base_currency, starting_balance),
   template_id, notes, reviewed_at,
   entry_price, stop_loss, take_profit, exit_price, closed_at, commission, net_pnl,
@@ -44,7 +44,7 @@ export async function GET(
   const startingBalance = account?.starting_balance ?? null;
 
   // Run all independent lookups in parallel
-  const [accountTagsRes, beforeSignRes, afterSignRes, itemsRes, cumulativePnlData] =
+  const [accountTagsRes, beforeSignRes, afterSignRes, itemsRes, cumulativePnlData, siblingsRes] =
     await Promise.all([
       // Get account tags from the view (main query joins to accounts, not accounts_with_tags)
       trade.account_id && account
@@ -72,6 +72,15 @@ export async function GET(
             p_account_id: trade.account_id,
             p_before_date: trade.opened_at,
           })
+        : Promise.resolve(null),
+
+      // Sibling trades (same trade_group_id) — only fetched when this is part of a copy-trade group
+      trade.trade_group_id
+        ? sb
+            .from('trades')
+            .select('id, account_id, opened_at, outcome, pnl_amount, pnl_percent, net_pnl, r_multiple, risk_amount, commission, reviewed_at, account:accounts(id, name)')
+            .eq('trade_group_id', trade.trade_group_id)
+            .order('opened_at', { ascending: true })
         : Promise.resolve(null),
     ]);
 
@@ -124,8 +133,13 @@ export async function GET(
       ? startingBalance + cumulativePnl
       : null;
 
+  const siblings =
+    siblingsRes && 'data' in siblingsRes && Array.isArray(siblingsRes.data)
+      ? siblingsRes.data
+      : [];
+
   return NextResponse.json(
-    { trade: enrichedTrade, beforeUrl, afterUrl, items, checks, equityBefore },
+    { trade: enrichedTrade, beforeUrl, afterUrl, items, checks, equityBefore, siblings },
     { headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=10' } },
   );
 }

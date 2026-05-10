@@ -1,7 +1,11 @@
 'use client';
 
 import { apiFetch } from '@/src/lib/api/fetcher';
-import type { TradeChecklistItem, TradeView } from '@/src/hooks/useTradeView';
+import type {
+  TradeChecklistItem,
+  TradeSibling,
+  TradeView,
+} from '@/src/hooks/useTradeView';
 
 export async function loadTradeView(params: { tradeId: string }) {
   return apiFetch<{
@@ -11,5 +15,6 @@ export async function loadTradeView(params: { tradeId: string }) {
     items: TradeChecklistItem[];
     checks: Record<string, boolean>;
     equityBefore: number | null;
+    siblings: TradeSibling[];
   }>(`/api/trade-view/${params.tradeId}`);
 }
