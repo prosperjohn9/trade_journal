@@ -1,6 +1,6 @@
 # TradersHindsight
 
-> Hindsight is 20/20. Now you can keep it.
+> Make your experience your edge.
 
 The trading journal built for traders who refuse to repeat their mistakes. Log every trade, review every decision, and turn experience into edge.
 
