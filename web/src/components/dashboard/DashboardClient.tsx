@@ -211,7 +211,7 @@ export default function DashboardClient() {
           <div className='flex flex-wrap items-start justify-between gap-3'>
             <div>
               <h1 className='text-3xl font-semibold tracking-tight md:text-[2.2rem]'>
-                Journaled
+                TradersHindsight
               </h1>
               <p className='mt-1 text-xs text-[var(--text-muted)]'>
                 Signed in as{' '}
