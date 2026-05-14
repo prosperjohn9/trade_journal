@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import useSWR, { mutate } from 'swr';
 import { supabase } from '@/src/lib/supabase/client';
 import { getErr } from '@/src/domain/errors';
@@ -30,6 +30,7 @@ export type TradeRow = {
   r_multiple: number | null;
   template_id: string | null;
   reviewed_at: string | null;
+  trade_group_id?: string | null;
 };
 
 export type AccountRow = {
@@ -138,9 +139,49 @@ async function fetchChecklistScores(
 
 export function useDashboard() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  const [month, setMonth] = useState(getDefaultMonth);
-  const [accountId, setAccountId] = useState<string>('all');
+  // Read initial filter state from the URL so a refresh / shared link
+  // restores the same view.
+  const [month, _setMonth] = useState<string>(
+    () => searchParams.get('month') ?? getDefaultMonth(),
+  );
+  const [accountId, _setAccountId] = useState<string>(
+    () => searchParams.get('account') ?? 'all',
+  );
+
+  // Helper: write the current filters back to the URL. `all` is the default
+  // for account so we omit it from the URL to keep the bar clean.
+  const writeUrl = useCallback(
+    (next: { month?: string; account?: string }) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next.month !== undefined) params.set('month', next.month);
+      if (next.account !== undefined) {
+        if (next.account === 'all') params.delete('account');
+        else params.set('account', next.account);
+      }
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  const setMonth = useCallback(
+    (m: string) => {
+      _setMonth(m);
+      writeUrl({ month: m });
+    },
+    [writeUrl],
+  );
+
+  const setAccountId = useCallback(
+    (a: string) => {
+      _setAccountId(a);
+      writeUrl({ account: a });
+    },
+    [writeUrl],
+  );
 
   const dashKey = ['dashboard', month, accountId];
 
@@ -164,16 +205,15 @@ export function useDashboard() {
 
   const accounts = dashData?.accounts ?? [];
 
-  // Normalize accountId when accounts change (e.g. selected account no longer exists)
+  // Normalize accountId when accounts change (e.g. selected account no longer
+  // exists or the URL pointed to one we don't have). Only fires when needed.
   useEffect(() => {
     if (!accounts.length) return;
-    setAccountId((prev) => {
-      if (prev === 'all') return prev;
-      if (accounts.some((a) => a.id === prev)) return prev;
-      const def = accounts.find((a) => a.is_default) ?? accounts[0];
-      return def?.id ?? 'all';
-    });
-  }, [accounts]);
+    if (accountId === 'all') return;
+    if (accounts.some((a) => a.id === accountId)) return;
+    const def = accounts.find((a) => a.is_default) ?? accounts[0];
+    setAccountId(def?.id ?? 'all');
+  }, [accounts, accountId, setAccountId]);
 
   if (dashError) {
     const message = getErr(dashError, 'Failed to load dashboard');
@@ -292,13 +332,34 @@ export function useDashboard() {
     if (!deleteTradeTarget) return;
     if (deletingTrade) return;
 
+    const targetId = deleteTradeTarget.id;
     setDeletingTrade(true);
+    setDeleteTradeTarget(null);
+
+    // Optimistic update: remove the trade from the cached list immediately so
+    // the UI reflects the deletion before the server round-trip completes.
+    // This prevents the confusing "did it actually delete?" experience,
+    // especially when copy-trade siblings live in the same list.
+    await mutate(
+      dashKey,
+      (prev) => {
+        if (!prev) return prev;
+        const d = prev as { trades: Array<{ id: string }> } & Record<string, unknown>;
+        return {
+          ...d,
+          trades: d.trades.filter((t) => t.id !== targetId),
+        } as typeof prev;
+      },
+      { revalidate: false },
+    );
+
     try {
-      await removeTrade(deleteTradeTarget.id);
-      setDeleteTradeTarget(null);
-      // Invalidate cache so the dashboard reloads with the trade removed
+      await removeTrade(targetId);
+      // Confirm with a fresh fetch so any derived state (priorPnl, etc.) is correct.
       await mutate(dashKey);
     } catch (e: unknown) {
+      // Roll the optimistic update back by forcing a refetch.
+      await mutate(dashKey);
       alert(getErr(e, 'Failed to delete trade'));
     } finally {
       setDeletingTrade(false);

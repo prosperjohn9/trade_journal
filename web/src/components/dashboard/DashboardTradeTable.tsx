@@ -161,7 +161,16 @@ export function DashboardTradeTable({ state: s }: { state: PropsState }) {
                 </td>
 
                 <td className='px-4 py-[18px] font-medium text-[var(--text-primary)]'>
-                  {t.instrument}
+                  <span className='inline-flex items-center gap-1.5'>
+                    {t.instrument}
+                    {t.trade_group_id && (
+                      <span
+                        title='Copy-trade — part of a multi-account idea'
+                        className='inline-flex items-center rounded-full border border-[var(--border-default)] bg-[var(--bg-subtle)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]'>
+                        copy
+                      </span>
+                    )}
+                  </span>
                 </td>
 
                 <td className='px-4 py-[18px]'>{t.direction}</td>

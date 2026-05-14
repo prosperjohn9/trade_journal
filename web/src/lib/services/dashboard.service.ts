@@ -20,6 +20,7 @@ export type TradeDisplay = {
   r_multiple: number | null;
   template_id: string | null;
   reviewed_at: string | null;
+  trade_group_id?: string | null;
 };
 
 export type AccountDisplay = {
@@ -82,6 +83,7 @@ export async function loadDashboard(params: {
       r_multiple: t.r_multiple != null ? Number(t.r_multiple) : null,
       template_id: t.template_id != null ? String(t.template_id) : null,
       reviewed_at: t.reviewed_at != null ? String(t.reviewed_at) : null,
+      trade_group_id: t.trade_group_id != null ? String(t.trade_group_id) : null,
     })),
   };
 }

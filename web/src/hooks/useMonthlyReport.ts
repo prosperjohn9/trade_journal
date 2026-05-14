@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { getErr } from '@/src/domain/errors';
 import {
@@ -12,9 +12,45 @@ import type { CoreReport } from '@/src/lib/analytics/core';
 
 export function useMonthlyReport() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  const [month, setMonth] = useState(getDefaultMonth);
-  const [accountId, setAccountId] = useState<string | 'all'>('all');
+  const [month, _setMonth] = useState<string>(
+    () => searchParams.get('month') ?? getDefaultMonth(),
+  );
+  const [accountId, _setAccountId] = useState<string | 'all'>(
+    () => (searchParams.get('account') as string | null) ?? 'all',
+  );
+
+  const writeUrl = useCallback(
+    (next: { month?: string; account?: string }) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next.month !== undefined) params.set('month', next.month);
+      if (next.account !== undefined) {
+        if (next.account === 'all') params.delete('account');
+        else params.set('account', next.account);
+      }
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  const setMonth = useCallback(
+    (m: string) => {
+      _setMonth(m);
+      writeUrl({ month: m });
+    },
+    [writeUrl],
+  );
+
+  const setAccountId = useCallback(
+    (a: string) => {
+      _setAccountId(a);
+      writeUrl({ account: a });
+    },
+    [writeUrl],
+  );
 
   const timeZone = useMemo(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',

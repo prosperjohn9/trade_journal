@@ -10,7 +10,7 @@ const ACCOUNT_SELECT =
   'id, user_id, name, account_type, tags, starting_balance, base_currency, is_default, created_at';
 
 const TRADE_SELECT =
-  'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, risk_amount, r_multiple, commission, net_pnl, reviewed_at, account_id, template_id';
+  'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, risk_amount, r_multiple, commission, net_pnl, reviewed_at, account_id, template_id, trade_group_id';
 
 export async function GET(request: Request) {
   const token = getToken(request);

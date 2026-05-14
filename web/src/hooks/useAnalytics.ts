@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { getErr } from '@/src/domain/errors';
 import type { Profile } from '@/src/domain/profile';
@@ -115,27 +115,66 @@ export function calcNetPnl(t: AnalyticsTrade) {
   return gross - comm;
 }
 
+function isDir(v: string | null): '' | Direction {
+  return v === 'BUY' || v === 'SELL' ? v : '';
+}
+function isSession(v: string | null): '' | Session {
+  return v === 'ASIA' || v === 'LONDON' || v === 'NEW_YORK' || v === 'OVERLAP'
+    ? v
+    : '';
+}
+function isOutcome(v: string | null): '' | Outcome {
+  return v === 'WIN' || v === 'LOSS' || v === 'BREAKEVEN' ? v : '';
+}
+function isReviewed(v: string | null): '' | 'REVIEWED' | 'NOT_REVIEWED' {
+  return v === 'REVIEWED' || v === 'NOT_REVIEWED' ? v : '';
+}
+
 export function useAnalytics() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const today = useMemo(() => new Date(), []);
 
   const initialFilters = useMemo<Filters>(() => {
     return {
-      rangeStart: yyyyMmDd(addDays(today, -90).toISOString()),
-      rangeEnd: yyyyMmDd(today.toISOString()),
-      accountFilter: 'all',
-      instrumentQuery: '',
-      directionFilter: '',
-      sessionFilter: '',
-      outcomeFilter: '',
-      reviewedFilter: '',
-      setupFilter: '',
+      rangeStart:
+        searchParams.get('from') ??
+        yyyyMmDd(addDays(today, -90).toISOString()),
+      rangeEnd: searchParams.get('to') ?? yyyyMmDd(today.toISOString()),
+      accountFilter: searchParams.get('account') ?? 'all',
+      instrumentQuery: searchParams.get('instrument') ?? '',
+      directionFilter: isDir(searchParams.get('direction')),
+      sessionFilter: isSession(searchParams.get('session')),
+      outcomeFilter: isOutcome(searchParams.get('outcome')),
+      reviewedFilter: isReviewed(searchParams.get('reviewed')),
+      setupFilter: searchParams.get('setup') ?? '',
     };
-  }, [today]);
+    // intentionally only computed once on mount — URL changes from filter
+    // actions are made via writeFiltersToUrl and don't need to re-trigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [draft, setDraft] = useState<Filters>(() => initialFilters);
   const [applied, setApplied] = useState<Filters>(() => initialFilters);
+
+  const writeFiltersToUrl = useCallback(
+    (f: Filters) => {
+      const params = new URLSearchParams();
+      params.set('from', f.rangeStart);
+      params.set('to', f.rangeEnd);
+      if (f.accountFilter !== 'all') params.set('account', f.accountFilter);
+      if (f.instrumentQuery.trim()) params.set('instrument', f.instrumentQuery.trim());
+      if (f.directionFilter) params.set('direction', f.directionFilter);
+      if (f.sessionFilter) params.set('session', f.sessionFilter);
+      if (f.outcomeFilter) params.set('outcome', f.outcomeFilter);
+      if (f.reviewedFilter) params.set('reviewed', f.reviewedFilter);
+      if (f.setupFilter) params.set('setup', f.setupFilter);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [pathname, router],
+  );
 
   const [calendarMonth, setCalendarMonth] = useState(() =>
     yyyyMm(today.toISOString()),
@@ -752,12 +791,15 @@ export function useAnalytics() {
   }, [dailyNetSeries, hasStartingBalance, startingBalance]);
 
   function applyDraftFilters() {
-    setApplied(normalizeFilters(draft));
+    const next = normalizeFilters(draft);
+    setApplied(next);
+    writeFiltersToUrl(next);
   }
 
   function clearFilters() {
     const cleared: Filters = {
-      ...initialFilters,
+      rangeStart: yyyyMmDd(addDays(today, -90).toISOString()),
+      rangeEnd: yyyyMmDd(today.toISOString()),
       accountFilter: 'all',
       instrumentQuery: '',
       directionFilter: '',
@@ -766,8 +808,10 @@ export function useAnalytics() {
       reviewedFilter: '',
       setupFilter: '',
     };
+    const normalized = normalizeFilters(cleared);
     setDraft(cleared);
-    setApplied(normalizeFilters(cleared));
+    setApplied(normalized);
+    writeFiltersToUrl(normalized);
   }
 
   function goDashboard() {
