@@ -1,4 +1,4 @@
-# TradersHindsight
+# The Trader's Hindsight
 
 > Make your experience your edge.
 
