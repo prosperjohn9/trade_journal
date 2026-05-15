@@ -328,6 +328,18 @@ export function useDashboard() {
     setDeleteTradeTarget(t);
   }
 
+  // Count siblings of the target trade that share the same trade_group_id
+  // (within the currently loaded trades list). Used to power the warning in
+  // the delete confirmation modal.
+  const deleteTargetSiblingCount = useMemo(() => {
+    if (!deleteTradeTarget?.trade_group_id) return 0;
+    return trades.filter(
+      (t) =>
+        t.trade_group_id === deleteTradeTarget.trade_group_id &&
+        t.id !== deleteTradeTarget.id,
+    ).length;
+  }, [deleteTradeTarget, trades]);
+
   async function confirmDeleteTrade() {
     if (!deleteTradeTarget) return;
     if (deletingTrade) return;
@@ -361,6 +373,51 @@ export function useDashboard() {
       // Roll the optimistic update back by forcing a refetch.
       await mutate(dashKey);
       alert(getErr(e, 'Failed to delete trade'));
+    } finally {
+      setDeletingTrade(false);
+    }
+  }
+
+  async function confirmDeleteEntireGroup() {
+    if (!deleteTradeTarget) return;
+    if (deletingTrade) return;
+    const groupId = deleteTradeTarget.trade_group_id;
+    if (!groupId) return;
+
+    setDeletingTrade(true);
+    setDeleteTradeTarget(null);
+
+    // Optimistic: drop every trade in that group from the cache.
+    await mutate(
+      dashKey,
+      (prev) => {
+        if (!prev) return prev;
+        const d = prev as { trades: Array<{ id: string; trade_group_id?: string | null }> } & Record<string, unknown>;
+        return {
+          ...d,
+          trades: d.trades.filter((t) => t.trade_group_id !== groupId),
+        } as typeof prev;
+      },
+      { revalidate: false },
+    );
+
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (!token) throw new Error('Not authenticated');
+
+      const res = await fetch(`/api/trades/group/${groupId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Failed to delete group (${res.status})`);
+      }
+      await mutate(dashKey);
+    } catch (e: unknown) {
+      await mutate(dashKey);
+      alert(getErr(e, 'Failed to delete copy-trade group'));
     } finally {
       setDeletingTrade(false);
     }
@@ -419,8 +476,10 @@ export function useDashboard() {
 
     deleteTradeTarget,
     deletingTrade,
+    deleteTargetSiblingCount,
     requestDeleteTrade,
     confirmDeleteTrade,
+    confirmDeleteEntireGroup,
     setDeleteTradeTarget,
 
     showLogout,

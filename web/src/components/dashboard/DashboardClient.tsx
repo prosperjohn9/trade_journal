@@ -190,18 +190,53 @@ export default function DashboardClient() {
           </div>
         )}
 
-        <div className='mt-4 flex justify-end gap-2'>
+        {/* Copy-trade warning: when the target shares a trade_group_id with other
+            siblings, deleting just this row leaves the sibling rows in place.
+            Without this warning the user can mistake the sibling for the row
+            they meant to delete and think the delete silently failed. */}
+        {s.deleteTradeTarget?.trade_group_id && (
+          <div
+            className='mt-4 rounded-lg border p-3 text-sm'
+            style={{
+              borderColor: 'color-mix(in srgb, #f59e0b 40%, var(--border-default))',
+              backgroundColor: 'color-mix(in srgb, #f59e0b 8%, var(--bg-surface))',
+              color: 'color-mix(in srgb, #f59e0b 85%, var(--text-primary))',
+            }}>
+            <div className='font-semibold'>This is a copy-trade.</div>
+            <div className='mt-1 text-[var(--text-secondary)]'>
+              {s.deleteTargetSiblingCount > 0
+                ? `${s.deleteTargetSiblingCount} other ${s.deleteTargetSiblingCount === 1 ? 'trade in this group will remain' : 'trades in this group will remain'} after this delete.`
+                : 'This is the last visible trade in this copy-trade group in the current view.'}
+            </div>
+          </div>
+        )}
+
+        <div className='mt-4 flex flex-wrap justify-end gap-2'>
           <button
             className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] disabled:opacity-60'
             onClick={() => s.setDeleteTradeTarget(null)}
             disabled={s.deletingTrade}>
             Cancel
           </button>
+
+          {s.deleteTradeTarget?.trade_group_id && (
+            <button
+              className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:border-[var(--loss)] hover:text-[var(--loss)] disabled:opacity-60'
+              onClick={s.confirmDeleteEntireGroup}
+              disabled={s.deletingTrade}>
+              {s.deletingTrade ? 'Deleting...' : 'Delete entire group'}
+            </button>
+          )}
+
           <button
             className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:border-[var(--loss)] hover:text-[var(--loss)] disabled:opacity-60'
             onClick={s.confirmDeleteTrade}
             disabled={s.deletingTrade}>
-            {s.deletingTrade ? 'Deleting...' : 'Delete'}
+            {s.deletingTrade
+              ? 'Deleting...'
+              : s.deleteTradeTarget?.trade_group_id
+                ? 'Delete only this trade'
+                : 'Delete'}
           </button>
         </div>
       </Modal>
