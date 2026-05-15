@@ -1,8 +1,6 @@
 'use client';
 
 import { apiFetch, buildQuery } from '@/src/lib/api/fetcher';
-import { deleteTradeById } from '@/src/lib/db/trades.repo';
-import { requireUser } from '@/src/lib/supabase/auth';
 import { toNumberSafe } from '@/src/lib/utils/number';
 import type { Profile } from '@/src/domain/profile';
 
@@ -88,7 +86,23 @@ export async function loadDashboard(params: {
   };
 }
 
+// Deletes via the server route handler instead of the browser supabase client.
+// The server endpoint verifies the delete actually affected a row and throws a
+// real error otherwise — the browser client silently "succeeds" on RLS blocks
+// or no-match, which produced phantom "trade still there" symptoms.
 export async function removeTrade(tradeId: string) {
-  await requireUser();
-  await deleteTradeById(tradeId);
+  const { supabase } = await import('@/src/lib/supabase/client');
+  const sessionRes = await supabase.auth.getSession();
+  const token = sessionRes.data.session?.access_token;
+  if (!token) throw new Error('Not authenticated');
+
+  const res = await fetch(`/api/trades/${tradeId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to delete trade (${res.status})`);
+  }
 }
