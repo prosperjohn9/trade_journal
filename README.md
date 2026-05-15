@@ -30,3 +30,27 @@ npm run dev
 ```
 
 Open <http://localhost:3000>.
+
+## Troubleshooting
+
+### "Turbopack error" / "Module not found" / dev hangs silently
+
+This is almost always caused by **macOS file-conflict duplicates** (files ending in `" 2"`, `" 3"`) inside `node_modules/` or `.next/`. They originate from iCloud Drive, Finder copy operations, or two `npm install` processes racing. Turbopack panics when it sees duplicate cache files; `npm` silently leaves partial installs when duplicates pile up.
+
+Diagnose:
+
+```bash
+cd web
+npm run doctor          # counts " 2"-suffix files in the project
+```
+
+Fix:
+
+```bash
+cd web
+npm run clean           # nukes .next, node_modules, lockfile, and " 2" duplicates
+npm install
+npm run dev
+```
+
+To prevent recurrence, **don't keep the project inside `~/Desktop` or `~/Documents`** (both are synced to iCloud Drive by default on modern macOS). Move it to `~/dev/the-traders-hindsight` or any folder that's not under iCloud sync.

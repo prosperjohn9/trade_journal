@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "clean": "rm -rf .next node_modules package-lock.json && find . -name '* 2*' -not -path './.git/*' -exec rm -rf {} + 2>/dev/null; echo 'cleaned. now run: npm install'",
+    "doctor": "echo 'duplicate \" 2\" files found:' && find . -name '* 2*' -not -path './.git/*' -not -path './node_modules/.git/*' 2>/dev/null | wc -l"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.89.0",

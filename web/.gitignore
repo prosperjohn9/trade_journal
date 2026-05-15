@@ -24,6 +24,14 @@
 .DS_Store
 *.pem
 
+# macOS conflict-resolution duplicate files (" 2", " 3", etc).
+# These come from iCloud / sync / Finder copies and corrupt npm + Turbopack.
+# Guard against ever committing them.
+* 2
+* 2.*
+* 3
+* 3.*
+
 # debug
 npm-debug.log*
 yarn-debug.log*
