@@ -8,7 +8,14 @@ export async function apiFetch<T>(path: string): Promise<T> {
   } = await supabase.auth.getSession();
   const token = session?.access_token;
 
+  // `cache: 'no-store'` is critical for correctness: SWR drives revalidations
+  // after mutations (delete, edit, review), and if the browser HTTP cache
+  // returns a stale response that still includes the mutated row, the UI
+  // appears not to have updated. SWR has its own client-side dedup/cache so
+  // we still get fast repeat reads — we just don't double-cache at the HTTP
+  // layer where stale data corrupts the post-mutation UI.
   const res = await fetch(path, {
+    cache: 'no-store',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
 

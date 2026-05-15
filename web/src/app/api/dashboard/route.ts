@@ -97,6 +97,10 @@ export async function GET(request: Request) {
       trades: monthTradesRes.data ?? [],
       priorPnlDollar,
     },
-    { headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=10' } },
+    // Do NOT add a long max-age here. SWR drives revalidation after every
+    // mutation; a stale HTTP cache here causes deleted rows to reappear in
+    // the dashboard until the cache expires. SWR's own client cache handles
+    // perceived performance.
+    { headers: { 'Cache-Control': 'no-store' } },
   );
 }

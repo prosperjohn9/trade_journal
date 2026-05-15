@@ -164,6 +164,6 @@ export async function GET(request: Request) {
       trades,
       report,
     },
-    { headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=10' } },
+    { headers: { 'Cache-Control': 'no-store' } },
   );
 }

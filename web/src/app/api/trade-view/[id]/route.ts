@@ -140,6 +140,6 @@ export async function GET(
 
   return NextResponse.json(
     { trade: enrichedTrade, beforeUrl, afterUrl, items, checks, equityBefore, siblings },
-    { headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=10' } },
+    { headers: { 'Cache-Control': 'no-store' } },
   );
 }
