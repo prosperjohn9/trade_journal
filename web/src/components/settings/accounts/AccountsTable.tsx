@@ -3,6 +3,7 @@
 import { formatAccountTagLabel } from '@/src/domain/account';
 import { formatMoney } from '@/src/lib/utils/format';
 import { cx } from '@/src/lib/utils/ui';
+import { EmptyState } from '@/src/components/ui/EmptyState';
 import type { useAccounts } from '@/src/hooks/useAccounts';
 
 const MAX_VISIBLE_TAGS = 3;
@@ -21,6 +22,7 @@ type AccountsState = Pick<
   | 'onSetDefault'
   | 'settingDefaultId'
   | 'requestDelete'
+  | 'openAdd'
 >;
 
 export function AccountsTable({ state: s }: { state: AccountsState }) {
@@ -214,10 +216,17 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
         })}
 
         {!orderedAccounts.length && (
-          <div className='rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-6 text-sm text-[var(--text-secondary)]'>
-            No accounts yet. Click <span className='font-semibold'>Add Account</span>{' '}
-            to create your first one.
-          </div>
+          <EmptyState
+            icon='🏦'
+            title='No accounts yet'
+            body={
+              <>
+                An account is where your trades live — your starting balance,
+                P&L, and equity curve all roll up here. Create one to begin.
+              </>
+            }
+            cta={{ label: 'Add your first account', onClick: s.openAdd }}
+          />
         )}
       </div>
     </section>

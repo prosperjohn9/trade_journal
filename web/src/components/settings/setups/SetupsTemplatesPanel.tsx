@@ -1,6 +1,7 @@
 'use client';
 
 import { cx } from '@/src/lib/utils/ui';
+import { EmptyState } from '@/src/components/ui/EmptyState';
 import type { SetupsState, Template } from '@/src/hooks/useSetups';
 
 function TemplateDefaultBadge() {
@@ -114,6 +115,7 @@ export function SetupsTemplatesPanel({
     | 'setDefaultTemplate'
     | 'requestDeleteTemplate'
     | 'isAnyEditing'
+    | 'createTemplate'
   >;
 }) {
   return (
@@ -126,9 +128,18 @@ export function SetupsTemplatesPanel({
       </div>
 
       {!s.templates.length ? (
-        <div className='rounded-lg border border-dashed border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-4 text-sm text-[var(--text-muted)]'>
-          No templates yet. Create one to start your setup library.
-        </div>
+        <EmptyState
+          icon='📋'
+          title='No setups yet'
+          body={
+            <>
+              A setup is a checklist you grade yourself against on every trade —
+              like &quot;London Breakout&quot; or &quot;Inside Bar at S/R&quot;. Create
+              one to start.
+            </>
+          }
+          cta={{ label: 'Create your first setup', onClick: s.createTemplate }}
+        />
       ) : (
         <ul className='space-y-2'>
           {s.templates.map((template) => {

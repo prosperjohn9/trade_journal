@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMonthlyReport } from '@/src/hooks/useMonthlyReport';
 import { MonthlyReportSkeleton } from '@/src/components/ui/Skeleton';
+import { EmptyState } from '@/src/components/ui/EmptyState';
 import { MonthlyReportHeader } from './MonthlyReportHeader';
 import { MonthlyReportEquitySection } from './MonthlyReportEquitySection';
 import { MonthlyReportPerformanceCards } from './MonthlyReportPerformanceCards';
@@ -14,6 +16,7 @@ type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
 
 export function MonthlyReportClient() {
+  const router = useRouter();
   const s = useMonthlyReport();
   const [theme, setTheme] = useState<DashboardTheme>('light');
 
@@ -64,7 +67,25 @@ export function MonthlyReportClient() {
           </p>
         )}
 
-        {!s.loading && (
+        {!s.loading && s.report.totalTrades === 0 && (
+          <EmptyState
+            icon='📅'
+            title='No trades this month'
+            body={
+              <>Pick a different month or log a trade to populate this report.</>
+            }
+            cta={{
+              label: 'Log a trade',
+              onClick: () => router.push('/trades/new'),
+            }}
+            secondary={{
+              label: 'Back to dashboard',
+              onClick: () => router.push('/dashboard'),
+            }}
+          />
+        )}
+
+        {!s.loading && s.report.totalTrades > 0 && (
           <>
             <MonthlyReportEquitySection state={s} />
             <MonthlyReportPerformanceCards state={s} />

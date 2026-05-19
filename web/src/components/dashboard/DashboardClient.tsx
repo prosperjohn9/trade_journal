@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/src/components/ui/Modal';
 import { DashboardSkeleton } from '@/src/components/ui/Skeleton';
+import { EmptyState } from '@/src/components/ui/EmptyState';
 import { useDashboard } from '@/src/hooks/useDashboard';
 import { DashboardCards } from './DashboardCards';
 import { DashboardTradeTable } from './DashboardTradeTable';
@@ -442,21 +443,64 @@ export default function DashboardClient() {
 
         {s.loading && <DashboardSkeleton />}
 
-        {/* KPI cards + insights */}
-        <div className='pt-2'>
-          <DashboardCards state={s} />
-        </div>
+        {/* Brand-new user — no accounts yet. Skip stats/table entirely. */}
+        {!s.loading && s.accounts.length === 0 ? (
+          <EmptyState
+            icon='👋'
+            title="Welcome to The Trader's Hindsight"
+            body={
+              <>
+                Make your experience your edge. Start by creating your first
+                trading account — it&apos;s where every trade, lesson, and
+                equity curve lives.
+              </>
+            }
+            cta={{
+              label: 'Create your first account',
+              onClick: () => router.push('/settings/accounts'),
+            }}
+          />
+        ) : (
+          <>
+            {/* KPI cards + insights */}
+            <div className='pt-2'>
+              <DashboardCards state={s} />
+            </div>
 
-        {/* Trades table */}
-        <section
-          id='trades'
-          className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
-          <h2 className='mb-4 text-center text-lg font-semibold'>Trades</h2>
-          <DashboardTradeTable state={s} />
-          <div className='mt-3 text-xs text-[var(--text-muted)]'>
-            {checklistHint}
-          </div>
-        </section>
+            {/* Trades table — or empty CTA when there are no trades */}
+            {!s.loading && s.trades.length === 0 ? (
+              <EmptyState
+                icon='📈'
+                title='No trades for this view yet'
+                body={
+                  <>
+                    {s.accountId === 'all'
+                      ? 'Pick a different month or log your first trade to start your journal.'
+                      : 'Pick a different month or account, or log your first trade on this account.'}
+                  </>
+                }
+                cta={{
+                  label: 'Log your first trade',
+                  onClick: () => router.push('/trades/new'),
+                }}
+                secondary={{
+                  label: 'Manage accounts',
+                  onClick: () => router.push('/settings/accounts'),
+                }}
+              />
+            ) : (
+              <section
+                id='trades'
+                className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
+                <h2 className='mb-4 text-center text-lg font-semibold'>Trades</h2>
+                <DashboardTradeTable state={s} />
+                <div className='mt-3 text-xs text-[var(--text-muted)]'>
+                  {checklistHint}
+                </div>
+              </section>
+            )}
+          </>
+        )}
       </div>
     </main>
   );

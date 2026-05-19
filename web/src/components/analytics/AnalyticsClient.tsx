@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   calcNetPnl,
   getSessionUTC,
@@ -9,6 +10,7 @@ import {
   useAnalytics,
 } from '@/src/hooks/useAnalytics';
 import { AnalyticsSkeleton } from '@/src/components/ui/Skeleton';
+import { EmptyState } from '@/src/components/ui/EmptyState';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -726,6 +728,7 @@ function CalendarHeatmap({
 
 
 export function AnalyticsClient() {
+  const router = useRouter();
   const [theme, setTheme] = useState<DashboardTheme>('light');
 
   useEffect(() => {
@@ -1043,6 +1046,31 @@ export function AnalyticsClient() {
       {msg && <p className='text-sm opacity-80'>{msg}</p>}
       {loading && <AnalyticsSkeleton />}
 
+      {!loading && trades.length === 0 && (
+        <EmptyState
+          icon='📊'
+          title='No data to analyze yet'
+          body={
+            activeFilterCount > 0 ? (
+              <>No trades match your current filters. Try clearing them or expanding the date range.</>
+            ) : (
+              <>Once you&apos;ve logged a few trades, your performance breakdown will appear here.</>
+            )
+          }
+          cta={
+            activeFilterCount > 0
+              ? { label: 'Clear filters', onClick: clearFilters }
+              : { label: 'Log your first trade', onClick: () => router.push('/trades/new') }
+          }
+          secondary={
+            activeFilterCount > 0
+              ? undefined
+              : { label: 'Back to dashboard', onClick: () => router.push('/dashboard') }
+          }
+        />
+      )}
+
+      {!loading && trades.length > 0 && (<>
       {/* Equity curve (full width, shown before KPIs) */}
       <section className='grid grid-cols-1 gap-3'>
         <SvgLineChart
@@ -1587,6 +1615,7 @@ export function AnalyticsClient() {
           </table>
         </div>
       </section>
+      </>)}
     </main>
   );
 }
