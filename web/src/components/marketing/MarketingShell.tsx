@@ -32,7 +32,7 @@ export function MarketingNav() {
           <Link
             href='/auth'
             className='rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-indigo-400'>
-            Get started — free
+            Get started
           </Link>
         </div>
       </div>
