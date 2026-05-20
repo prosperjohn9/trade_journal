@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { supabase } from '@/src/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
@@ -77,10 +78,22 @@ export default function AuthPage() {
   return (
     <main className='min-h-screen flex items-center justify-center p-6'>
       <div className='w-full max-w-md border rounded-xl p-6 space-y-4'>
-        <h1 className='text-2xl font-semibold'>The Trader&apos;s Hindsight</h1>
-        <p className='text-sm text-[var(--text-secondary)]'>
-          Make your experience your edge.
-        </p>
+        <div className='flex items-center gap-3'>
+          <Image
+            src='/logo-mark-dark.png'
+            alt=''
+            width={40}
+            height={40}
+            priority
+            className='h-10 w-10 rounded-lg'
+          />
+          <div>
+            <h1 className='text-2xl font-semibold leading-tight'>The Trader&apos;s Hindsight</h1>
+            <p className='text-sm text-[var(--text-secondary)]'>
+              Make your experience your edge.
+            </p>
+          </div>
+        </div>
 
         <form onSubmit={signInWithEmail} className='space-y-3'>
           <input

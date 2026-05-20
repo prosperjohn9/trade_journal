@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import type { ReactNode } from 'react';
 
 // Shared nav + footer + dark container for any public marketing-side page
@@ -19,8 +20,15 @@ export function MarketingNav() {
   return (
     <nav className='sticky top-0 z-30 border-b border-white/5 bg-[#0b1220]/85 backdrop-blur'>
       <div className='mx-auto flex max-w-6xl items-center justify-between px-6 py-4'>
-        <Link href='/' className='flex items-center gap-2 font-semibold'>
-          <span className='inline-block h-2 w-2 rounded-full bg-indigo-400' />
+        <Link href='/' className='flex items-center gap-2.5 font-semibold'>
+          <Image
+            src='/logo-mark-dark.png'
+            alt=''
+            width={28}
+            height={28}
+            priority
+            className='h-7 w-7 rounded-md'
+          />
           <span>The Trader&apos;s Hindsight</span>
         </Link>
         <div className='flex items-center gap-2'>
