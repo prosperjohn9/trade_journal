@@ -325,11 +325,11 @@ export default function DashboardClient() {
                     <button
                       className='w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
                       onClick={() => {
-                        s.setShowProfile(true);
                         setShowProfileMenu(false);
+                        router.push('/settings/profile');
                       }}
                       role='menuitem'>
-                      Edit Profile
+                      Profile settings
                     </button>
 
                     <button
@@ -347,43 +347,6 @@ export default function DashboardClient() {
             </div>
           </div>
         </header>
-
-        {/* Profile editor */}
-        {s.profile && s.showProfile && (
-          <section className='max-w-3xl space-y-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
-            <div className='flex items-center justify-between gap-3'>
-              <h2 className='text-base font-semibold'>Profile</h2>
-              {s.profileMsg && (
-                <span className='text-sm text-[var(--text-secondary)]'>
-                  {s.profileMsg}
-                </span>
-              )}
-            </div>
-
-            <div className='grid grid-cols-1 gap-3'>
-              <label className='block space-y-1'>
-                <div className='text-sm text-[var(--text-secondary)]'>
-                  Username
-                </div>
-                <input
-                  className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)]'
-                  value={s.displayNameDraft}
-                  onChange={(e) => s.setDisplayNameDraft(e.target.value)}
-                  placeholder='e.g., Prosper'
-                />
-              </label>
-            </div>
-
-            <div className='flex flex-wrap gap-2'>
-              <button
-                className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] disabled:opacity-60'
-                onClick={s.saveProfile}
-                disabled={s.savingProfile}>
-                Save Profile
-              </button>
-            </div>
-          </section>
-        )}
 
         {/* Context + filters */}
         <section className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-subtle)] p-5'>

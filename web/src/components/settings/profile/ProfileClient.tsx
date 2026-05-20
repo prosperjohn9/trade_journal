@@ -3,16 +3,28 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
+import { getOrCreateProfile, updateProfile } from '@/src/lib/db/profiles.repo';
 import { DeleteAccountModal } from './DeleteAccountModal';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
 
+// Used to mask the inline "Saved" / "Failed..." status next to the field.
+const STATUS_CLEAR_MS = 2000;
+
 export function ProfileClient() {
   const router = useRouter();
   const [theme, setTheme] = useState<DashboardTheme>('light');
   const [email, setEmail] = useState<string | null>(null);
+
+  // Display name editing — moved here from the old inline form on /dashboard
+  // so that all profile management lives in one place.
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
+
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -35,6 +47,7 @@ export function ProfileClient() {
 
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
       const { data } = await supabase.auth.getUser();
       if (cancelled) return;
@@ -43,11 +56,46 @@ export function ProfileClient() {
         return;
       }
       setEmail(data.user.email ?? null);
+
+      // Load profile to populate the display name draft.
+      try {
+        const { profile } = await getOrCreateProfile();
+        if (cancelled) return;
+        setDisplayNameDraft(profile.display_name ?? '');
+      } catch (e) {
+        // Non-fatal — the user can still see the account and danger zone.
+        console.error('Failed to load profile:', e);
+      } finally {
+        if (!cancelled) setLoadingProfile(false);
+      }
     })();
+
     return () => {
       cancelled = true;
     };
   }, [router]);
+
+  async function handleSaveDisplayName(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setStatusMessage('Saving...');
+
+    try {
+      const trimmed = displayNameDraft.trim();
+      const updated = await updateProfile({
+        display_name: trimmed || null,
+      });
+      setDisplayNameDraft(updated.display_name ?? '');
+      setStatusMessage('Saved');
+    } catch (e: unknown) {
+      const message =
+        e instanceof Error ? e.message : 'Failed to save display name';
+      setStatusMessage(message);
+    } finally {
+      setSaving(false);
+      window.setTimeout(() => setStatusMessage(''), STATUS_CLEAR_MS);
+    }
+  }
 
   return (
     <main
@@ -73,19 +121,58 @@ export function ProfileClient() {
           </div>
         </header>
 
-        {/* Account overview */}
-        <section className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
+        {/* Account overview + display name editor */}
+        <section className='space-y-5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
           <h2 className='text-lg font-semibold text-[var(--text-primary)]'>
             Account
           </h2>
-          <dl className='mt-4 space-y-3 text-sm'>
+
+          <dl className='space-y-3 text-sm'>
             <div className='flex justify-between gap-4'>
               <dt className='text-[var(--text-secondary)]'>Email</dt>
-              <dd className='text-[var(--text-primary)]'>
-                {email ?? '—'}
-              </dd>
+              <dd className='text-[var(--text-primary)]'>{email ?? '—'}</dd>
             </div>
           </dl>
+
+          <form
+            onSubmit={handleSaveDisplayName}
+            className='space-y-3 border-t border-[var(--border-default)] pt-5'>
+            <div className='flex items-center justify-between gap-3'>
+              <label
+                htmlFor='display-name'
+                className='text-sm font-medium text-[var(--text-primary)]'>
+                Display name
+              </label>
+              {statusMessage && (
+                <span className='text-xs text-[var(--text-secondary)]'>
+                  {statusMessage}
+                </span>
+              )}
+            </div>
+            <p className='text-xs text-[var(--text-secondary)]'>
+              Shown in the dashboard greeting. Leave blank to default to
+              &ldquo;Trader&rdquo;.
+            </p>
+            <input
+              id='display-name'
+              type='text'
+              autoComplete='off'
+              maxLength={80}
+              value={displayNameDraft}
+              onChange={(e) => setDisplayNameDraft(e.target.value)}
+              disabled={loadingProfile || saving}
+              placeholder='e.g., Prosper'
+              className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] disabled:opacity-60'
+            />
+            <div>
+              <button
+                type='submit'
+                disabled={loadingProfile || saving}
+                className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60'>
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </form>
         </section>
 
         {/* Danger zone — destructive actions. Red-bordered to set tone. */}
