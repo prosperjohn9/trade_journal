@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { notFound, useRouter } from 'next/navigation';
 import { useTradeView, type TradeChecklistItem } from '@/src/hooks/useTradeView';
 import { formatAccountTagLabel } from '@/src/domain/account';
 import { formatMoney } from '@/src/lib/utils/format';
@@ -251,23 +251,18 @@ export function TradeViewClient() {
     };
   }, []);
 
+  // When the API explicitly says the trade doesn't exist, render the
+  // framework not-found page instead of a generic loading/error state.
+  if (s.notFound) {
+    notFound();
+  }
+
   if (!s.trade) {
     return (
       <main
         className='dashboard-theme min-h-screen bg-[var(--bg-app)] p-6 text-[var(--text-primary)]'
         data-theme={theme}>
-        {s.msg ? (
-          <>
-            <p className='text-sm text-[var(--text-secondary)]'>{s.msg}</p>
-            <button
-              className='mt-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
-              onClick={() => router.push('/dashboard')}>
-              Back
-            </button>
-          </>
-        ) : (
-          <TradeViewSkeleton />
-        )}
+        <TradeViewSkeleton />
       </main>
     );
   }

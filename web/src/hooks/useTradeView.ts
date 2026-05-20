@@ -93,6 +93,18 @@ export function useTradeView() {
     }
   }
 
+  // True when the API explicitly said the trade does not exist (or was
+  // already deleted). The page component reads this to render the framework
+  // 404 page instead of the generic skeleton.
+  const notFound = useMemo(() => {
+    if (!error) return false;
+    const message = getErr(error, '').toLowerCase();
+    return (
+      message.includes('not found') ||
+      message.includes('already deleted')
+    );
+  }, [error]);
+
   const trade = data?.trade ?? null;
   const items = data?.items ?? [];
   const checks = data?.checks ?? {};
@@ -141,6 +153,8 @@ export function useTradeView() {
   return {
     trade,
     msg,
+    notFound,
+    isLoading,
 
     items,
     checks,
