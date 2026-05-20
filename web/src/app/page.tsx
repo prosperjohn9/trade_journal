@@ -1,4 +1,3 @@
-import { Fragment } from 'react';
 import Link from 'next/link';
 import { MarketingShell } from '@/src/components/marketing/MarketingShell';
 
@@ -120,44 +119,24 @@ function HowItWorks() {
           </p>
         </div>
 
-        {/* Four-card flow on desktop, stacked on mobile. Cards are connected
-            by indigo arrows that hide on narrow screens (no value when
-            stacked). */}
-        <ol className='mt-12 flex flex-col items-stretch gap-4 md:flex-row md:gap-0'>
-          {steps.map((step, i) => (
-            <Fragment key={step.n}>
-              <li className='flex-1 rounded-2xl border border-white/10 bg-white/[0.03] p-5'>
-                <div className='font-mono text-xs font-semibold tracking-wider text-indigo-300'>
-                  {step.n}
-                </div>
-                <div className='mt-2 text-lg font-semibold text-white'>
-                  {step.title}
-                </div>
-                <p className='mt-2 text-sm leading-relaxed text-slate-300'>
-                  {step.body}
-                </p>
-              </li>
-              {i < steps.length - 1 && (
-                <li
-                  aria-hidden
-                  className='hidden items-center justify-center px-2 text-indigo-300/70 md:flex'>
-                  <svg
-                    width='20'
-                    height='14'
-                    viewBox='0 0 20 14'
-                    fill='none'
-                    xmlns='http://www.w3.org/2000/svg'>
-                    <path
-                      d='M1 7H18M18 7L12 1M18 7L12 13'
-                      stroke='currentColor'
-                      strokeWidth='1.6'
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                    />
-                  </svg>
-                </li>
-              )}
-            </Fragment>
+        {/* Four numbered step cards. No inter-card arrows — the numbers
+            (01/02/03/04) carry the sequence, and the H2 above already
+            shows the Trade → Review → Repeat → Improve flow visually. */}
+        <ol className='mt-12 grid gap-4 md:grid-cols-4'>
+          {steps.map((step) => (
+            <li
+              key={step.n}
+              className='rounded-2xl border border-white/10 bg-white/[0.03] p-5'>
+              <div className='font-mono text-xs font-semibold tracking-wider text-indigo-300'>
+                {step.n}
+              </div>
+              <div className='mt-2 text-lg font-semibold text-white'>
+                {step.title}
+              </div>
+              <p className='mt-2 text-sm leading-relaxed text-slate-300'>
+                {step.body}
+              </p>
+            </li>
           ))}
         </ol>
       </div>
@@ -270,9 +249,9 @@ function PhilosophyStrip() {
           Why we built this
         </p>
         <p className='mt-5 text-2xl font-medium leading-snug text-white sm:text-3xl'>
-          “Most trading journals are storage. This one&apos;s a workshop. Every
-          trade you log keeps teaching you. Every lesson keeps shaping how you
-          trade next.”
+          “Most trading journals are storage. We built a tool that makes you
+          better. Every trade you log keeps teaching you, every lesson keeps
+          shaping how you trade next.”
         </p>
         <p className='mt-4 text-sm text-slate-400'>
           Built by traders, for traders.
