@@ -25,7 +25,7 @@ export function AccountsHeader({ state: s }: { state: AccountsState }) {
       <div className='flex flex-wrap gap-2 md:justify-end'>
         <button
           className='rounded-lg border border-[var(--border-default)] bg-transparent px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
-          onClick={() => router.push('/dashboard')}>
+          onClick={() => router.push('/settings')}>
           Back
         </button>
 

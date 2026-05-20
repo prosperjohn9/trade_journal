@@ -292,8 +292,8 @@ export default function DashboardClient() {
 
               <button
                 className='inline-flex items-center rounded-lg border border-transparent bg-transparent px-3 py-2 text-xs font-normal text-[var(--text-muted)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
-                onClick={() => router.push('/settings/accounts')}>
-                Accounts
+                onClick={() => router.push('/settings')}>
+                Settings
               </button>
             </nav>
 

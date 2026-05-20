@@ -45,7 +45,10 @@ export function SetupsInner() {
       s.router.push(returnTo);
       return;
     }
-    s.router.back();
+    // Default landing when no returnTo is set (used when the page is opened
+    // directly, not from a trade review). Browser back() is a worse fallback
+    // because the previous page might be unrelated.
+    s.router.push('/settings');
   }
 
   if (s.loading) {
