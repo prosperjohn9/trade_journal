@@ -82,10 +82,10 @@ export default function AuthPage() {
           <Image
             src='/logo-mark-dark.png'
             alt=''
-            width={40}
-            height={40}
+            width={56}
+            height={56}
             priority
-            className='h-10 w-10 rounded-lg'
+            className='h-14 w-14'
           />
           <div>
             <h1 className='text-2xl font-semibold leading-tight'>The Trader&apos;s Hindsight</h1>
