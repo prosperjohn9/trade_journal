@@ -24,10 +24,10 @@ export function MarketingNav() {
           <Image
             src='/logo-mark-dark.png'
             alt=''
-            width={48}
-            height={48}
+            width={52}
+            height={52}
             priority
-            className='h-12 w-12'
+            className='h-[52px] w-[52px]'
           />
           <span>The Trader&apos;s Hindsight</span>
         </Link>
