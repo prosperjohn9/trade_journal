@@ -105,6 +105,22 @@ export default function AuthPage() {
         </button>
 
         {msg && <p className='text-sm opacity-80'>{msg}</p>}
+
+        <p className='text-xs text-[var(--text-muted)]'>
+          By signing in or creating an account, you agree to our{' '}
+          <a
+            href='/terms'
+            className='underline hover:text-[var(--text-primary)]'>
+            Terms of Service
+          </a>{' '}
+          and{' '}
+          <a
+            href='/privacy'
+            className='underline hover:text-[var(--text-primary)]'>
+            Privacy Policy
+          </a>
+          .
+        </p>
       </div>
     </main>
   );
