@@ -802,6 +802,8 @@ export default function PrivacyPage() {
           Kadıköy, Istanbul 34720
           <br />
           Turkey
+          <br />
+          Phone: +90 501 326 2900
         </p>
 
         <h2>18. How can you review, update, or delete the data we collect from you?</h2>
