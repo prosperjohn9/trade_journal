@@ -13,7 +13,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang='en'>
+    // suppressHydrationWarning is intentional: browser extensions (password
+    // managers, accessibility tools, productivity trackers) routinely inject
+    // attributes like `data-qb-installed` onto <html> after server-rendered
+    // HTML loads but before React hydrates. Without this prop React logs a
+    // dev-only hydration mismatch warning we can't fix from our side.
+    <html lang='en' suppressHydrationWarning>
       <body>{children}</body>
     </html>
   );

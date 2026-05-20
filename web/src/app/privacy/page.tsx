@@ -445,12 +445,14 @@ export default function PrivacyPage() {
 
         <h2>8. Is your information transferred internationally?</h2>
         <p>
-          Our servers are located in the United States. Regardless of your
-          location, please be aware that your information may be transferred
-          to, stored by, and processed by us in our facilities and in the
-          facilities of the third parties with whom we share your personal
-          information, including facilities in the United States, Estonia,
-          Nigeria, and other countries.
+          Our servers are split across multiple regions: our website hosting
+          (Vercel) runs in the United States, while our database, file storage,
+          and authentication (Supabase) run in Australia (Sydney). Regardless
+          of your location, please be aware that your information may be
+          transferred to, stored by, and processed by us in our facilities
+          and in the facilities of the third parties with whom we share your
+          personal information, including facilities in the United States,
+          Australia, Estonia, Nigeria, and other countries.
         </p>
         <p>
           If you are a resident in the European Economic Area (EEA), United

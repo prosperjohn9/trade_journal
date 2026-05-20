@@ -548,14 +548,16 @@ export default function TermsPage() {
           We care about data privacy and security. Please review our{' '}
           <a href='/privacy'>Privacy Policy</a>. By using the Services, you
           agree to be bound by our Privacy Policy, which is incorporated into
-          these Legal Terms. Please be advised the Services are hosted in the
-          United States. If you access the Services from any other region of
-          the world with laws or other requirements governing personal data
-          collection, use, or disclosure that differ from applicable laws in
-          the United States, then through your continued use of the Services,
-          you are transferring your data to the United States, and you
-          expressly consent to have your data transferred to and processed in
-          the United States.
+          these Legal Terms. Please be advised the Services are hosted across
+          multiple regions: our website hosting (Vercel) runs in the United
+          States, and our database, file storage, and authentication
+          (Supabase) run in Australia. If you access the Services from any
+          other region of the world with laws or other requirements governing
+          personal data collection, use, or disclosure that differ from
+          applicable laws in those regions, then through your continued use
+          of the Services, you are transferring your data to those regions,
+          and you expressly consent to have your data transferred to and
+          processed there.
         </p>
 
         <h2>13. Copyright Infringements</h2>
