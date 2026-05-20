@@ -20,7 +20,7 @@ export function MarketingNav() {
   return (
     <nav className='sticky top-0 z-30 border-b border-white/5 bg-[#0b1220]/85 backdrop-blur'>
       <div className='mx-auto flex max-w-6xl items-center justify-between px-6 py-4'>
-        <Link href='/' className='flex items-center gap-2.5 font-semibold'>
+        <Link href='/' className='flex items-center gap-2.5 text-lg font-semibold'>
           <Image
             src='/logo-mark-dark.png'
             alt=''
