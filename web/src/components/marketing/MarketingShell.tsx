@@ -64,11 +64,17 @@ export function MarketingFooter() {
           <Link href='/auth' className='hover:text-white'>
             Sign in
           </Link>
+          <Link href='/contact' className='hover:text-white'>
+            Contact
+          </Link>
           <Link href='/privacy' className='hover:text-white'>
             Privacy
           </Link>
           <Link href='/terms' className='hover:text-white'>
             Terms
+          </Link>
+          <Link href='/cookies' className='hover:text-white'>
+            Cookies
           </Link>
           <span className='text-slate-600'>
             © {new Date().getFullYear()} The Trader&apos;s Hindsight
