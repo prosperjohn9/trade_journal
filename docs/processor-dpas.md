@@ -62,7 +62,7 @@ with one of our processors, point them at the URLs below.
 
 ## When to revisit
 
-We should review this list:
+Review this list:
 
 1. **Before publishing significant Privacy Policy changes** — make sure the
    processor list in the policy matches this file

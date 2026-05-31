@@ -229,7 +229,7 @@ and disclosed in the Privacy Policy.
 
 ---
 
-## 8. Engineering decisions worth talking about (interview prompts)
+## 8. Engineering decisions worth talking about
 
 - **Layered architecture (Components → Hooks → Services → Repos).** Keeps
   business logic testable and UI replaceable; the repo layer is the only thing
