@@ -11,6 +11,7 @@ import {
 } from '@/src/hooks/useAnalytics';
 import { AnalyticsSkeleton } from '@/src/components/ui/Skeleton';
 import { EmptyState } from '@/src/components/ui/EmptyState';
+import { AiInsightsCard } from '@/src/components/analytics/AiInsightsCard';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -823,6 +824,8 @@ export function AnalyticsClient() {
           </button>
         </div>
       </header>
+
+      <AiInsightsCard />
 
       {/* Filters (collapsible) */}
       <section className='border rounded-xl p-4 space-y-3 bg-[var(--bg-surface)] border-[var(--border-default)]'>

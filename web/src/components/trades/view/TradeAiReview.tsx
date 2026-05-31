@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch, apiPost } from '@/src/lib/api/fetcher';
+import { AiMarkdown } from '@/src/components/ui/AiMarkdown';
 
 type ReviewResponse = {
   review: string | null;
@@ -10,61 +11,6 @@ type ReviewResponse = {
   stale?: boolean;
   updated_at?: string | null;
 };
-
-/**
- * Minimal renderer for the model's Markdown: bold `**Heading**` lines become
- * subheadings, `- ` lines become bullets, stray `**` is stripped. Avoids
- * pulling in a Markdown dependency for three predictable sections.
- */
-function ReviewBody({ text }: { text: string }) {
-  const blocks: ReactNode[] = [];
-  let bullets: string[] = [];
-
-  const flush = (key: string) => {
-    if (!bullets.length) return;
-    blocks.push(
-      <ul
-        key={`ul-${key}`}
-        className='list-disc space-y-1 pl-5 text-sm text-[var(--text-secondary)]'>
-        {bullets.map((b, i) => (
-          <li key={i}>{b}</li>
-        ))}
-      </ul>,
-    );
-    bullets = [];
-  };
-
-  text.split('\n').forEach((raw, i) => {
-    const line = raw.trim();
-    if (!line) {
-      flush(String(i));
-      return;
-    }
-    const heading = line.match(/^\*\*(.+?)\*\*:?$/);
-    if (heading) {
-      flush(String(i));
-      blocks.push(
-        <p key={i} className='text-sm font-semibold text-[var(--text-primary)]'>
-          {heading[1]}
-        </p>,
-      );
-      return;
-    }
-    if (/^[-*•]\s+/.test(line)) {
-      bullets.push(line.replace(/^[-*•]\s+/, '').replace(/\*\*/g, ''));
-      return;
-    }
-    flush(String(i));
-    blocks.push(
-      <p key={i} className='text-sm text-[var(--text-secondary)]'>
-        {line.replace(/\*\*/g, '')}
-      </p>,
-    );
-  });
-  flush('end');
-
-  return <div className='space-y-3'>{blocks}</div>;
-}
 
 export function TradeAiReview({ tradeId }: { tradeId: string }) {
   const [review, setReview] = useState<string | null>(null);
@@ -142,7 +88,7 @@ export function TradeAiReview({ tradeId }: { tradeId: string }) {
                 refresh it, or keep it if your edit does not affect the analysis.
               </p>
             ) : null}
-            <ReviewBody text={review} />
+            <AiMarkdown text={review} />
           </>
         ) : (
           <div className='space-y-3'>
