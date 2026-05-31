@@ -7,6 +7,7 @@ type ReviewResponse = {
   review: string | null;
   model?: string;
   cached?: boolean;
+  stale?: boolean;
   updated_at?: string | null;
 };
 
@@ -67,12 +68,12 @@ function ReviewBody({ text }: { text: string }) {
 
 export function TradeAiReview({ tradeId }: { tradeId: string }) {
   const [review, setReview] = useState<string | null>(null);
+  const [stale, setStale] = useState(false); // trade changed since the review
   const [checking, setChecking] = useState(true); // initial (free) cached lookup
   const [loading, setLoading] = useState(false); // a paid generate/regenerate
   const [error, setError] = useState<string | null>(null);
 
-  // Look up an existing review on mount. This is the GET endpoint — read-only,
-  // never spends credits — so opening a trade never triggers a generation.
+  // Read-only lookup on mount (never spends credits).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -80,7 +81,10 @@ export function TradeAiReview({ tradeId }: { tradeId: string }) {
         const data = await apiFetch<ReviewResponse>(
           `/api/ai/trade-review?tradeId=${encodeURIComponent(tradeId)}`,
         );
-        if (!cancelled && data.review) setReview(data.review);
+        if (!cancelled && data.review) {
+          setReview(data.review);
+          setStale(Boolean(data.stale));
+        }
       } catch {
         // Non-fatal — the user can still generate one.
       } finally {
@@ -100,7 +104,10 @@ export function TradeAiReview({ tradeId }: { tradeId: string }) {
         tradeId,
         regenerate,
       });
-      if (data.review) setReview(data.review);
+      if (data.review) {
+        setReview(data.review);
+        setStale(false);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not generate a review.');
     } finally {
@@ -110,13 +117,33 @@ export function TradeAiReview({ tradeId }: { tradeId: string }) {
 
   return (
     <section className='rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5 sm:p-6'>
-      <h2 className='text-xl font-semibold'>AI Review</h2>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <h2 className='text-xl font-semibold'>AI Review</h2>
+        {/* Regenerate appears only when the trade changed since this review. */}
+        {review && stale ? (
+          <button
+            type='button'
+            onClick={() => generate(true)}
+            disabled={loading}
+            className='rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60'>
+            {loading ? 'Regenerating...' : 'Regenerate'}
+          </button>
+        ) : null}
+      </div>
 
       <div className='mt-4'>
         {checking ? (
           <p className='text-sm text-[var(--text-muted)]'>Loading...</p>
         ) : review ? (
-          <ReviewBody text={review} />
+          <>
+            {stale ? (
+              <p className='mb-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-300'>
+                This trade changed since the review was written. Regenerate to
+                refresh it, or keep it if your edit does not affect the analysis.
+              </p>
+            ) : null}
+            <ReviewBody text={review} />
+          </>
         ) : (
           <div className='space-y-3'>
             <p className='text-sm text-[var(--text-secondary)]'>

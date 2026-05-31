@@ -58,7 +58,7 @@ export async function GET(request: Request) {
 
   const canGenerate = tradeCount >= MIN_TRADES_FOR_INSIGHTS;
   const stale = cached
-    ? tradeCount - (cached.trade_count ?? 0) >= INSIGHTS_REFRESH_THRESHOLD
+    ? Math.abs(tradeCount - (cached.trade_count ?? 0)) >= INSIGHTS_REFRESH_THRESHOLD
     : canGenerate;
 
   return NextResponse.json({

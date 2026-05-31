@@ -42,13 +42,18 @@ export async function GET(request: Request) {
 
   const { data } = await sb
     .from('trade_ai_reviews')
-    .select('content, model, updated_at')
+    .select('content, model, updated_at, stale')
     .eq('trade_id', tradeId)
     .maybeSingle();
 
   return NextResponse.json(
     data
-      ? { review: data.content, model: data.model, updated_at: data.updated_at }
+      ? {
+          review: data.content,
+          model: data.model,
+          updated_at: data.updated_at,
+          stale: data.stale,
+        }
       : { review: null },
   );
 }
@@ -82,7 +87,7 @@ export async function POST(request: Request) {
   if (!regenerate) {
     const { data: existing } = await sb
       .from('trade_ai_reviews')
-      .select('content, model, updated_at')
+      .select('content, model, updated_at, stale')
       .eq('trade_id', tradeId)
       .maybeSingle();
     if (existing) {
@@ -90,6 +95,7 @@ export async function POST(request: Request) {
         review: existing.content,
         model: existing.model,
         cached: true,
+        stale: existing.stale,
         updated_at: existing.updated_at,
       });
     }
@@ -192,6 +198,7 @@ export async function POST(request: Request) {
       user_id: user.id,
       content,
       model: AI_MODEL,
+      stale: false,
       input_tokens: usage?.input_tokens ?? 0,
       output_tokens: usage?.output_tokens ?? 0,
       updated_at: new Date().toISOString(),

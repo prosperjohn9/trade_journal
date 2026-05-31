@@ -44,4 +44,4 @@ export const AI_USAGE_DAILY_CAP = 50;
 // AI Insights: minimum trades before insights are worth generating, and how
 // many new trades since the last insight trigger an automatic refresh.
 export const MIN_TRADES_FOR_INSIGHTS = 10;
-export const INSIGHTS_REFRESH_THRESHOLD = 5;
+export const INSIGHTS_REFRESH_THRESHOLD = 4;
