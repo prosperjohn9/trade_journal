@@ -109,7 +109,7 @@ export async function GET(
   const itemIds = (items as Array<{ id: string }>).map((i) => i.id);
 
   // Fetch checklist checks (needs itemIds from items — sequential)
-  let checks: Record<string, boolean> = {};
+  const checks: Record<string, boolean> = {};
   if (itemIds.length) {
     for (const id of itemIds) checks[id] = false;
     const { data: checksData } = await sb

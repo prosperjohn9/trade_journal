@@ -142,14 +142,17 @@ export function useSetups() {
     };
   }, [selectedTemplateId]);
 
-  useEffect(() => {
-    if (!selectedTemplateId) return;
-    const tpl = templates.find((t) => t.id === selectedTemplateId);
-    if (!tpl) return;
-
-    setRenameTemplateValue(tpl.name);
-    setIsRenamingTemplate(false);
-  }, [selectedTemplateId, templates]);
+  // When the selected template changes, sync the rename field to its name and
+  // exit rename mode. Adjust-state-during-render keyed on the selected id,
+  // rather than an effect.
+  const [renameSyncedId, setRenameSyncedId] = useState(selectedTemplateId);
+  if (selectedTemplateId !== renameSyncedId) {
+    setRenameSyncedId(selectedTemplateId);
+    if (selectedTemplate) {
+      setRenameTemplateValue(selectedTemplate.name);
+      setIsRenamingTemplate(false);
+    }
+  }
 
   async function createTemplate() {
     const name = newTemplateName.trim();

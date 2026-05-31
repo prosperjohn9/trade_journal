@@ -114,9 +114,34 @@ export function useAccounts() {
     }
   }, [router]);
 
+  // Initial load. We inline the fetch (rather than calling reload()) so the
+  // first state update lands *after* the await, which satisfies the
+  // set-state-in-effect rule. `loading` already initialises to true, so there's
+  // nothing to set synchronously here. reload() remains for manual refreshes.
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const list = await listAccounts();
+        if (!cancelled) setAccounts(list);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        const message = getErr(e, 'Failed to load accounts');
+        setPageMsg(message);
+        setAccounts([]);
+        if (message.toLowerCase().includes('not authenticated')) {
+          router.push('/auth');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   function openAdd() {
     setAddMsg('');

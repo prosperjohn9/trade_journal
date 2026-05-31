@@ -205,15 +205,28 @@ export function useDashboard() {
 
   const accounts = dashData?.accounts ?? [];
 
-  // Normalize accountId when accounts change (e.g. selected account no longer
-  // exists or the URL pointed to one we don't have). Only fires when needed.
-  useEffect(() => {
-    if (!accounts.length) return;
-    if (accountId === 'all') return;
-    if (accounts.some((a) => a.id === accountId)) return;
+  // Normalize accountId when the selected account no longer exists (e.g. it was
+  // deleted, or a shared link pointed at one we don't have). Corrected during
+  // render — the condition becomes false the moment accountId is valid, so it
+  // can't loop — rather than inside an effect.
+  if (
+    accounts.length &&
+    accountId !== 'all' &&
+    !accounts.some((a) => a.id === accountId)
+  ) {
     const def = accounts.find((a) => a.is_default) ?? accounts[0];
-    setAccountId(def?.id ?? 'all');
-  }, [accounts, accountId, setAccountId]);
+    const corrected = def?.id ?? 'all';
+    if (corrected !== accountId) _setAccountId(corrected);
+  }
+
+  // Keep the URL's ?account= param in step with accountId, including after the
+  // correction above. No setState here — this is a pure URL side effect.
+  useEffect(() => {
+    const urlAccount = searchParams.get('account') ?? 'all';
+    if (urlAccount !== accountId) {
+      writeUrl({ account: accountId });
+    }
+  }, [accountId, searchParams, writeUrl]);
 
   if (dashError) {
     const message = getErr(dashError, 'Failed to load dashboard');
@@ -228,12 +241,21 @@ export function useDashboard() {
   const [profileMsg, setProfileMsg] = useState('');
   const [showProfile, setShowProfile] = useState(false);
 
-  useEffect(() => {
-    if (dashData?.profile) {
-      setProfile(dashData.profile);
-      setDisplayNameDraft(dashData.profile.display_name ?? '');
+  // Sync the server-loaded profile into local (editable) state whenever SWR
+  // returns a new profile object. Adjust-state-during-render keyed on the
+  // server object's identity — this preserves optimistic local updates because
+  // we only re-sync when the server reference actually changes.
+  const serverProfile = dashData?.profile ?? null;
+  const [lastSyncedProfile, setLastSyncedProfile] = useState<Profile | null>(
+    null,
+  );
+  if (serverProfile !== lastSyncedProfile) {
+    setLastSyncedProfile(serverProfile);
+    if (serverProfile) {
+      setProfile(serverProfile);
+      setDisplayNameDraft(serverProfile.display_name ?? '');
     }
-  }, [dashData?.profile]);
+  }
 
   const [deleteTradeTarget, setDeleteTradeTarget] = useState<TradeRow | null>(null);
   const [deletingTrade, setDeletingTrade] = useState(false);

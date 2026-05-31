@@ -21,14 +21,22 @@ export function DeleteAccountModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Focus input when opened, reset state when closed.
-  useEffect(() => {
+  // Reset the form when the modal transitions to closed. Done during render
+  // (React's "adjust state when a prop changes" pattern) rather than in an
+  // effect, so it doesn't fire a redundant render pass.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (!open) {
       setTyped('');
       setState('idle');
       setErrorMessage(null);
-      return;
     }
+  }
+
+  // Focus the input shortly after opening.
+  useEffect(() => {
+    if (!open) return;
     const t = window.setTimeout(() => inputRef.current?.focus(), 50);
     return () => window.clearTimeout(t);
   }, [open]);

@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { getErr } from '@/src/domain/errors';
 import { listAccounts } from '@/src/lib/services/accounts.service';
@@ -51,6 +58,57 @@ function defaultCopyEntry(): CopyEntry {
 
 const RECENT_INSTRUMENTS_KEY = 'new-trade-recent-instruments-v1';
 const MAX_RECENT_INSTRUMENTS = 8;
+
+// Recent instruments are read from localStorage via useSyncExternalStore so the
+// value is SSR-safe (it renders into a <datalist> in the initial HTML, so a
+// lazy useState initializer would cause a hydration mismatch). The old approach
+// seeded state inside an effect, which trips react-hooks/set-state-in-effect.
+
+// Stable empty reference for the SSR snapshot and the "nothing stored" case, so
+// useSyncExternalStore never sees a changing reference.
+const EMPTY_RECENT_INSTRUMENTS: string[] = [];
+
+// Same-tab change notification (the native 'storage' event only fires in
+// *other* tabs).
+const RECENT_INSTRUMENTS_EVENT = 'th:recent-instruments';
+
+// Cached snapshot: useSyncExternalStore requires getSnapshot to return a stable
+// reference while the underlying value is unchanged, or it loops.
+let recentInstrumentsRaw: string | null = null;
+let recentInstrumentsCache: string[] = EMPTY_RECENT_INSTRUMENTS;
+
+function readRecentInstruments(): string[] {
+  if (typeof window === 'undefined') return EMPTY_RECENT_INSTRUMENTS;
+  const raw = window.localStorage.getItem(RECENT_INSTRUMENTS_KEY);
+  if (raw === recentInstrumentsRaw) return recentInstrumentsCache;
+  recentInstrumentsRaw = raw;
+  try {
+    const parsed = raw ? JSON.parse(raw) : [];
+    recentInstrumentsCache = Array.isArray(parsed)
+      ? uniqueInOrder(parsed).slice(0, MAX_RECENT_INSTRUMENTS)
+      : EMPTY_RECENT_INSTRUMENTS;
+  } catch {
+    recentInstrumentsCache = EMPTY_RECENT_INSTRUMENTS;
+  }
+  return recentInstrumentsCache;
+}
+
+function subscribeRecentInstruments(onChange: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('storage', onChange);
+  window.addEventListener(RECENT_INSTRUMENTS_EVENT, onChange);
+  return () => {
+    window.removeEventListener('storage', onChange);
+    window.removeEventListener(RECENT_INSTRUMENTS_EVENT, onChange);
+  };
+}
+
+function writeRecentInstruments(next: string[]): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(RECENT_INSTRUMENTS_KEY, JSON.stringify(next));
+  recentInstrumentsRaw = null; // force the next snapshot to re-read
+  window.dispatchEvent(new Event(RECENT_INSTRUMENTS_EVENT));
+}
 const MAX_RISK_PERCENT = 2;
 const FAVORITE_INSTRUMENTS = ['EURUSD', 'GBPUSD', 'XAUUSD', 'US30', 'BTCUSD'];
 
@@ -101,7 +159,11 @@ export function useNewTrade() {
   const [templates, setTemplates] = useState<SetupTemplate[]>([]);
   const [templateId, setTemplateId] = useState<string>('');
 
-  const [recentInstruments, setRecentInstruments] = useState<string[]>([]);
+  const recentInstruments = useSyncExternalStore(
+    subscribeRecentInstruments,
+    readRecentInstruments,
+    () => EMPTY_RECENT_INSTRUMENTS,
+  );
 
   const [beforeFile, setBeforeFile] = useState<File | null>(null);
   const [beforePreviewUrl, setBeforePreviewUrl] = useState<string>('');
@@ -273,28 +335,17 @@ export function useNewTrade() {
     }
   }
 
-  function persistRecentInstruments(next: string[]) {
-    setRecentInstruments(next);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(RECENT_INSTRUMENTS_KEY, JSON.stringify(next));
-    }
-  }
-
   function recordRecentInstrument(value: string) {
     const normalized = normalizeInstrument(value);
     if (!normalized) return;
 
-    setRecentInstruments((prev) => {
-      const next = uniqueInOrder([normalized, ...prev]).slice(
-        0,
-        MAX_RECENT_INSTRUMENTS,
-      );
-
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(RECENT_INSTRUMENTS_KEY, JSON.stringify(next));
-      }
-      return next;
-    });
+    const next = uniqueInOrder([normalized, ...readRecentInstruments()]).slice(
+      0,
+      MAX_RECENT_INSTRUMENTS,
+    );
+    // Write-through to localStorage; the store then notifies subscribers, which
+    // re-renders any component reading recentInstruments.
+    writeRecentInstruments(next);
   }
 
   function onBeforeFileChange(file: File | null) {
@@ -318,20 +369,6 @@ export function useNewTrade() {
   function selectInstrument(next: string) {
     setInstrument(normalizeInstrument(next));
   }
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    try {
-      const raw = window.localStorage.getItem(RECENT_INSTRUMENTS_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      persistRecentInstruments(uniqueInOrder(parsed).slice(0, MAX_RECENT_INSTRUMENTS));
-    } catch {
-      persistRecentInstruments([]);
-    }
-  }, []);
 
   useEffect(() => {
     return () => {

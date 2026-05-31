@@ -460,14 +460,22 @@ export function useTradeEdit() {
     };
   }, [tradeId, router]);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Clear checklist items/checks when there's no template selected. Done during
+  // render (keyed on templateId) so the effect below only ever sets state after
+  // an await.
+  const [prevTemplateId, setPrevTemplateId] = useState(templateId);
+  if (templateId !== prevTemplateId) {
+    setPrevTemplateId(templateId);
     if (!templateId) {
       setItems([]);
       setChecks({});
-      return;
     }
+  }
 
+  useEffect(() => {
+    if (!templateId) return;
+
+    let cancelled = false;
     (async () => {
       try {
         const res = await loadTradeEditChecklist({ tradeId, templateId });

@@ -1,14 +1,33 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/src/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
+function readSavedEmail(): string {
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem('last_magic_email') ?? '';
+}
+
+// localStorage doesn't change under us while the auth screen is open, so
+// subscribe is a no-op. useSyncExternalStore still gives an SSR-safe read (the
+// server snapshot is '') with no hydration mismatch — replacing the old
+// "restore email from localStorage inside an effect" pattern.
+const subscribeSavedEmail = () => () => {};
+
 export default function AuthPage() {
   const router = useRouter();
 
-  const [email, setEmail] = useState('');
+  const savedEmail = useSyncExternalStore(
+    subscribeSavedEmail,
+    readSavedEmail,
+    () => '',
+  );
+  // Local edits win over the saved value; null means "untouched", '' means the
+  // user explicitly cleared the field.
+  const [emailDraft, setEmailDraft] = useState<string | null>(null);
+  const email = emailDraft ?? savedEmail;
   const [msg, setMsg] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -24,15 +43,6 @@ export default function AuthPage() {
       cancelled = true;
     };
   }, [router]);
-
-  useEffect(() => {
-    const saved =
-      typeof window !== 'undefined'
-        ? window.localStorage.getItem('last_magic_email')
-        : null;
-
-    if (saved && !email) setEmail(saved);
-  }, [email]);
 
   async function signInWithEmail(e: React.FormEvent) {
     e.preventDefault();
@@ -100,7 +110,7 @@ export default function AuthPage() {
             className='w-full border rounded-lg p-3'
             placeholder='Email address'
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => setEmailDraft(e.target.value)}
             type='email'
             required
           />
