@@ -46,7 +46,7 @@ async function countTrades(sb: Sb): Promise<number> {
 export async function GET(request: Request) {
   const a = await authed(request);
   if ('res' in a) return a.res;
-  const { sb } = a;
+  const { sb, user } = a;
 
   const [{ data: cached }, tradeCount] = await Promise.all([
     sb
@@ -57,6 +57,23 @@ export async function GET(request: Request) {
   ]);
 
   const canGenerate = tradeCount >= MIN_TRADES_FOR_INSIGHTS;
+
+  // Below the minimum, any cached insight describes a sample the user no longer
+  // has (e.g. they reset their journal). Drop it so it can't display now or
+  // resurface once they rebuild their history, and report there's nothing yet.
+  if (cached && !canGenerate) {
+    await sb.from('ai_insights').delete().eq('user_id', user.id);
+    return NextResponse.json({
+      insights: null,
+      model: null,
+      generatedAt: null,
+      tradeCount,
+      canGenerate,
+      stale: false,
+      minTrades: MIN_TRADES_FOR_INSIGHTS,
+    });
+  }
+
   const stale = cached
     ? Math.abs(tradeCount - (cached.trade_count ?? 0)) >= INSIGHTS_REFRESH_THRESHOLD
     : canGenerate;

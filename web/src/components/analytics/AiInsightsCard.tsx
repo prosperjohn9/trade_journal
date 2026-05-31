@@ -108,15 +108,15 @@ export function AiInsightsCard() {
 
       {checking ? (
         <p className='text-sm text-[var(--text-muted)]'>Loading...</p>
-      ) : insights ? (
-        <AiMarkdown text={insights} />
-      ) : loading ? (
-        <p className='text-sm text-[var(--text-muted)]'>Analyzing your trades...</p>
       ) : !canGenerate ? (
         <p className='text-sm text-[var(--text-secondary)]'>
           Add at least {minTrades} trades to unlock AI insights. You have{' '}
           {tradeCount}.
         </p>
+      ) : insights ? (
+        <AiMarkdown text={insights} />
+      ) : loading ? (
+        <p className='text-sm text-[var(--text-muted)]'>Analyzing your trades...</p>
       ) : (
         <div className='space-y-3'>
           <p className='text-sm text-[var(--text-secondary)]'>
