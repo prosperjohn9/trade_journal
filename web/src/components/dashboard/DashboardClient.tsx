@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/src/components/ui/Modal';
 import { DashboardSkeleton } from '@/src/components/ui/Skeleton';
@@ -71,8 +71,6 @@ export default function DashboardClient() {
   const router = useRouter();
   const s = useDashboard();
   const [theme, setTheme] = useState<DashboardTheme>('light');
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   const checklistHint = useMemo(
     () =>
@@ -84,18 +82,6 @@ export default function DashboardClient() {
     () => formatPerformanceHeading(s.month),
     [s.month],
   );
-
-  useEffect(() => {
-    function onPointerDown(e: MouseEvent) {
-      if (!profileMenuRef.current) return;
-      if (!profileMenuRef.current.contains(e.target as Node)) {
-        setShowProfileMenu(false);
-      }
-    }
-
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, []);
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -125,7 +111,6 @@ export default function DashboardClient() {
   }
 
   function scrollToTrades() {
-    setShowProfileMenu(false);
     const tableSection = document.getElementById('trades');
     if (tableSection) {
       tableSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -306,44 +291,11 @@ export default function DashboardClient() {
                 <ThemeToggleIcon theme={theme} />
               </button>
 
-              <div className='relative' ref={profileMenuRef}>
-                <button
-                  className='inline-flex items-center rounded-lg border border-transparent bg-transparent px-3 py-2 text-xs font-normal text-[var(--text-muted)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
-                  onClick={() => setShowProfileMenu((v) => !v)}
-                  aria-haspopup='menu'
-                  aria-expanded={showProfileMenu}>
-                  Profile
-                  <span className='ml-2 text-xs text-[var(--text-muted)]'>
-                    ▼
-                  </span>
-                </button>
-
-                {showProfileMenu && (
-                  <div
-                    className='absolute right-0 z-20 mt-2 w-48 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-2'
-                    role='menu'>
-                    <button
-                      className='w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
-                      onClick={() => {
-                        setShowProfileMenu(false);
-                        router.push('/settings/profile');
-                      }}
-                      role='menuitem'>
-                      Profile settings
-                    </button>
-
-                    <button
-                      className='mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--loss)]'
-                      onClick={() => {
-                        s.requestLogout();
-                        setShowProfileMenu(false);
-                      }}
-                      role='menuitem'>
-                      Log out
-                    </button>
-                  </div>
-                )}
-              </div>
+              <button
+                className='inline-flex items-center rounded-lg border border-transparent bg-transparent px-3 py-2 text-xs font-normal text-[var(--text-muted)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--bg-subtle)] hover:text-[var(--loss)]'
+                onClick={() => s.requestLogout()}>
+                Log out
+              </button>
             </div>
           </div>
         </header>
