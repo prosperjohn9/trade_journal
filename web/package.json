@@ -11,6 +11,7 @@
     "doctor": "echo 'duplicate \" 2\" files found:' && find . -name '* 2*' -not -path './.git/*' -not -path './node_modules/.git/*' 2>/dev/null | wc -l"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.100.1",
     "@supabase/supabase-js": "^2.89.0",
     "iceberg-js": "^0.8.1",
     "next": "16.2.6",
