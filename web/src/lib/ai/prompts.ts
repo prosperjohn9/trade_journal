@@ -1,3 +1,5 @@
+import type { CoreReport } from '@/src/lib/analytics/core';
+
 // System prompts and input builders for the AI features. System prompts are
 // kept as stable, frozen strings so they remain prompt-cacheable.
 
@@ -71,6 +73,72 @@ export function buildTradeReviewInput(
   ].filter((l): l is string => l !== null);
   lines.push('', '## Trader notes');
   lines.push(...(notes.length ? notes : ['- (no notes recorded)']));
+
+  return lines.join('\n');
+}
+
+export const INSIGHTS_SYSTEM = `You are a trading performance analyst reviewing a trader's aggregate stats across their whole journal. Surface the few patterns that will most improve their results.
+
+Principles:
+- Work ONLY from the stats provided (win rate, expectancy, profit factor, average win/loss, R:R, drawdown, and the per-instrument breakdown). Never invent trades or numbers you were not given.
+- Be specific and quantified: cite the actual numbers. No generic advice.
+- Prioritise the highest-leverage points: where the real edge is, and the single most costly leak.
+- This is educational performance analysis, NOT financial or investment advice. Never tell them what to buy, sell, or hold, and never predict markets.
+- If the sample is small, say so and keep conclusions tentative.
+
+Format in Markdown with exactly these sections and headings:
+
+**Where your edge is** — 1 to 2 bullets on genuine strengths, each with the number behind it.
+**Biggest leak** — the single most costly pattern to fix, with the stat that proves it.
+**Watch / next step** — 1 to 2 concrete, measurable actions.
+
+Keep the whole thing under 220 words.`;
+
+function num(n: number, digits = 2): string {
+  if (!Number.isFinite(n)) return '0';
+  return n.toFixed(digits);
+}
+
+/** Render an aggregate CoreReport into the compact user-turn text for insights. */
+export function buildInsightsInput(report: CoreReport): string {
+  const ranked = [...report.bySymbol].sort((a, b) => b.pnl - a.pnl);
+  const best = ranked.slice(0, 5);
+  const worst = ranked.slice(-5).reverse();
+
+  const lines: string[] = [
+    `Aggregate stats across ${report.totalTrades} trades.`,
+    '',
+    '## Overall',
+    `- Trades: ${report.totalTrades} (W ${report.wins} / L ${report.losses} / BE ${report.breakeven})`,
+    `- Win rate: ${num(report.winRate, 1)}%`,
+    `- Expectancy per trade: ${num(report.expectancy)}`,
+    `- Profit factor: ${num(report.profitFactor)}`,
+    `- Avg win: ${num(report.avgWin)} | Avg loss: ${num(report.avgLoss)} | R:R ${num(report.rrr)}`,
+    `- Net P&L: ${num(report.netPnl)}`,
+    `- Max drawdown: ${num(report.maxDrawdownPct * 100, 1)}%`,
+  ];
+
+  if (best.length) {
+    lines.push('', '## Best instruments (by P&L)');
+    for (const s of best) {
+      lines.push(
+        `- ${s.symbol || '(unspecified)'}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${num(s.pnl)}`,
+      );
+    }
+  }
+  if (worst.length) {
+    lines.push('', '## Weakest instruments (by P&L)');
+    for (const s of worst) {
+      lines.push(
+        `- ${s.symbol || '(unspecified)'}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${num(s.pnl)}`,
+      );
+    }
+  }
+
+  lines.push(
+    '',
+    'P&L figures are in account base currency and may mix currencies across accounts; lean on the ratios (win rate, R:R, profit factor, expectancy) for cross-cutting conclusions.',
+  );
 
   return lines.join('\n');
 }

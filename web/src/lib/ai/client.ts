@@ -40,3 +40,8 @@ export const MAX_TOKENS = {
 // prepaid credit balance is the hard backstop (the API stops at $0); this just
 // stops a single user from draining it. Tune freely.
 export const AI_USAGE_DAILY_CAP = 50;
+
+// AI Insights: minimum trades before insights are worth generating, and how
+// many new trades since the last insight trigger an automatic refresh.
+export const MIN_TRADES_FOR_INSIGHTS = 10;
+export const INSIGHTS_REFRESH_THRESHOLD = 5;
