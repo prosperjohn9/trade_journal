@@ -110,18 +110,7 @@ export function TradeAiReview({ tradeId }: { tradeId: string }) {
 
   return (
     <section className='rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5 sm:p-6'>
-      <div className='flex flex-wrap items-center justify-between gap-2'>
-        <h2 className='text-xl font-semibold'>AI Review</h2>
-        {review ? (
-          <button
-            type='button'
-            onClick={() => generate(true)}
-            disabled={loading}
-            className='rounded-lg border border-[var(--border-default)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60'>
-            {loading ? 'Regenerating...' : 'Regenerate'}
-          </button>
-        ) : null}
-      </div>
+      <h2 className='text-xl font-semibold'>AI Review</h2>
 
       <div className='mt-4'>
         {checking ? (
