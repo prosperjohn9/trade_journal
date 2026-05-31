@@ -20,6 +20,39 @@ const TRADE_SELECT = `
   account:accounts(name, account_type, base_currency)
 `;
 
+// Cheap, read-only check for an already-generated review. Never calls Claude,
+// so the UI can look one up on page load without spending credits.
+export async function GET(request: Request) {
+  const token = getToken(request);
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const sb = createSupabaseWithToken(token);
+  const {
+    data: { user },
+    error: authErr,
+  } = await sb.auth.getUser();
+  if (authErr || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const tradeId = new URL(request.url).searchParams.get('tradeId');
+  if (!tradeId) {
+    return NextResponse.json({ error: 'tradeId is required' }, { status: 400 });
+  }
+
+  const { data } = await sb
+    .from('trade_ai_reviews')
+    .select('content, model, updated_at')
+    .eq('trade_id', tradeId)
+    .maybeSingle();
+
+  return NextResponse.json(
+    data
+      ? { review: data.content, model: data.model, updated_at: data.updated_at }
+      : { review: null },
+  );
+}
+
 export async function POST(request: Request) {
   const token = getToken(request);
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

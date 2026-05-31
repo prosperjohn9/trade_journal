@@ -7,6 +7,7 @@ import { useTradeView, type TradeChecklistItem } from '@/src/hooks/useTradeView'
 import { formatAccountTagLabel } from '@/src/domain/account';
 import { formatMoney } from '@/src/lib/utils/format';
 import { TradeViewSkeleton } from '@/src/components/ui/Skeleton';
+import { TradeAiReview } from './TradeAiReview';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -671,6 +672,8 @@ export function TradeViewClient() {
                 </div>
               </div>
             </section>
+
+            <TradeAiReview tradeId={t.id} />
 
             <section className='rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5 sm:p-6'>
               <div className='flex flex-wrap items-center justify-between gap-2'>
