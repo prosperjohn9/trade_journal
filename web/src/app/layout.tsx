@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { ChatWidget } from '@/src/components/ai/ChatWidget';
 
 export const metadata: Metadata = {
   title: "The Trader's Hindsight — Make your experience your edge",
@@ -19,7 +20,10 @@ export default function RootLayout({
     // HTML loads but before React hydrates. Without this prop React logs a
     // dev-only hydration mismatch warning we can't fix from our side.
     <html lang='en' suppressHydrationWarning>
-      <body>{children}</body>
+      <body>
+        {children}
+        <ChatWidget />
+      </body>
     </html>
   );
 }
