@@ -7,6 +7,11 @@ type TawkApi = {
   hideWidget?: () => void;
   showWidget?: () => void;
   onLoad?: () => void;
+  setAttributes?: (
+    attributes: Record<string, string | undefined>,
+    callback?: (error?: unknown) => void,
+  ) => void;
+  visitor?: { name?: string; email?: string; hash?: string };
 };
 
 declare global {
@@ -43,19 +48,38 @@ export function isSupportOnline(): boolean {
   return h >= SUPPORT_OPEN_HOUR && h < SUPPORT_CLOSE_HOUR;
 }
 
-/** Inject the Tawk script once (launcher hidden) and resolve when it's ready. */
-export function loadTawk(): Promise<void> {
+type TawkVisitor = { name?: string; email?: string };
+
+/** Inject the Tawk script once (launcher hidden) and resolve when it's ready.
+ *  An optional visitor pre-identifies the chat so Tawk can skip the contact
+ *  form and the conversation arrives already attributed to the user. */
+export function loadTawk(visitor?: TawkVisitor): Promise<void> {
   return new Promise((resolve) => {
     if (typeof window === 'undefined') {
       resolve();
       return;
     }
     if (window.Tawk_API?.maximize) {
+      // Already loaded — refresh identity if we have it, then resolve.
+      if (visitor) {
+        try {
+          window.Tawk_API.setAttributes?.({
+            name: visitor.name,
+            email: visitor.email,
+          });
+        } catch {
+          /* noop */
+        }
+      }
       resolve();
       return;
     }
 
     window.Tawk_API = window.Tawk_API ?? {};
+    if (visitor) {
+      // Set before the embed loads so the chat is pre-identified.
+      window.Tawk_API.visitor = { name: visitor.name, email: visitor.email };
+    }
     const prev = window.Tawk_API.onLoad;
     window.Tawk_API.onLoad = () => {
       try {

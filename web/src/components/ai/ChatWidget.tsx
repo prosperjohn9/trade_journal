@@ -21,6 +21,50 @@ const GREETING =
   "Hi! I'm your Trader's Hindsight assistant. Ask me how to use the app, about your performance, or anything on journaling and trading discipline.";
 
 const historyKey = (uid: string) => `th-chat-history-${uid}`;
+const HISTORY_TTL_MS = 14 * 24 * 60 * 60 * 1000; // forget stored history after 14 days
+
+function loadHistory(uid: string): ChatMessage[] | null {
+  try {
+    const raw = window.localStorage.getItem(historyKey(uid));
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    // Legacy bare-array format from earlier builds.
+    if (Array.isArray(parsed)) return parsed as ChatMessage[];
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      Array.isArray((parsed as { messages?: unknown }).messages)
+    ) {
+      const rec = parsed as { savedAt?: number; messages: ChatMessage[] };
+      if (
+        typeof rec.savedAt === 'number' &&
+        Date.now() - rec.savedAt > HISTORY_TTL_MS
+      ) {
+        window.localStorage.removeItem(historyKey(uid));
+        return null;
+      }
+      return rec.messages;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function saveHistory(uid: string, messages: ChatMessage[]) {
+  try {
+    window.localStorage.setItem(
+      historyKey(uid),
+      JSON.stringify({
+        v: 1,
+        savedAt: Date.now(),
+        messages: messages.slice(-MAX_STORED),
+      }),
+    );
+  } catch {
+    // storage full / unavailable — non-fatal
+  }
+}
 
 function ChatIcon() {
   return (
@@ -49,36 +93,44 @@ export function ChatWidget() {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmHuman, setConfirmHuman] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
+
+    // Load saved history for a user, then mark hydrated. The persist effect is
+    // gated on this flag so an early auth event can't write an empty array over
+    // saved history before it loads (that was wiping the chat on reload).
+    const hydrate = (uid: string | null) => {
+      if (uid) {
+        const loaded = loadHistory(uid);
+        if (loaded && loaded.length) setMessages(loaded);
+      }
+      hydratedRef.current = true;
+    };
 
     supabase.auth.getSession().then(({ data }) => {
       if (cancelled) return;
       const session = data.session;
       const uid = session?.user?.id ?? null;
-      // Load any saved history for this user before marking ready, so a reload
-      // restores the conversation in one render (no flash, no clobber).
-      if (uid) {
-        try {
-          const saved = window.localStorage.getItem(historyKey(uid));
-          const parsed = saved ? JSON.parse(saved) : null;
-          if (Array.isArray(parsed)) setMessages(parsed as ChatMessage[]);
-        } catch {
-          // ignore corrupt history
-        }
-      }
       setUserId(uid);
       setAuthed(Boolean(session));
+      hydrate(uid);
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      const uid = session?.user?.id ?? null;
       setAuthed(Boolean(session));
-      setUserId(session?.user?.id ?? null);
+      setUserId(uid);
       if (event === 'SIGNED_OUT') {
+        hydratedRef.current = false;
         setMessages([]);
+        setConfirmHuman(false);
         setOpen(false);
+      } else if (event === 'SIGNED_IN') {
+        hydrate(uid);
       }
     });
 
@@ -88,17 +140,11 @@ export function ChatWidget() {
     };
   }, []);
 
-  // Persist history per user (cleared on sign-out by the handler above).
+  // Persist history per user, but only once hydration has loaded any saved
+  // messages (cleared on sign-out by the handler above).
   useEffect(() => {
-    if (!userId) return;
-    try {
-      window.localStorage.setItem(
-        historyKey(userId),
-        JSON.stringify(messages.slice(-MAX_STORED)),
-      );
-    } catch {
-      // storage full / unavailable — non-fatal
-    }
+    if (!userId || !hydratedRef.current) return;
+    saveHistory(userId, messages);
   }, [messages, userId]);
 
   useEffect(() => {
@@ -190,11 +236,28 @@ export function ChatWidget() {
     setMessages((m) => [...m, { role: 'assistant', content }]);
   }
 
-  async function talkToHuman() {
-    // In support hours: open the live Tawk chat (lazy-loaded on first use).
+  // Clicking "Talk to a human" nudges first-timers to try the assistant first;
+  // anyone who has already chatted with it is escalated straight away.
+  function handleTalkToHuman() {
+    const hasChatted = messages.some((m) => m.role === 'user');
+    if (!hasChatted) {
+      setConfirmHuman(true);
+      return;
+    }
+    void connectToHuman();
+  }
+
+  async function connectToHuman() {
+    setConfirmHuman(false);
+
+    // In support hours: open the live chat, pre-identified, and go straight in.
     if (isSupportOnline()) {
-      botSay('Connecting you to our live team — the chat window should open now.');
-      await loadTawk();
+      botSay('Connecting you to our team — the live chat window should open now.');
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const email = session?.user?.email ?? undefined;
+      await loadTawk(email ? { name: email, email } : undefined);
       openTawk();
       return;
     }
@@ -229,7 +292,7 @@ export function ChatWidget() {
       );
     } catch {
       botSay(
-        "Our live team is offline right now (8am to 10pm Istanbul time). I couldn't forward your message automatically — please use the Contact page at /contact and we'll email you back.",
+        "Our live team is offline right now (8am to 10pm Istanbul time). I couldn't forward your message automatically — please use the [Contact page](/contact) and we'll email you back.",
       );
     }
   }
@@ -273,7 +336,7 @@ export function ChatWidget() {
 
           <button
             type='button'
-            onClick={() => void talkToHuman()}
+            onClick={handleTalkToHuman}
             className='flex w-full items-center justify-between border-b border-[var(--border-default)] px-4 py-2 text-left text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--bg-subtle)]'>
             <span>Talk to a human</span>
             <span aria-hidden>→</span>
@@ -316,6 +379,29 @@ export function ChatWidget() {
               <p className='text-xs text-[var(--loss)]'>{error}</p>
             ) : null}
           </div>
+
+          {confirmHuman ? (
+            <div className='border-t border-[var(--border-default)] bg-[var(--bg-subtle)] px-4 py-3'>
+              <p className='text-sm text-[var(--text-secondary)]'>
+                Our AI assistant can answer most questions instantly — how-tos,
+                your stats, and troubleshooting. Want to try it first?
+              </p>
+              <div className='mt-3 flex gap-2'>
+                <button
+                  type='button'
+                  onClick={() => setConfirmHuman(false)}
+                  className='rounded-lg bg-[var(--accent-cta)] px-3 py-1.5 text-xs font-semibold text-white transition-all hover:brightness-110'>
+                  Try the assistant
+                </button>
+                <button
+                  type='button'
+                  onClick={() => void connectToHuman()}
+                  className='rounded-lg border border-[var(--border-default)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)]'>
+                  Talk to a human
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <form
             onSubmit={(e) => {
