@@ -29,7 +29,7 @@ export function MonthlyReportHeader({ state: s }: { state: State }) {
 
   const subtitle = useMemo(() => {
     const monthLabel = formatMonthLabel(s.month);
-    const accountLabel = s.selectedAccount?.name ?? 'All Accounts';
+    const accountLabel = s.selectedAccount?.name ?? 'All trading accounts';
     return `${monthLabel} • ${accountLabel}`;
   }, [s.month, s.selectedAccount?.name]);
 
@@ -45,14 +45,14 @@ export function MonthlyReportHeader({ state: s }: { state: State }) {
 
         <div className='flex flex-wrap items-end gap-3 lg:justify-end'>
           <label className='text-xs font-medium text-[var(--text-secondary)]'>
-            <span className='mb-1 block'>Account</span>
+            <span className='mb-1 block'>Trading account</span>
             <select
               className='min-w-[190px] rounded-lg border border-[var(--report-border)] bg-[var(--surface-elevated)] p-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
               value={s.accountId}
               onChange={(e) => s.setAccountId(e.target.value as 'all' | string)}
               disabled={!s.accounts.length}
-              aria-label='Account selector'>
-              <option value='all'>All Accounts</option>
+              aria-label='Trading account selector'>
+              <option value='all'>All trading accounts</option>
               {s.accounts.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}

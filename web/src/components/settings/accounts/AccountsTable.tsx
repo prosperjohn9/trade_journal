@@ -218,14 +218,15 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
         {!orderedAccounts.length && (
           <EmptyState
             icon='🏦'
-            title='No accounts yet'
+            title='No trading accounts yet'
             body={
               <>
-                An account is where your trades live — your starting balance,
-                P&L, and equity curve all roll up here. Create one to begin.
+                A trading account is where your trades live — your starting
+                balance, P&L, and equity curve all roll up here. Create one to
+                begin.
               </>
             }
-            cta={{ label: 'Add your first account', onClick: s.openAdd }}
+            cta={{ label: 'Add your first trading account', onClick: s.openAdd }}
           />
         )}
       </div>

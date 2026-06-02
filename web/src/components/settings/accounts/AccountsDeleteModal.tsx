@@ -12,7 +12,7 @@ export function AccountsDeleteModal({ state: s }: { state: AccountsState }) {
   return (
     <Modal
       open={!!s.deleteTarget}
-      title='Delete account?'
+      title='Delete trading account?'
       onClose={s.closeDelete}>
       {s.deleteTarget && (
         <div className='space-y-3'>

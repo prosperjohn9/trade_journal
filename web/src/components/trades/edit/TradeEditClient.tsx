@@ -205,7 +205,7 @@ export function TradeEditClient() {
           <section className='space-y-4 rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-4'>
             <h2 className='font-semibold'>Trade Details</h2>
 
-            <Field label='Account'>
+            <Field label='Trading account'>
               <select
                 className={controlClass}
                 value={s.accountId}

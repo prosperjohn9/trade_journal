@@ -605,7 +605,7 @@ export function TradeViewClient() {
               <h2 className='text-xl font-semibold'>Entry</h2>
 
               <div className='mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2'>
-                <DetailRow label='Account' value={t.account?.name ?? '—'} />
+                <DetailRow label='Trading account' value={t.account?.name ?? '—'} />
                 <DetailRow
                   label='Net P&L ($)'
                   value={<NumericValue value={formatMoney(netPnl, currency)} tone={pnlTone} />}

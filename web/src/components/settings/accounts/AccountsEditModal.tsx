@@ -38,8 +38,8 @@ export function AccountsEditModal({ state: s }: { state: AccountsState }) {
   return (
     <Modal
       open={!!s.editing}
-      title='Edit account'
-      subtitle='Update your account details and starting capital.'
+      title='Edit trading account'
+      subtitle='Update your trading account details and starting capital.'
       onClose={s.closeEdit}>
       {s.editing && (
         <div className='space-y-6'>

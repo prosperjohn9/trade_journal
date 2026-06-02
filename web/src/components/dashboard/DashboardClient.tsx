@@ -308,14 +308,14 @@ export default function DashboardClient() {
 
           <div className='mt-4 flex flex-wrap items-end gap-3'>
             <label className='text-sm text-[var(--text-secondary)]'>
-              <span className='mb-1 block'>Account</span>
+              <span className='mb-1 block'>Trading account</span>
               <select
                 className='min-w-[220px] rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-2 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)]'
                 value={s.accountId}
                 onChange={(e) => s.setAccountId(e.target.value)}
                 disabled={!s.accounts.length}
-                aria-label='Account selector'>
-                <option value='all'>All accounts</option>
+                aria-label='Trading account selector'>
+                <option value='all'>All trading accounts</option>
                 {s.accounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}

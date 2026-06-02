@@ -358,8 +358,8 @@ export function NewTradeClient() {
                   <div className='space-y-4'>
                     {s.mode === 'single' && (
                       <Field
-                        label='Account'
-                        hint='Trades must belong to an account.'>
+                        label='Trading account'
+                        hint='Trades must belong to a trading account.'>
                         <select
                           className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]'
                           value={s.accountId}
@@ -925,7 +925,7 @@ export function NewTradeClient() {
                   </div>
 
                   <div className='mt-4 space-y-2 text-sm'>
-                    <SummaryRow label='Account' value={s.selectedAccount?.name ?? '—'} />
+                    <SummaryRow label='Trading account' value={s.selectedAccount?.name ?? '—'} />
                     <SummaryRow label='Starting Balance' value={summaryStartingBalance} />
                     <SummaryRow label='Risk' value={summaryRisk} />
                     <SummaryRow label='Result' value={summaryR} />
@@ -951,7 +951,7 @@ export function NewTradeClient() {
 
                   <div className='mt-4 space-y-2 text-sm'>
                     <SummaryRow
-                      label='Accounts selected'
+                      label='Trading accounts selected'
                       value={String(s.copyAccountIds.length)}
                     />
                     <SummaryRow

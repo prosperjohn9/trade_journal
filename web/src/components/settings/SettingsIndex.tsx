@@ -18,7 +18,7 @@ const SECTIONS: Array<{
   {
     href: '/settings/profile',
     title: 'Profile',
-    description: 'Your account details and danger zone (delete account).',
+    description: 'Your profile and display name, plus the danger zone to delete your account.',
     icon: (
       <svg
         viewBox='0 0 24 24'

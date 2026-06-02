@@ -874,7 +874,7 @@ export function AnalyticsClient() {
         {showFilters && (
           <>
             <div className='grid grid-cols-1 md:grid-cols-4 gap-3'>
-              <Field label='Account'>
+              <Field label='Trading account'>
                 <select
                   className='w-full border rounded-lg p-3 bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-primary)]'
                   value={draft.accountFilter}
@@ -884,7 +884,7 @@ export function AnalyticsClient() {
                       accountFilter: e.target.value,
                     }))
                   }>
-                  <option value='all'>All accounts</option>
+                  <option value='all'>All trading accounts</option>
                   {accounts.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.name}

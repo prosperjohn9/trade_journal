@@ -38,7 +38,7 @@ export function AccountsAddModal({ state: s }: { state: AccountsState }) {
   return (
     <Modal
       open={s.showAdd}
-      title='Add account'
+      title='Add trading account'
       subtitle='Create a new trading account.'
       onClose={s.closeAdd}>
       <div className='space-y-6'>
