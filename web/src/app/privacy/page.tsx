@@ -82,7 +82,7 @@ export default function PrivacyPage() {
             <strong>Who do we share your information with?</strong> Only the
             service providers we use to operate the platform (Supabase,
             Vercel, Anthropic, Sentry, Flutterwave, NOWPayments, Google,
-            Apple). We do not sell or share data with anyone else.
+            Apple, Tawk.to). We do not sell or share data with anyone else.
           </li>
           <li>
             <strong>How do we keep your information safe?</strong> Encryption
@@ -348,6 +348,12 @@ export default function PrivacyPage() {
           <li>
             <strong>NOWPayments</strong> — cryptocurrency payment processing.{' '}
             <a href='https://nowpayments.io/doc/fd-privacy-policy.pdf' target='_blank' rel='noreferrer noopener'>NOWPayments Privacy Policy</a>.
+          </li>
+          <li>
+            <strong>Tawk.to</strong> — live chat support, loaded only when you
+            start a chat with us. The messages you send and basic visitor data
+            are processed by Tawk.to (US-based).{' '}
+            <a href='https://www.tawk.to/privacy-policy/' target='_blank' rel='noreferrer noopener'>Tawk.to Privacy Policy</a>.
           </li>
         </ul>
         <p>

@@ -7,7 +7,7 @@ import {
 export const metadata: Metadata = {
   title: "Cookie Policy — The Trader's Hindsight",
   description:
-    "How The Trader's Hindsight uses cookies and similar technologies. We use one essential cookie for authentication — no analytics, no advertising, no tracking.",
+    "How The Trader's Hindsight uses cookies. One essential cookie keeps you signed in; our live chat sets its own cookies only if you open it. No analytics, no advertising, no tracking.",
 };
 
 const EFFECTIVE_DATE = 'May 20, 2026';
@@ -36,11 +36,12 @@ export default function CookiesPage() {
             The short version
           </strong>
           <p className='mt-2'>
-            We use <strong>one cookie</strong>. It keeps you signed in. It is
-            strictly necessary for the Service to work. We don&apos;t use
-            analytics cookies, advertising cookies, tracking pixels, web
-            beacons, or any third-party tracking. We don&apos;t sell or share
-            cookie data with anyone.
+            We use <strong>one essential cookie</strong> to keep you signed in.
+            The only other cookies come from our live chat, and they load only
+            if you choose to start a chat with us. We don&apos;t use analytics
+            cookies, advertising cookies, tracking pixels, web beacons, or any
+            cross-site tracking, and we don&apos;t sell or share cookie data
+            with anyone.
           </p>
         </div>
 
@@ -61,14 +62,16 @@ export default function CookiesPage() {
           provided on or through the website.
         </p>
         <p>
-          <strong>The Trader&apos;s Hindsight uses only first-party cookies.</strong>{' '}
-          We do not load any third-party cookies on our Website.
+          <strong>By default, we set only one first-party cookie</strong> and do
+          not load third-party cookies as you browse. The one exception is our
+          live chat: if you open it, our chat provider (Tawk.to) sets its own
+          cookies to run the chat session.
         </p>
 
         <h2>Why do we use cookies?</h2>
         <p>
-          We use a single cookie for one purpose: <strong>keeping you signed
-          in</strong>. This is what privacy laws call a &ldquo;strictly
+          Our own sign-in cookie serves one purpose: <strong>keeping you
+          signed in</strong>. This is what privacy laws call a &ldquo;strictly
           necessary&rdquo; or &ldquo;essential&rdquo; cookie. Without it, you
           would have to re-enter your credentials on every page load, which
           would make the Service unusable.
@@ -82,7 +85,7 @@ export default function CookiesPage() {
           <li>Profiling or behavioural targeting</li>
           <li>Cross-site tracking</li>
           <li>Social media integration</li>
-          <li>Any third-party purposes whatsoever</li>
+          <li>Selling, renting, or sharing your data</li>
         </ul>
 
         <h2>The cookies we use</h2>
@@ -96,6 +99,13 @@ export default function CookiesPage() {
             inactivity. It contains a session token that identifies your
             authenticated session — it does not contain personal data,
             tracking identifiers, or behavioural data.
+          </li>
+          <li>
+            <strong>Live chat cookies (Tawk.to)</strong> — set only if you open
+            our live chat. Our chat provider, Tawk.to, uses cookies to run the
+            chat session and remember your conversation. They load only when you
+            start a chat and are governed by Tawk.to&apos;s privacy policy. If
+            you never open live chat, these are never set.
           </li>
         </ul>
         <p>
