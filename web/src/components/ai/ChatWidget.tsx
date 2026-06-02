@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
 import { AiMarkdown } from '@/src/components/ui/AiMarkdown';
+import { isSupportOnline, loadTawk, openTawk } from '@/src/lib/ai/tawk';
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
@@ -185,6 +186,54 @@ export function ChatWidget() {
     }
   }
 
+  function botSay(content: string) {
+    setMessages((m) => [...m, { role: 'assistant', content }]);
+  }
+
+  async function talkToHuman() {
+    // In support hours: open the live Tawk chat (lazy-loaded on first use).
+    if (isSupportOnline()) {
+      botSay('Connecting you to our live team — the chat window should open now.');
+      await loadTawk();
+      openTawk();
+      return;
+    }
+
+    // Outside hours: forward the conversation to the Contact inbox so the team
+    // can reply by email. The user is signed in, so we use their account email.
+    const userQuestions = messages
+      .filter((m) => m.role === 'user')
+      .map((m) => m.content);
+    if (!userQuestions.length) {
+      botSay(
+        "Our live team is online 8am to 10pm Istanbul time and is offline right now. Tell me your question first, then tap 'Talk to a human' and I'll forward it so the team can email you back.",
+      );
+      return;
+    }
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const email = session?.user?.email;
+      if (!email) throw new Error('no email');
+      const transcript = userQuestions.slice(-6).join('\n\n').slice(0, 3500);
+      const { error: insErr } = await supabase.from('contact_messages').insert({
+        email,
+        request_type: 'general',
+        message: `[Forwarded from the in-app assistant]\n\n${transcript}`,
+      });
+      if (insErr) throw insErr;
+      botSay(
+        `Our live team is offline right now (online 8am to 10pm Istanbul time). I've forwarded your message — they'll email you at ${email}.`,
+      );
+    } catch {
+      botSay(
+        "Our live team is offline right now (8am to 10pm Istanbul time). I couldn't forward your message automatically — please use the Contact page at /contact and we'll email you back.",
+      );
+    }
+  }
+
   const onAppPage = APP_PREFIXES.some((p) => pathname?.startsWith(p));
   if (!authed || !onAppPage) return null;
 
@@ -221,6 +270,14 @@ export function ChatWidget() {
               </button>
             </div>
           </div>
+
+          <button
+            type='button'
+            onClick={() => void talkToHuman()}
+            className='flex w-full items-center justify-between border-b border-[var(--border-default)] px-4 py-2 text-left text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--bg-subtle)]'>
+            <span>Talk to a human</span>
+            <span aria-hidden>→</span>
+          </button>
 
           <div
             ref={scrollRef}
