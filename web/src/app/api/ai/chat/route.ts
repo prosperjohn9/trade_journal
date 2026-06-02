@@ -5,8 +5,9 @@ import {
   getAnthropic,
   isAiConfigured,
 } from '@/src/lib/ai/client';
-import { CHAT_SYSTEM } from '@/src/lib/ai/prompts';
+import { CHAT_SYSTEM, buildChatStatsContext } from '@/src/lib/ai/prompts';
 import { isOverDailyCap, logUsage } from '@/src/lib/ai/usage';
+import { computeReport, type TradeRow } from '@/src/lib/analytics/core';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -71,11 +72,47 @@ export async function POST(request: Request) {
     return json({ error: 'A user message is required' }, 400);
   }
 
+  // Data-awareness: compute the user's aggregate stats and pass a compact
+  // summary as context (the prompt tells the model to use it only when asked).
+  const [{ data: tradesRaw }, { data: accounts }, { data: profile }] =
+    await Promise.all([
+      sb
+        .from('trades')
+        .select(
+          'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, risk_amount, r_multiple',
+        ),
+      sb.from('accounts').select('starting_balance'),
+      sb
+        .from('profiles')
+        .select('timezone, starting_balance')
+        .eq('id', user.id)
+        .maybeSingle(),
+    ]);
+  const trades = (tradesRaw ?? []) as unknown as TradeRow[];
+  const accountRows = (accounts ?? []) as { starting_balance: number | null }[];
+  const profileRow = (profile ?? null) as {
+    timezone?: string | null;
+    starting_balance?: number | null;
+  } | null;
+  const startingBalance =
+    accountRows.reduce((s, a) => s + Number(a.starting_balance ?? 0), 0) ||
+    Number(profileRow?.starting_balance ?? 0);
+  const statsContext = buildChatStatsContext(
+    trades.length
+      ? computeReport({
+          trades,
+          startingBalance,
+          timeZone: profileRow?.timezone ?? 'UTC',
+        })
+      : null,
+  );
+
   const stream = getAnthropic().messages.stream({
     model: AI_MODEL,
     max_tokens: MAX_TOKENS.chat,
     system: [
       { type: 'text', text: CHAT_SYSTEM, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: statsContext },
     ],
     messages: history,
   });

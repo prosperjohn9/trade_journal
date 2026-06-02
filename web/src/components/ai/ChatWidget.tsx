@@ -15,8 +15,11 @@ const APP_PREFIXES = [
   '/settings',
 ];
 const THEME_STORAGE_KEY = 'dashboard-theme';
+const MAX_STORED = 50; // cap persisted history
 const GREETING =
-  "Hi! I'm your Trader's Hindsight assistant. Ask me how to use the app, or anything about journaling and trading discipline.";
+  "Hi! I'm your Trader's Hindsight assistant. Ask me how to use the app, about your performance, or anything on journaling and trading discipline.";
+
+const historyKey = (uid: string) => `th-chat-history-${uid}`;
 
 function ChatIcon() {
   return (
@@ -38,6 +41,7 @@ function ChatIcon() {
 export function ChatWidget() {
   const pathname = usePathname();
   const [authed, setAuthed] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -48,17 +52,53 @@ export function ChatWidget() {
 
   useEffect(() => {
     let cancelled = false;
+
     supabase.auth.getSession().then(({ data }) => {
-      if (!cancelled) setAuthed(Boolean(data.session));
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (cancelled) return;
+      const session = data.session;
+      const uid = session?.user?.id ?? null;
+      // Load any saved history for this user before marking ready, so a reload
+      // restores the conversation in one render (no flash, no clobber).
+      if (uid) {
+        try {
+          const saved = window.localStorage.getItem(historyKey(uid));
+          const parsed = saved ? JSON.parse(saved) : null;
+          if (Array.isArray(parsed)) setMessages(parsed as ChatMessage[]);
+        } catch {
+          // ignore corrupt history
+        }
+      }
+      setUserId(uid);
       setAuthed(Boolean(session));
     });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      setAuthed(Boolean(session));
+      setUserId(session?.user?.id ?? null);
+      if (event === 'SIGNED_OUT') {
+        setMessages([]);
+        setOpen(false);
+      }
+    });
+
     return () => {
       cancelled = true;
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  // Persist history per user (cleared on sign-out by the handler above).
+  useEffect(() => {
+    if (!userId) return;
+    try {
+      window.localStorage.setItem(
+        historyKey(userId),
+        JSON.stringify(messages.slice(-MAX_STORED)),
+      );
+    } catch {
+      // storage full / unavailable — non-fatal
+    }
+  }, [messages, userId]);
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -75,6 +115,18 @@ export function ChatWidget() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, open]);
+
+  function clearChat() {
+    setMessages([]);
+    setError(null);
+    if (userId) {
+      try {
+        window.localStorage.removeItem(historyKey(userId));
+      } catch {
+        // ignore
+      }
+    }
+  }
 
   async function send() {
     const text = input.trim();
@@ -121,7 +173,6 @@ export function ChatWidget() {
         });
       }
     } catch (e) {
-      // Drop the empty assistant placeholder and surface the error.
       setMessages((m) => {
         const copy = [...m];
         const last = copy[copy.length - 1];
@@ -152,13 +203,23 @@ export function ChatWidget() {
                 Help &amp; coaching
               </div>
             </div>
-            <button
-              type='button'
-              onClick={() => setOpen(false)}
-              aria-label='Close assistant'
-              className='rounded-md px-2 py-1 text-sm text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'>
-              ✕
-            </button>
+            <div className='flex items-center gap-1'>
+              {messages.length > 0 ? (
+                <button
+                  type='button'
+                  onClick={clearChat}
+                  className='rounded-md px-2 py-1 text-xs text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'>
+                  Clear
+                </button>
+              ) : null}
+              <button
+                type='button'
+                onClick={() => setOpen(false)}
+                aria-label='Close assistant'
+                className='rounded-md px-2 py-1 text-sm text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'>
+                ✕
+              </button>
+            </div>
           </div>
 
           <div
