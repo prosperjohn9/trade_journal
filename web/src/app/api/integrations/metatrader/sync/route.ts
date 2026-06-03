@@ -63,9 +63,10 @@ export async function POST(request: Request) {
   for (const c of (connections ?? []) as Connection[]) {
     try {
       const region = c.region ?? DEFAULT_MT_REGION;
-      const from = c.last_synced_at
-        ? new Date(new Date(c.last_synced_at).getTime() - 2 * DAY_MS)
-        : new Date('2000-01-01T00:00:00Z');
+      // Always pull full history. An incremental window would exclude the
+      // original funding row (which sets starting_balance) and older trades, so
+      // re-syncs would never correct the balance. Dedup makes this idempotent.
+      const from = new Date('2000-01-01T00:00:00Z');
       const to = new Date(Date.now() + DAY_MS);
 
       const trades = await fetchHistoricalTrades({

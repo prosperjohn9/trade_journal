@@ -128,7 +128,7 @@ export function BalanceEventsButton({
           setMsg(null);
           setOpen(true);
         }}>
-        Deposits
+        Transactions
       </button>
 
       {open ? (
