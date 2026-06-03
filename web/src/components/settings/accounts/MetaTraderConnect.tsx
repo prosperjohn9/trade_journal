@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import { mutate } from 'swr';
 import { supabase } from '@/src/lib/supabase/client';
 import { apiPost } from '@/src/lib/api/fetcher';
 
@@ -129,14 +130,18 @@ export function MetaTraderConnect({
       const r = res.results[0];
       if (r?.error) {
         setMsg(`Still linking or no trades yet: ${r.error}`);
-      } else if (r) {
-        setMsg(
-          `Synced — ${r.imported} new trade${r.imported === 1 ? '' : 's'} imported` +
-            (r.skipped ? `, ${r.skipped} already up to date.` : '.'),
-        );
-        if (r.imported > 0) onSynced?.();
       } else {
-        setMsg('Nothing to sync yet.');
+        const imported = r?.imported ?? 0;
+        setMsg(
+          imported > 0
+            ? `Synced — ${imported} new trade${imported === 1 ? '' : 's'} imported.`
+            : 'Up to date — balance and stats refreshed.',
+        );
+        // Always refresh: the accounts list (trade count / starting balance) and
+        // every SWR-backed page (dashboard / analytics / monthly), even when no
+        // new trades arrived but the balance changed.
+        onSynced?.();
+        await mutate(() => true);
       }
       await refresh();
     } catch (e) {
