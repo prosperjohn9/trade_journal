@@ -2,10 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 import type { useAccounts } from '@/src/hooks/useAccounts';
+import { ConnectBrokerButton } from './ConnectBrokerButton';
 
 type AccountsState = Pick<
   ReturnType<typeof useAccounts>,
-  'openAdd'
+  'openAdd' | 'reload'
 >;
 
 export function AccountsHeader({ state: s }: { state: AccountsState }) {
@@ -28,6 +29,8 @@ export function AccountsHeader({ state: s }: { state: AccountsState }) {
           onClick={() => router.push('/settings')}>
           Back
         </button>
+
+        <ConnectBrokerButton onCreated={s.reload} />
 
         <button
           className='rounded-lg border border-transparent bg-[var(--accent-cta)] px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110'
