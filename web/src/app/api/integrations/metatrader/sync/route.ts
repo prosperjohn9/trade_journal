@@ -74,6 +74,24 @@ export async function POST(request: Request) {
         to,
       });
 
+      // Keep the trading account's starting_balance aligned with the broker's
+      // initial funding (the earliest balance operation), so the equity curve
+      // reflects reality instead of a number typed at account creation.
+      const initialBalance = trades
+        .filter((t) => t.type === 'DEAL_TYPE_BALANCE' && t.openTime)
+        .sort((a, b) => ((a.openTime ?? '') < (b.openTime ?? '') ? -1 : 1))[0]
+        ?.profit;
+      if (
+        typeof initialBalance === 'number' &&
+        Number.isFinite(initialBalance) &&
+        initialBalance > 0
+      ) {
+        await sb
+          .from('accounts')
+          .update({ starting_balance: initialBalance })
+          .eq('id', c.account_id);
+      }
+
       const rows = trades
         .map((t) => mapTradeToRow(t, { userId: user.id, accountId: c.account_id }))
         .filter((r): r is NonNullable<typeof r> => r !== null);
