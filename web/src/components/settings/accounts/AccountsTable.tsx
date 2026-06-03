@@ -5,6 +5,7 @@ import { formatMoney } from '@/src/lib/utils/format';
 import { cx } from '@/src/lib/utils/ui';
 import { EmptyState } from '@/src/components/ui/EmptyState';
 import type { useAccounts } from '@/src/hooks/useAccounts';
+import { MetaTraderConnect } from './MetaTraderConnect';
 
 const MAX_VISIBLE_TAGS = 3;
 const TYPE_ACCENTS: Record<string, string> = {
@@ -23,6 +24,7 @@ type AccountsState = Pick<
   | 'settingDefaultId'
   | 'requestDelete'
   | 'openAdd'
+  | 'reload'
 >;
 
 export function AccountsTable({ state: s }: { state: AccountsState }) {
@@ -209,6 +211,8 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
                     disabled={!canDelete}>
                     Delete
                   </button>
+
+                  <MetaTraderConnect accountId={a.id} onSynced={s.reload} />
                 </div>
               </div>
             </article>
