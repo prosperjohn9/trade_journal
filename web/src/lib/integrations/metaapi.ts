@@ -216,3 +216,53 @@ export function mapTradeToRow(
     r_multiple: null,
   };
 }
+
+export type BalanceEventRow = {
+  user_id: string;
+  account_id: string;
+  kind: 'DEPOSIT' | 'WITHDRAWAL';
+  amount: number;
+  occurred_at: string;
+  source: string;
+  external_id: string;
+};
+
+/** Split broker balance operations into the initial funding (which becomes the
+ *  account's starting balance) and the subsequent deposit/withdrawal events. */
+export function splitBalanceOps(
+  trades: MetaStatsTrade[],
+  ctx: { userId: string; accountId: string },
+): { initialBalance: number | null; events: BalanceEventRow[] } {
+  const ops = trades
+    .filter((t) => t.type === 'DEAL_TYPE_BALANCE' && t.openTime)
+    .sort((a, b) => ((a.openTime ?? '') < (b.openTime ?? '') ? -1 : 1));
+
+  if (!ops.length) return { initialBalance: null, events: [] };
+
+  const [first, ...rest] = ops;
+  const initialBalance =
+    typeof first.profit === 'number' &&
+    Number.isFinite(first.profit) &&
+    first.profit > 0
+      ? first.profit
+      : null;
+
+  const events: BalanceEventRow[] = [];
+  for (const op of rest) {
+    const amount = num(op.profit);
+    if (amount == null || amount === 0) continue;
+    const occurred =
+      brokerTimeToIso(op.openTime) ?? brokerTimeToIso(op.closeTime);
+    if (!occurred) continue;
+    events.push({
+      user_id: ctx.userId,
+      account_id: ctx.accountId,
+      kind: amount > 0 ? 'DEPOSIT' : 'WITHDRAWAL',
+      amount: Math.abs(amount),
+      occurred_at: occurred,
+      source: 'metaapi',
+      external_id: `metaapi:${op._id}`,
+    });
+  }
+  return { initialBalance, events };
+}

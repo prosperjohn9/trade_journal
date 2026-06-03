@@ -3,6 +3,7 @@ import { createSupabaseWithToken, getToken } from '@/src/lib/supabase/server';
 import {
   fetchHistoricalTrades,
   mapTradeToRow,
+  splitBalanceOps,
   DEFAULT_MT_REGION,
 } from '@/src/lib/integrations/metaapi';
 
@@ -74,22 +75,33 @@ export async function POST(request: Request) {
         to,
       });
 
-      // Keep the trading account's starting_balance aligned with the broker's
-      // initial funding (the earliest balance operation), so the equity curve
-      // reflects reality instead of a number typed at account creation.
-      const initialBalance = trades
-        .filter((t) => t.type === 'DEAL_TYPE_BALANCE' && t.openTime)
-        .sort((a, b) => ((a.openTime ?? '') < (b.openTime ?? '') ? -1 : 1))[0]
-        ?.profit;
-      if (
-        typeof initialBalance === 'number' &&
-        Number.isFinite(initialBalance) &&
-        initialBalance > 0
-      ) {
+      // Broker balance operations: the earliest funds the account (-> starting
+      // balance), so the equity curve reflects reality instead of a number typed
+      // at account creation; the rest become deposit/withdrawal ledger events.
+      const { initialBalance, events: balanceEvents } = splitBalanceOps(trades, {
+        userId: user.id,
+        accountId: c.account_id,
+      });
+      if (initialBalance != null && initialBalance > 0) {
         await sb
           .from('accounts')
           .update({ starting_balance: initialBalance })
           .eq('id', c.account_id);
+      }
+      if (balanceEvents.length) {
+        const exIds = balanceEvents.map((e) => e.external_id);
+        const { data: existingEv } = await sb
+          .from('account_balance_events')
+          .select('external_id')
+          .eq('account_id', c.account_id)
+          .in('external_id', exIds);
+        const haveEv = new Set(
+          (existingEv ?? []).map((e: { external_id: string }) => e.external_id),
+        );
+        const newEvents = balanceEvents.filter((e) => !haveEv.has(e.external_id));
+        if (newEvents.length) {
+          await sb.from('account_balance_events').insert(newEvents);
+        }
       }
 
       const rows = trades
