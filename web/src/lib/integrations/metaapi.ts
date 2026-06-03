@@ -175,6 +175,23 @@ export async function provisionAccount(params: {
   return { metaApiAccountId: data.id, state: data.state ?? 'DRAFT', region };
 }
 
+/** Remove a MetaApi account entirely, which stops all metering. Trades already
+ *  imported into our DB are unaffected. A 404 means it's already gone. */
+export async function removeMetaApiAccount(
+  metaApiAccountId: string,
+): Promise<void> {
+  const res = await fetch(
+    `${PROVISIONING_HOST}/users/current/accounts/${encodeURIComponent(metaApiAccountId)}`,
+    { method: 'DELETE', headers: { 'auth-token': getMetaApiToken() } },
+  );
+  if (![200, 202, 204, 404].includes(res.status)) {
+    const text = await res.text().catch(() => '');
+    throw new Error(
+      `MetaApi account removal failed (${res.status}): ${text.slice(0, 200)}`,
+    );
+  }
+}
+
 const TRADE_DEAL_TYPES = new Set(['DEAL_TYPE_BUY', 'DEAL_TYPE_SELL']);
 
 /** Map a MetaStats trade to a trades-table row, or null if it isn't a real,

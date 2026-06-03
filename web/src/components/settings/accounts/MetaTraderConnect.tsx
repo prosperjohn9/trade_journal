@@ -151,6 +151,27 @@ export function MetaTraderConnect({
     }
   }
 
+  async function disconnect() {
+    if (!conn) return;
+    setMsg(null);
+    setSyncing(true);
+    try {
+      await apiPost('/api/integrations/metatrader/disconnect', {
+        connectionId: conn.id,
+      });
+      setConn(null);
+      onSynced?.();
+      await mutate(() => true);
+      setMsg(
+        'Disconnected. Auto-sync stopped — your imported trades stay in your journal.',
+      );
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Could not disconnect.');
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   const closeIfIdle = () => {
     if (!busy && !syncing) setOpen(false);
   };
@@ -204,6 +225,12 @@ export function MetaTraderConnect({
                   Pulls any new closed trades from your broker into this account.
                   First sync can take a minute or two after connecting.
                 </p>
+                <button
+                  className='w-full rounded-lg border border-[var(--border-default)] px-3 py-1.5 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--loss)] disabled:opacity-60'
+                  onClick={() => void disconnect()}
+                  disabled={syncing}>
+                  Disconnect (keeps imported trades)
+                </button>
               </div>
             ) : (
               <div className='mt-4 space-y-3'>
