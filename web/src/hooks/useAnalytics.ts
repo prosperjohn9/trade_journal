@@ -14,6 +14,7 @@ import {
   type AnalyticsSetupTemplate,
   type AnalyticsTrade,
 } from '@/src/lib/services/analytics.service';
+import { loadBalanceEvents } from '@/src/lib/services/balanceEvents.service';
 
 export type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
 export type Direction = 'BUY' | 'SELL';
@@ -216,6 +217,15 @@ export function useAnalytics() {
       setupFilter: applied.setupFilter || undefined,
       instrumentQuery: applied.instrumentQuery.trim() || undefined,
     }),
+    { revalidateOnFocus: false, dedupingInterval: 30_000 },
+  );
+
+  const { data: balanceEventsData } = useSWR(
+    ['analytics-balance-events', applied.accountFilter],
+    () =>
+      loadBalanceEvents(
+        applied.accountFilter === 'all' ? undefined : applied.accountFilter,
+      ),
     { revalidateOnFocus: false, dedupingInterval: 30_000 },
   );
 
@@ -487,27 +497,48 @@ export function useAnalytics() {
   }, [filteredTrades]);
 
   const equitySeries = useMemo(() => {
-    const byDay: Record<string, number> = {};
+    const events = balanceEventsData ?? [];
+
+    const pnlByDay: Record<string, number> = {};
     for (const t of filteredTrades) {
       const day = yyyyMmDd(t.opened_at);
-      byDay[day] = (byDay[day] || 0) + calcNetPnl(t);
+      pnlByDay[day] = (pnlByDay[day] || 0) + calcNetPnl(t);
     }
 
-    const days = Object.keys(byDay).sort();
+    const flowByDay: Record<string, number> = {};
+    for (const e of events) {
+      const day = yyyyMmDd(e.occurred_at);
+      const signed =
+        e.kind === 'DEPOSIT' ? Number(e.amount) : -Number(e.amount);
+      if (Number.isFinite(signed)) {
+        flowByDay[day] = (flowByDay[day] || 0) + signed;
+      }
+    }
+
+    const days = Array.from(
+      new Set([...Object.keys(pnlByDay), ...Object.keys(flowByDay)]),
+    ).sort();
 
     const res = days.reduce(
       (acc, d) => {
-        const dayNet = byDay[d] || 0;
+        const dayNet = pnlByDay[d] || 0;
+        const dayFlow = flowByDay[d] || 0;
         acc.cum += dayNet;
-        const y = hasStartingBalance ? startingBalance + acc.cum : acc.cum;
+        acc.flow += dayFlow;
+        // Plotted value is the account balance: starting balance + cumulative
+        // P&L + net deposits/withdrawals to date. dayNet/cumNet stay P&L-only
+        // for the tooltip.
+        const y = hasStartingBalance
+          ? startingBalance + acc.cum + acc.flow
+          : acc.cum + acc.flow;
         acc.series.push({ xLabel: d, y, meta: { dayNet, cumNet: acc.cum } });
         return acc;
       },
-      { cum: 0, series: [] as LinePoint[] },
+      { cum: 0, flow: 0, series: [] as LinePoint[] },
     );
 
     return res.series;
-  }, [filteredTrades, hasStartingBalance, startingBalance]);
+  }, [filteredTrades, balanceEventsData, hasStartingBalance, startingBalance]);
 
   const dailyNetSeries = useMemo(() => {
     const byDay: Record<string, number> = {};
