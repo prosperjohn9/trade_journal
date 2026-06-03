@@ -76,7 +76,6 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
           const currency = a.base_currency ?? 'USD';
           const tradeCount = Number(a.trade_count ?? 0);
           const netPnl = Number(a.net_pnl ?? 0);
-          const canDelete = !a.is_default;
           const visibleTags = a.tags.slice(0, MAX_VISIBLE_TAGS);
           const hiddenTagCount = Math.max(a.tags.length - visibleTags.length, 0);
 
@@ -206,9 +205,8 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
 
                   <span className='text-[var(--text-muted)]'>•</span>
                   <button
-                    className='text-[var(--loss)] transition-colors hover:opacity-85 disabled:cursor-not-allowed disabled:text-[var(--text-muted)]'
-                    onClick={() => s.requestDelete(a)}
-                    disabled={!canDelete}>
+                    className='text-[var(--loss)] transition-colors hover:opacity-85'
+                    onClick={() => s.requestDelete(a)}>
                     Delete
                   </button>
 

@@ -336,6 +336,7 @@ export function useAccounts() {
       await deleteAccount(deleteTarget.id);
       setAccounts((prev) => prev.filter((a) => a.id !== deleteTarget.id));
       setDeleteTarget(null);
+      await reload();
     } catch (e: unknown) {
       setDeleteMsg(getErr(e, 'Failed to delete account'));
     } finally {

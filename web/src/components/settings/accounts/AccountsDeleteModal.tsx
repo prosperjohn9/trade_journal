@@ -26,9 +26,10 @@ export function AccountsDeleteModal({ state: s }: { state: AccountsState }) {
           </p>
 
           <p className='text-xs opacity-70'>
-            Note: You can only delete an account if it has{' '}
-            <span className='font-semibold'>0 trades</span> and it’s not your
-            last account.
+            This permanently deletes the account{' '}
+            <span className='font-semibold'>and all of its trades</span>, and
+            can’t be undone. If it’s your default account, another one becomes
+            the default.
           </p>
 
           <div className='flex justify-end gap-2 pt-2'>
