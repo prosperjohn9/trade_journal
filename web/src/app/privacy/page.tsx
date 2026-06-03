@@ -82,7 +82,8 @@ export default function PrivacyPage() {
             <strong>Who do we share your information with?</strong> Only the
             service providers we use to operate the platform (Supabase,
             Vercel, Anthropic, Sentry, Flutterwave, NOWPayments, Google,
-            Apple, Tawk.to). We do not sell or share data with anyone else.
+            Apple, Tawk.to, MetaApi). We do not sell or share data with anyone
+            else.
           </li>
           <li>
             <strong>How do we keep your information safe?</strong> Encryption
@@ -354,6 +355,16 @@ export default function PrivacyPage() {
             start a chat with us. The messages you send and basic visitor data
             are processed by Tawk.to (US-based).{' '}
             <a href='https://www.tawk.to/privacy-policy/' target='_blank' rel='noreferrer noopener'>Tawk.to Privacy Policy</a>.
+          </li>
+          <li>
+            <strong>MetaApi</strong> — MetaTrader (MT4/MT5) connectivity, used
+            only if you connect a broker account for automatic trade sync. To
+            link your account we pass MetaApi your MT login, server name, and
+            your <strong>read-only investor password</strong>, which MetaApi
+            stores in order to maintain a read-only connection and return your
+            trade history. It cannot place trades or withdraw funds. If you never
+            connect a broker, MetaApi receives nothing.{' '}
+            <a href='https://metaapi.cloud/' target='_blank' rel='noreferrer noopener'>MetaApi</a>.
           </li>
         </ul>
         <p>
