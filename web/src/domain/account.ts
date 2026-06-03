@@ -25,6 +25,7 @@ export type Account = {
   is_default: boolean;
   trade_count?: number;
   net_pnl?: number;
+  net_cashflow?: number;
   created_at: string;
 };
 

@@ -77,6 +77,9 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
           const currency = a.base_currency ?? 'USD';
           const tradeCount = Number(a.trade_count ?? 0);
           const netPnl = Number(a.net_pnl ?? 0);
+          const cashflow = Number(a.net_cashflow ?? 0);
+          const startingBalance = Number(a.starting_balance ?? 0);
+          const currentBalance = startingBalance + netPnl + cashflow;
           const visibleTags = a.tags.slice(0, MAX_VISIBLE_TAGS);
           const hiddenTagCount = Math.max(a.tags.length - visibleTags.length, 0);
 
@@ -149,9 +152,12 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
               </div>
 
               <p className='mt-4 text-[15px] font-medium text-[var(--text-secondary)]'>
-                Starting Balance:{' '}
+                Balance:{' '}
                 <span className='font-semibold text-[var(--text-primary)]'>
-                  {formatMoney(Number(a.starting_balance ?? 0), currency)}
+                  {formatMoney(currentBalance, currency)}
+                </span>
+                <span className='ml-2 text-xs text-[var(--text-muted)]'>
+                  from {formatMoney(startingBalance, currency)}
                 </span>
               </p>
 
@@ -177,6 +183,15 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
                     {formatMoney(netPnl, currency)}
                   </strong>
                 </span>
+                {cashflow !== 0 ? (
+                  <span>
+                    Deposits/withdrawals:{' '}
+                    <strong className='font-semibold text-[var(--text-primary)]'>
+                      {cashflow > 0 ? '+' : ''}
+                      {formatMoney(cashflow, currency)}
+                    </strong>
+                  </span>
+                ) : null}
               </div>
 
               <div

@@ -61,9 +61,34 @@ async function fetchAccountTradeStats(
   return out;
 }
 
+async function fetchBalanceEventSums(
+  userId: string,
+): Promise<Record<string, number>> {
+  const { data, error } = await supabase
+    .from('account_balance_events')
+    .select('account_id, kind, amount')
+    .eq('user_id', userId);
+
+  if (error) throw error;
+
+  const out: Record<string, number> = {};
+  for (const row of (data ?? []) as {
+    account_id: string;
+    kind: string;
+    amount: number;
+  }[]) {
+    const signed =
+      row.kind === 'DEPOSIT' ? Number(row.amount) : -Number(row.amount);
+    out[row.account_id] =
+      (out[row.account_id] ?? 0) + (Number.isFinite(signed) ? signed : 0);
+  }
+  return out;
+}
+
 function mapAccount(
   row: AccountRow,
   stats?: AccountTradeStats,
+  cashflow?: number,
 ): Account {
   return {
     id: row.id,
@@ -76,17 +101,21 @@ function mapAccount(
     is_default: row.is_default,
     trade_count: stats?.trade_count ?? 0,
     net_pnl: stats?.net_pnl ?? 0,
+    net_cashflow: cashflow ?? 0,
     created_at: row.created_at,
   };
 }
 
 export async function listAccounts(): Promise<Account[]> {
   const user = await requireUser();
-  const [rows, statsByAccountId] = await Promise.all([
+  const [rows, statsByAccountId, cashflowByAccountId] = await Promise.all([
     fetchAccountsByUser(user.id),
     fetchAccountTradeStats(user.id),
+    fetchBalanceEventSums(user.id),
   ]);
-  return rows.map((row) => mapAccount(row, statsByAccountId[row.id]));
+  return rows.map((row) =>
+    mapAccount(row, statsByAccountId[row.id], cashflowByAccountId[row.id]),
+  );
 }
 
 export async function createAccount(
