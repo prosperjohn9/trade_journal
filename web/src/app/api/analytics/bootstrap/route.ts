@@ -65,11 +65,19 @@ export async function GET(request: Request) {
         name: t.name,
         is_default: !!t.is_default,
       })),
-      accounts: (accountsRes.data ?? []).map((a: { id: string; name: string; is_default: boolean }) => ({
-        id: a.id,
-        name: a.name,
-        is_default: !!a.is_default,
-      })),
+      accounts: (accountsRes.data ?? []).map(
+        (a: {
+          id: string;
+          name: string;
+          is_default: boolean;
+          starting_balance: number | null;
+        }) => ({
+          id: a.id,
+          name: a.name,
+          is_default: !!a.is_default,
+          starting_balance: a.starting_balance,
+        }),
+      ),
     },
     { headers: { 'Cache-Control': 'private, max-age=300, stale-while-revalidate=60' } },
   );
