@@ -225,7 +225,21 @@ export function useAnalytics() {
   const trades = tradesData ?? [];
 
   const currency = profile?.base_currency ?? 'USD';
-  const startingBalanceRaw = profile?.starting_balance;
+
+  // Equity-curve baseline: use the selected account's starting balance, or the
+  // sum across all accounts for the "all" view, falling back to the profile
+  // only when there are no accounts. Previously this always used the profile
+  // balance, so the curve started from a stale profile default (e.g. 100k)
+  // regardless of the actual account size.
+  const selectedAccount =
+    applied.accountFilter !== 'all'
+      ? (accounts.find((a) => a.id === applied.accountFilter) ?? null)
+      : null;
+  const startingBalanceRaw = selectedAccount
+    ? selectedAccount.starting_balance
+    : accounts.length
+      ? accounts.reduce((sum, a) => sum + toNumberSafe(a.starting_balance, 0), 0)
+      : profile?.starting_balance;
   const hasStartingBalance =
     startingBalanceRaw !== null && startingBalanceRaw !== undefined;
   const startingBalance = hasStartingBalance ? toNumberSafe(startingBalanceRaw) : 0;

@@ -34,6 +34,7 @@ export type AnalyticsAccount = {
   id: string;
   name: string;
   is_default: boolean;
+  starting_balance?: number | null;
 };
 
 export async function loadAnalyticsBootstrap(): Promise<{
