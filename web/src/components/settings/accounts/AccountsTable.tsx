@@ -6,6 +6,7 @@ import { cx } from '@/src/lib/utils/ui';
 import { EmptyState } from '@/src/components/ui/EmptyState';
 import type { useAccounts } from '@/src/hooks/useAccounts';
 import { MetaTraderConnect } from './MetaTraderConnect';
+import { BalanceEventsButton } from './BalanceEventsButton';
 
 const MAX_VISIBLE_TAGS = 3;
 const TYPE_ACCENTS: Record<string, string> = {
@@ -211,6 +212,8 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
                   </button>
 
                   <MetaTraderConnect accountId={a.id} onSynced={s.reload} />
+
+                  <BalanceEventsButton accountId={a.id} onChanged={s.reload} />
                 </div>
               </div>
             </article>
