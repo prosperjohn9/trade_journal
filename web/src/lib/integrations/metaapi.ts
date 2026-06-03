@@ -5,11 +5,20 @@
 // investor passwords are passed to MetaApi at connect time and never stored by
 // us — we keep only the MetaApi account id.
 
+import { randomUUID } from 'node:crypto';
+
 export const DEFAULT_MT_REGION = 'london';
 
 function metaStatsHost(region: string): string {
   return `https://metastats-api-v1.${region}.agiliumtrade.ai`;
 }
+
+// Region-agnostic provisioning host (empirically verified — the doubled
+// "agiliumtrade" is MetaApi's real base domain, not a typo).
+const PROVISIONING_HOST =
+  'https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai';
+
+export type MtPlatform = 'mt4' | 'mt5';
 
 export function getMetaApiToken(): string {
   const token = process.env.METAAPI_TOKEN;
@@ -118,6 +127,52 @@ export async function fetchHistoricalTrades(params: {
 
   const body = (await res.json()) as { trades?: MetaStatsTrade[] };
   return Array.isArray(body.trades) ? body.trades : [];
+}
+
+/** Provision a read-only MetaApi account for a user's MT login. MetaStats is
+ *  enabled at creation so trade history is available without an extra step. The
+ *  investor password is sent to MetaApi once here and never stored by us. */
+export async function provisionAccount(params: {
+  name: string;
+  login: string;
+  password: string;
+  server: string;
+  platform: MtPlatform;
+  region?: string;
+  reliability?: 'regular' | 'high';
+}): Promise<{ metaApiAccountId: string; state: string; region: string }> {
+  const region = params.region ?? DEFAULT_MT_REGION;
+  const res = await fetch(`${PROVISIONING_HOST}/users/current/accounts`, {
+    method: 'POST',
+    headers: {
+      'auth-token': getMetaApiToken(),
+      'transaction-id': randomUUID().replace(/-/g, ''),
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: params.name,
+      login: params.login,
+      password: params.password,
+      server: params.server,
+      platform: params.platform,
+      magic: 0,
+      type: 'cloud-g2',
+      region,
+      reliability: params.reliability ?? 'high',
+      metastatsApiEnabled: true,
+    }),
+  });
+
+  if (res.status !== 200 && res.status !== 201 && res.status !== 202) {
+    const text = await res.text().catch(() => '');
+    throw new Error(
+      `MetaApi provisioning failed (${res.status}): ${text.slice(0, 300)}`,
+    );
+  }
+
+  const data = (await res.json()) as { id?: string; state?: string };
+  if (!data?.id) throw new Error('MetaApi did not return an account id');
+  return { metaApiAccountId: data.id, state: data.state ?? 'DRAFT', region };
 }
 
 const TRADE_DEAL_TYPES = new Set(['DEAL_TYPE_BUY', 'DEAL_TYPE_SELL']);
