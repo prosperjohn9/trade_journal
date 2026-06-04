@@ -7,6 +7,7 @@ import { EmptyState } from '@/src/components/ui/EmptyState';
 import type { useAccounts } from '@/src/hooks/useAccounts';
 import { MetaTraderConnect } from './MetaTraderConnect';
 import { BalanceEventsButton } from './BalanceEventsButton';
+import { PropRulesButton } from './PropRulesButton';
 
 const MAX_VISIBLE_TAGS = 3;
 const TYPE_ACCENTS: Record<string, string> = {
@@ -229,6 +230,15 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
                   <MetaTraderConnect accountId={a.id} onSynced={s.reload} />
 
                   <BalanceEventsButton accountId={a.id} onChanged={s.reload} />
+
+                  {a.account_type === 'Challenge' ||
+                  a.account_type === 'Funded' ? (
+                    <PropRulesButton
+                      accountId={a.id}
+                      startingBalance={startingBalance}
+                      onChanged={s.reload}
+                    />
+                  ) : null}
                 </div>
               </div>
             </article>
