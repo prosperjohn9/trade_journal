@@ -15,6 +15,7 @@ export type PropRules = {
   maxDrawdownType?: 'static' | 'trailing';
   dailyLossPct?: number; // % of account size (single-day loss limit)
   minTradingDays?: number;
+  dailyResetHourUtc?: number; // 0-23; UTC hour the trading day resets (default 0)
 };
 
 export type PropTrade = { at: string; pnl: number };
@@ -47,8 +48,11 @@ export type PropStatus = {
   status: 'passed' | 'breached' | 'in_progress';
 };
 
-function dayKeyUTC(iso: string): string {
-  const d = new Date(iso);
+function dayKeyUTC(iso: string, resetHourUtc = 0): string {
+  // Shift the clock back by the reset hour so each prop "trading day" runs from
+  // its reset time to the next, then label it by that shifted UTC date.
+  const shiftMs = (((resetHourUtc % 24) + 24) % 24) * 3_600_000;
+  const d = new Date(new Date(iso).getTime() - shiftMs);
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
 }
@@ -65,15 +69,19 @@ export function computePropStatus(params: {
 
   const accountSize =
     rules.accountSize && rules.accountSize > 0 ? rules.accountSize : startingBalance;
+  const resetHour = rules.dailyResetHourUtc ?? 0;
+  const trailing = rules.maxDrawdownType === 'trailing';
+  const maxDdAmount =
+    rules.maxDrawdownPct != null ? (accountSize * rules.maxDrawdownPct) / 100 : null;
 
   const pnlByDay = new Map<string, number>();
   for (const t of trades) {
-    const k = dayKeyUTC(t.at);
+    const k = dayKeyUTC(t.at, resetHour);
     pnlByDay.set(k, (pnlByDay.get(k) ?? 0) + t.pnl);
   }
   const cashByDay = new Map<string, number>();
   for (const c of cashflows) {
-    const k = dayKeyUTC(c.at);
+    const k = dayKeyUTC(c.at, resetHour);
     cashByDay.set(k, (cashByDay.get(k) ?? 0) + c.amount);
   }
 
@@ -86,11 +94,17 @@ export function computePropStatus(params: {
   const days = [...new Set([...pnlByDay.keys(), ...cashByDay.keys()])].sort();
   let running = startingBalance;
   let minRunning = startingBalance;
+  let peak = startingBalance;
+  let trailingBreached = false;
   let worstDayLoss: number | null = null;
   let worstDayDate: string | null = null;
   for (const d of days) {
     running += (pnlByDay.get(d) ?? 0) + (cashByDay.get(d) ?? 0);
+    if (running > peak) peak = running;
     if (running < minRunning) minRunning = running;
+    if (maxDdAmount != null && running <= peak - maxDdAmount) {
+      trailingBreached = true;
+    }
     if (pnlByDay.has(d)) {
       const dayPnl = pnlByDay.get(d) ?? 0;
       if (worstDayLoss == null || dayPnl < worstDayLoss) {
@@ -100,7 +114,8 @@ export function computePropStatus(params: {
     }
   }
 
-  const todayNet = pnlByDay.get(dayKeyUTC(new Date().toISOString())) ?? 0;
+  const todayNet =
+    pnlByDay.get(dayKeyUTC(new Date().toISOString(), resetHour)) ?? 0;
 
   const profitTargetAmount =
     rules.profitTargetPct != null
@@ -114,9 +129,7 @@ export function computePropStatus(params: {
     profitTargetAmount != null ? netProfit >= profitTargetAmount : false;
 
   const maxDrawdownFloor =
-    rules.maxDrawdownPct != null
-      ? startingBalance - (accountSize * rules.maxDrawdownPct) / 100
-      : null;
+    maxDdAmount != null ? (trailing ? peak : startingBalance) - maxDdAmount : null;
   const drawdownBufferAmount =
     maxDrawdownFloor != null ? currentBalance - maxDrawdownFloor : null;
   const drawdownBufferPct =
@@ -124,7 +137,11 @@ export function computePropStatus(params: {
       ? (drawdownBufferAmount / accountSize) * 100
       : null;
   const maxDrawdownBreached =
-    maxDrawdownFloor != null ? minRunning <= maxDrawdownFloor : false;
+    maxDdAmount == null
+      ? false
+      : trailing
+        ? trailingBreached
+        : minRunning <= startingBalance - maxDdAmount;
 
   const dailyLossLimit =
     rules.dailyLossPct != null ? (accountSize * rules.dailyLossPct) / 100 : null;

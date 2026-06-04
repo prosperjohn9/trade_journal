@@ -71,6 +71,10 @@ export function PropRulesButton({
   const [maxDrawdownPct, setMaxDrawdownPct] = useState('');
   const [dailyLossPct, setDailyLossPct] = useState('');
   const [minTradingDays, setMinTradingDays] = useState('');
+  const [maxDrawdownType, setMaxDrawdownType] = useState<'static' | 'trailing'>(
+    'static',
+  );
+  const [dailyResetHourUtc, setDailyResetHourUtc] = useState('');
 
   function fillForm(r: PropRules | null) {
     setFirm(r?.firm ?? '');
@@ -80,6 +84,10 @@ export function PropRulesButton({
     setMaxDrawdownPct(r?.maxDrawdownPct != null ? String(r.maxDrawdownPct) : '');
     setDailyLossPct(r?.dailyLossPct != null ? String(r.dailyLossPct) : '');
     setMinTradingDays(r?.minTradingDays != null ? String(r.minTradingDays) : '');
+    setMaxDrawdownType(r?.maxDrawdownType === 'trailing' ? 'trailing' : 'static');
+    setDailyResetHourUtc(
+      r?.dailyResetHourUtc != null ? String(r.dailyResetHourUtc) : '',
+    );
   }
 
   async function loadAll() {
@@ -155,6 +163,8 @@ export function PropRulesButton({
         maxDrawdownPct: numOrUndef(maxDrawdownPct),
         dailyLossPct: numOrUndef(dailyLossPct),
         minTradingDays: numOrUndef(minTradingDays),
+        maxDrawdownType,
+        dailyResetHourUtc: numOrUndef(dailyResetHourUtc),
       };
       const { error } = await supabase
         .from('accounts')
@@ -376,6 +386,19 @@ export function PropRulesButton({
                         placeholder='10'
                       />
                     </Field>
+                    <Field label='Drawdown type'>
+                      <select
+                        className={inputClass}
+                        value={maxDrawdownType}
+                        onChange={(e) =>
+                          setMaxDrawdownType(
+                            e.target.value === 'trailing' ? 'trailing' : 'static',
+                          )
+                        }>
+                        <option value='static'>Static</option>
+                        <option value='trailing'>Trailing</option>
+                      </select>
+                    </Field>
                     <Field label='Daily loss %'>
                       <input
                         className={inputClass}
@@ -394,7 +417,21 @@ export function PropRulesButton({
                         placeholder='3'
                       />
                     </Field>
+                    <Field label='Daily reset (UTC hour)'>
+                      <input
+                        className={inputClass}
+                        value={dailyResetHourUtc}
+                        onChange={(e) => setDailyResetHourUtc(e.target.value)}
+                        inputMode='numeric'
+                        placeholder='0 = UTC midnight'
+                      />
+                    </Field>
                   </div>
+                  <p className='text-[11px] text-[var(--text-muted)]'>
+                    Drawdown defaults to static. Daily reset is the UTC hour your
+                    firm starts a new day: 0 is UTC midnight, around 22 is typical
+                    for an EET broker-server midnight or New York 5pm.
+                  </p>
                   <button
                     className='w-full rounded-lg bg-[var(--accent-cta)] px-3 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60'
                     onClick={() => void save()}
