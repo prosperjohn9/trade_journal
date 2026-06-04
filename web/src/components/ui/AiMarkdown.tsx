@@ -73,6 +73,9 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
 }
 
 export function AiMarkdown({ text }: { text: string }) {
+  // Em/en dashes are an AI-writing tell (and a product preference). Turn them
+  // into a comma clause so even cached output reads like a person wrote it.
+  const normalized = text.replace(/\s*[—–]\s*/g, ', ');
   const blocks: ReactNode[] = [];
   let bullets: ReactNode[] = [];
 
@@ -90,7 +93,7 @@ export function AiMarkdown({ text }: { text: string }) {
     bullets = [];
   };
 
-  text.split('\n').forEach((raw, i) => {
+  normalized.split('\n').forEach((raw, i) => {
     const line = raw.trim();
     if (!line) {
       flush(String(i));
