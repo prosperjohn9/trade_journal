@@ -3,6 +3,11 @@
 import { useState } from 'react';
 import { apiPost } from '@/src/lib/api/fetcher';
 import { createAccount } from '@/src/lib/services/accounts.service';
+import {
+  ACCOUNT_TYPES,
+  normalizeAccountTags,
+  type AccountType,
+} from '@/src/domain/account';
 
 const inputClass =
   'w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]';
@@ -16,6 +21,8 @@ export function ConnectBrokerButton({ onCreated }: { onCreated?: () => void }) {
   const [server, setServer] = useState('');
   const [password, setPassword] = useState('');
   const [platform, setPlatform] = useState<'mt5' | 'mt4'>('mt5');
+  const [accountType, setAccountType] = useState<AccountType>('Challenge');
+  const [tagsInput, setTagsInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -26,6 +33,8 @@ export function ConnectBrokerButton({ onCreated }: { onCreated?: () => void }) {
     setServer('');
     setPassword('');
     setPlatform('mt5');
+    setAccountType('Challenge');
+    setTagsInput('');
     setMsg(null);
     setDone(false);
     setOpen(true);
@@ -41,8 +50,8 @@ export function ConnectBrokerButton({ onCreated }: { onCreated?: () => void }) {
     try {
       const account = await createAccount({
         name: name.trim(),
-        account_type: 'Live',
-        tags: [],
+        account_type: accountType,
+        tags: normalizeAccountTags(tagsInput),
         starting_balance: 0,
         base_currency: null,
       });
@@ -118,6 +127,36 @@ export function ConnectBrokerButton({ onCreated }: { onCreated?: () => void }) {
                     placeholder='e.g. FundingPips 10K'
                   />
                 </label>
+                <div className='grid grid-cols-2 gap-3'>
+                  <label className='block'>
+                    <span className='mb-1 block text-xs font-medium text-[var(--text-muted)]'>
+                      Account type
+                    </span>
+                    <select
+                      className={inputClass}
+                      value={accountType}
+                      onChange={(e) =>
+                        setAccountType(e.target.value as AccountType)
+                      }>
+                      {ACCOUNT_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className='block'>
+                    <span className='mb-1 block text-xs font-medium text-[var(--text-muted)]'>
+                      Tags (comma-separated)
+                    </span>
+                    <input
+                      className={inputClass}
+                      value={tagsInput}
+                      onChange={(e) => setTagsInput(e.target.value)}
+                      placeholder='10k, Phase 1'
+                    />
+                  </label>
+                </div>
                 <label className='block'>
                   <span className='mb-1 block text-xs font-medium text-[var(--text-muted)]'>
                     Login
