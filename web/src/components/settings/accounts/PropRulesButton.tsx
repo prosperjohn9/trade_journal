@@ -27,22 +27,58 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Bar({ pct, tone }: { pct: number; tone: 'good' | 'bad' | 'neutral' }) {
-  const color =
-    tone === 'good'
-      ? 'var(--profit)'
-      : tone === 'bad'
-        ? 'var(--loss)'
-        : 'var(--accent)';
+type Tone = 'good' | 'bad' | 'neutral';
+
+function toneColor(t: Tone): string {
+  return t === 'good'
+    ? 'var(--profit)'
+    : t === 'bad'
+      ? 'var(--loss)'
+      : 'var(--accent)';
+}
+
+function Objective({
+  label,
+  right,
+  rightTone = 'neutral',
+  detail,
+  pct,
+  barTone,
+}: {
+  label: string;
+  right: string;
+  rightTone?: Tone;
+  detail?: string;
+  pct: number;
+  barTone: Tone;
+}) {
   return (
-    <div className='h-2 w-full overflow-hidden rounded-full bg-[var(--surface-muted)]'>
-      <div
-        className='h-full rounded-full'
-        style={{
-          width: `${Math.max(0, Math.min(100, pct))}%`,
-          backgroundColor: color,
-        }}
-      />
+    <div className='space-y-1.5'>
+      <div className='flex items-center justify-between text-sm'>
+        <span className='font-medium text-[var(--text-primary)]'>{label}</span>
+        <span
+          className='text-xs font-semibold'
+          style={{
+            color:
+              rightTone === 'neutral'
+                ? 'var(--text-secondary)'
+                : toneColor(rightTone),
+          }}>
+          {right}
+        </span>
+      </div>
+      {detail ? (
+        <div className='text-[11px] text-[var(--text-muted)]'>{detail}</div>
+      ) : null}
+      <div className='h-2 w-full overflow-hidden rounded-full bg-[var(--surface-muted)]'>
+        <div
+          className='h-full rounded-full'
+          style={{
+            width: `${Math.max(0, Math.min(100, pct))}%`,
+            backgroundColor: toneColor(barTone),
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -76,18 +112,32 @@ export function PropRulesButton({
   );
   const [dailyResetHourUtc, setDailyResetHourUtc] = useState('');
 
-  function fillForm(r: PropRules | null) {
-    setFirm(r?.firm ?? '');
-    setAccountSize(r?.accountSize != null ? String(r.accountSize) : '');
-    setPhase(r?.phase ?? '');
-    setProfitTargetPct(r?.profitTargetPct != null ? String(r.profitTargetPct) : '');
-    setMaxDrawdownPct(r?.maxDrawdownPct != null ? String(r.maxDrawdownPct) : '');
-    setDailyLossPct(r?.dailyLossPct != null ? String(r.dailyLossPct) : '');
-    setMinTradingDays(r?.minTradingDays != null ? String(r.minTradingDays) : '');
-    setMaxDrawdownType(r?.maxDrawdownType === 'trailing' ? 'trailing' : 'static');
+  function fillForm(r: PropRules) {
+    setFirm(r.firm ?? '');
+    setAccountSize(r.accountSize != null ? String(r.accountSize) : '');
+    setPhase(r.phase ?? '');
+    setProfitTargetPct(r.profitTargetPct != null ? String(r.profitTargetPct) : '');
+    setMaxDrawdownPct(r.maxDrawdownPct != null ? String(r.maxDrawdownPct) : '');
+    setDailyLossPct(r.dailyLossPct != null ? String(r.dailyLossPct) : '');
+    setMinTradingDays(r.minTradingDays != null ? String(r.minTradingDays) : '');
+    setMaxDrawdownType(r.maxDrawdownType === 'trailing' ? 'trailing' : 'static');
     setDailyResetHourUtc(
-      r?.dailyResetHourUtc != null ? String(r.dailyResetHourUtc) : '',
+      r.dailyResetHourUtc != null ? String(r.dailyResetHourUtc) : '',
     );
+  }
+
+  // Sensible starting point (FundingPips/FTMO two-step) so the form is never
+  // empty; the user adjusts to their actual challenge.
+  function fillDefaults() {
+    setFirm('');
+    setAccountSize(String(startingBalance > 0 ? startingBalance : 10000));
+    setPhase('');
+    setProfitTargetPct('8');
+    setMaxDrawdownPct('10');
+    setDailyLossPct('5');
+    setMinTradingDays('');
+    setMaxDrawdownType('static');
+    setDailyResetHourUtc('');
   }
 
   async function loadAll() {
@@ -105,10 +155,23 @@ export function PropRulesButton({
           .eq('account_id', accountId),
       ]);
 
-      const r = (acctRes.data?.prop_rules ?? null) as PropRules | null;
+      const raw = (acctRes.data?.prop_rules ?? null) as PropRules | null;
+      const meaningful =
+        raw != null &&
+        (raw.profitTargetPct != null ||
+          raw.maxDrawdownPct != null ||
+          raw.dailyLossPct != null ||
+          raw.minTradingDays != null ||
+          raw.accountSize != null);
+      const r = meaningful ? raw : null;
       setRules(r);
-      fillForm(r);
-      setEditing(!r);
+      if (r) {
+        fillForm(r);
+        setEditing(false);
+      } else {
+        fillDefaults();
+        setEditing(true);
+      }
 
       const trades = (
         (tradesRes.data ?? []) as Array<{
@@ -201,6 +264,85 @@ export function PropRulesButton({
     );
   };
 
+  function renderObjectives(s: PropStatus, r: PropRules): ReactNode {
+    const objectives: ReactNode[] = [];
+
+    if (s.profitTargetAmount != null) {
+      objectives.push(
+        <Objective
+          key='target'
+          label='Profit target'
+          right={
+            s.targetMet ? 'Achieved' : `${Math.round(s.profitProgressPct ?? 0)}%`
+          }
+          rightTone={s.targetMet ? 'good' : 'neutral'}
+          detail={`${fmt(s.netProfit)} of ${fmt(s.profitTargetAmount)}`}
+          pct={s.profitProgressPct ?? 0}
+          barTone={s.targetMet ? 'good' : 'neutral'}
+        />,
+      );
+    }
+
+    if (s.maxDrawdownFloor != null && r.maxDrawdownPct != null) {
+      const allowed = (s.accountSize * r.maxDrawdownPct) / 100;
+      const remaining = s.drawdownBufferAmount ?? 0;
+      const used = Math.max(0, allowed - remaining);
+      const danger = remaining <= allowed / 3;
+      objectives.push(
+        <Objective
+          key='maxloss'
+          label={`Max loss${r.maxDrawdownType === 'trailing' ? ' (trailing)' : ''}`}
+          right={s.maxDrawdownBreached ? 'Breached' : `${fmt(remaining)} left`}
+          rightTone={s.maxDrawdownBreached || danger ? 'bad' : 'good'}
+          detail={`Floor ${fmt(s.maxDrawdownFloor)}. Used ${fmt(used)} of ${fmt(allowed)} allowed.`}
+          pct={allowed > 0 ? (used / allowed) * 100 : 0}
+          barTone={s.maxDrawdownBreached || danger ? 'bad' : 'neutral'}
+        />,
+      );
+    }
+
+    if (s.dailyLossLimit != null) {
+      const limit = s.dailyLossLimit;
+      const usedToday = Math.max(0, -s.todayNet);
+      const remaining = Math.max(0, limit - usedToday);
+      objectives.push(
+        <Objective
+          key='daily'
+          label='Max daily loss'
+          right={
+            s.dailyLimitBreached ? 'Breached' : `${fmt(remaining)} left today`
+          }
+          rightTone={s.dailyLimitBreached ? 'bad' : 'good'}
+          detail={`Limit ${fmt(limit)} per day. Worst day ${s.worstDayLoss != null ? fmt(s.worstDayLoss) : 'n/a'}.`}
+          pct={limit > 0 ? (usedToday / limit) * 100 : 0}
+          barTone={s.dailyLimitBreached ? 'bad' : 'neutral'}
+        />,
+      );
+    }
+
+    if (s.minTradingDays != null) {
+      objectives.push(
+        <Objective
+          key='days'
+          label='Minimum trading days'
+          right={s.minDaysMet ? 'Met' : `${s.tradingDays} of ${s.minTradingDays}`}
+          rightTone={s.minDaysMet ? 'good' : 'neutral'}
+          pct={s.minTradingDays ? (s.tradingDays / s.minTradingDays) * 100 : 0}
+          barTone={s.minDaysMet ? 'good' : 'neutral'}
+        />,
+      );
+    }
+
+    return objectives.length ? (
+      <div className='space-y-4'>{objectives}</div>
+    ) : (
+      <p className='text-sm text-[var(--text-muted)]'>
+        No objectives set yet. Tap Edit rules to add your profit target and
+        drawdown limits.
+      </p>
+    );
+  }
+
   return (
     <>
       <span className='text-[var(--text-muted)]'>•</span>
@@ -241,94 +383,12 @@ export function PropRulesButton({
                     {statusChip(status.status)}
                   </div>
 
-                  {status.profitTargetAmount != null ? (
-                    <div className='space-y-1'>
-                      <div className='flex justify-between text-xs text-[var(--text-secondary)]'>
-                        <span>Profit target</span>
-                        <span>
-                          {fmt(status.netProfit)} / {fmt(status.profitTargetAmount)}{' '}
-                          ({Math.round(status.profitProgressPct ?? 0)}%)
-                        </span>
-                      </div>
-                      <Bar
-                        pct={status.profitProgressPct ?? 0}
-                        tone={status.targetMet ? 'good' : 'neutral'}
-                      />
-                    </div>
-                  ) : null}
-
-                  {status.maxDrawdownFloor != null ? (
-                    <div className='space-y-1'>
-                      <div className='flex justify-between text-xs text-[var(--text-secondary)]'>
-                        <span>Drawdown buffer</span>
-                        <span>
-                          {status.maxDrawdownBreached
-                            ? 'Breached'
-                            : `${fmt(status.drawdownBufferAmount ?? 0)} before breach`}
-                        </span>
-                      </div>
-                      <Bar
-                        pct={
-                          status.maxDrawdownBreached
-                            ? 0
-                            : ((status.drawdownBufferAmount ?? 0) /
-                                (status.accountSize *
-                                  (rules.maxDrawdownPct ?? 1) /
-                                  100)) *
-                              100
-                        }
-                        tone={
-                          status.maxDrawdownBreached
-                            ? 'bad'
-                            : (status.drawdownBufferPct ?? 100) <
-                                (rules.maxDrawdownPct ?? 10) / 3
-                              ? 'bad'
-                              : 'good'
-                        }
-                      />
-                      <p className='text-[11px] text-[var(--text-muted)]'>
-                        Floor at {fmt(status.maxDrawdownFloor)}. Current balance{' '}
-                        {fmt(status.currentBalance)}.
-                      </p>
-                    </div>
-                  ) : null}
-
-                  <div className='grid grid-cols-2 gap-3 text-sm'>
-                    {status.dailyLossLimit != null ? (
-                      <div className='rounded-lg border border-[var(--border-default)] p-3'>
-                        <div className='text-xs text-[var(--text-muted)]'>
-                          Daily loss limit
-                        </div>
-                        <div
-                          className={
-                            status.dailyLimitBreached
-                              ? 'font-semibold text-[var(--loss)]'
-                              : 'font-semibold text-[var(--text-primary)]'
-                          }>
-                          {status.dailyLimitBreached ? 'Breached' : `${fmt(status.dailyLossLimit)} / day`}
-                        </div>
-                        <div className='text-[11px] text-[var(--text-muted)]'>
-                          Worst day {status.worstDayLoss != null ? fmt(status.worstDayLoss) : 'n/a'}
-                          {status.worstDayDate ? ` (${status.worstDayDate})` : ''}
-                        </div>
-                      </div>
-                    ) : null}
-                    {status.minTradingDays != null ? (
-                      <div className='rounded-lg border border-[var(--border-default)] p-3'>
-                        <div className='text-xs text-[var(--text-muted)]'>
-                          Trading days
-                        </div>
-                        <div
-                          className={
-                            status.minDaysMet
-                              ? 'font-semibold text-[var(--profit)]'
-                              : 'font-semibold text-[var(--text-primary)]'
-                          }>
-                          {status.tradingDays} / {status.minTradingDays}
-                        </div>
-                      </div>
-                    ) : null}
+                  <div className='text-xs text-[var(--text-muted)]'>
+                    Balance {fmt(status.currentBalance)}. Net P&amp;L{' '}
+                    {fmt(status.netProfit)}.
                   </div>
+
+                  {renderObjectives(status, rules)}
 
                   <button
                     className='text-xs text-[var(--accent)] hover:opacity-80'
