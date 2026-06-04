@@ -15,6 +15,7 @@ import {
   type AnalyticsTrade,
 } from '@/src/lib/services/analytics.service';
 import { loadBalanceEvents } from '@/src/lib/services/balanceEvents.service';
+import { computeRReport } from '@/src/lib/analytics/rmultiple';
 
 export type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
 export type Direction = 'BUY' | 'SELL';
@@ -329,6 +330,8 @@ export function useAnalytics() {
       (t) => getSessionUTC(t.opened_at) === applied.sessionFilter,
     );
   }, [trades, applied.sessionFilter]);
+
+  const rReport = useMemo(() => computeRReport(filteredTrades), [filteredTrades]);
 
   const stats = useMemo(() => {
     const list = filteredTrades;
@@ -896,6 +899,7 @@ export function useAnalytics() {
     setCalendarMode,
 
     stats,
+    rReport,
     equitySeries,
     dailyNetSeries,
     monthlyNetBars,

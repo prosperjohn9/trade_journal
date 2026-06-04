@@ -19,6 +19,12 @@ export type AnalyticsTrade = {
   commission: number | null;
   net_pnl: number | null;
   r_multiple: number | null;
+  risk_amount: number | null;
+
+  entry_price: number | null;
+  exit_price: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
 
   reviewed_at: string | null;
   template_id: string | null;

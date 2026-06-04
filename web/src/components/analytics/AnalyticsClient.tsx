@@ -48,6 +48,31 @@ function signColor(n: number) {
   return 'text-[var(--text-primary)]';
 }
 
+function RStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: 'good' | 'bad';
+}) {
+  const color =
+    tone === 'good'
+      ? 'text-[var(--profit)]'
+      : tone === 'bad'
+        ? 'text-[var(--loss)]'
+        : '';
+  return (
+    <div className='border rounded-lg p-3 bg-[var(--surface-muted)] border-[var(--border-default)]'>
+      <div className='text-xs opacity-70'>{label}</div>
+      <div className={cx('text-lg font-semibold tabular-nums', color)}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
 type LinePoint = {
   xLabel: string;
   y: number;
@@ -773,6 +798,7 @@ export function AnalyticsClient() {
     setCalendarMode,
 
     stats,
+    rReport,
     equitySeries,
     dailyNetSeries,
     monthlyNetBars,
@@ -1314,6 +1340,108 @@ export function AnalyticsClient() {
             Sessions are computed from <span className='font-semibold'>entry date/time</span> using UTC hours.
           </div>
         </div>
+      </section>
+
+      {/* R-multiple analysis */}
+      <section className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)]'>
+        <div className='flex items-center justify-between gap-3'>
+          <div>
+            <div className='font-semibold'>R-multiple analysis</div>
+            <div className='text-xs opacity-70 mt-1'>
+              Results measured in units of risk taken (R)
+            </div>
+          </div>
+          <div className='text-xs opacity-70 text-right'>
+            {rReport.withR} of {rReport.total} trades with a defined risk
+          </div>
+        </div>
+
+        {rReport.withR === 0 ? (
+          <div className='mt-3 text-sm opacity-70'>
+            R cannot be measured without a defined risk. Add a stop loss (or a
+            risk amount) to your trades, or sync trades that carry a stop, and
+            this fills in.
+          </div>
+        ) : (
+          <>
+            <div className='mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3'>
+              <RStat
+                label='Expectancy'
+                value={`${formatNumber(rReport.expectancyR, 2)}R`}
+                tone={rReport.expectancyR >= 0 ? 'good' : 'bad'}
+              />
+              <RStat
+                label='Win rate'
+                value={formatPercent(rReport.winRateR, 0)}
+              />
+              <RStat
+                label='Avg win'
+                value={`+${formatNumber(rReport.avgWinR, 2)}R`}
+                tone='good'
+              />
+              <RStat
+                label='Avg loss'
+                value={`${formatNumber(rReport.avgLossR, 2)}R`}
+                tone='bad'
+              />
+              <RStat
+                label='Profit factor'
+                value={
+                  rReport.profitFactorR === Infinity
+                    ? '∞'
+                    : formatNumber(rReport.profitFactorR, 2)
+                }
+              />
+              <RStat
+                label='Best / Worst'
+                value={`${formatNumber(rReport.best ?? 0, 1)} / ${formatNumber(
+                  rReport.worst ?? 0,
+                  1,
+                )}R`}
+              />
+            </div>
+
+            <div className='mt-4'>
+              <div className='text-xs opacity-70 mb-2'>Distribution</div>
+              <div className='space-y-1.5'>
+                {rReport.distribution.map((b) => {
+                  const max = Math.max(
+                    1,
+                    ...rReport.distribution.map((x) => x.count),
+                  );
+                  return (
+                    <div
+                      key={b.label}
+                      className='flex items-center gap-2 text-xs'>
+                      <div className='w-20 shrink-0 opacity-70'>{b.label}</div>
+                      <div className='flex-1 h-4 rounded overflow-hidden bg-[var(--surface-muted)]'>
+                        <div
+                          className='h-full rounded'
+                          style={{
+                            width: `${(b.count / max) * 100}%`,
+                            backgroundColor: b.negative
+                              ? 'var(--loss)'
+                              : 'var(--profit)',
+                          }}
+                        />
+                      </div>
+                      <div className='w-6 text-right tabular-nums'>
+                        {b.count}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {rReport.coveragePct < 100 ? (
+              <div className='mt-3 text-xs opacity-70'>
+                Based on the {Math.round(rReport.coveragePct)}% of trades in view
+                with a defined risk.
+              </div>
+            ) : null}
+          </>
+        )}
       </section>
 
       {/* Direction + Streaks + Symbols */}

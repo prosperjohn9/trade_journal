@@ -29,7 +29,8 @@ export async function GET(request: Request) {
       `id, opened_at, closed_at,
        instrument, direction, outcome,
        pnl_amount, pnl_percent,
-       commission, net_pnl, r_multiple,
+       commission, net_pnl, r_multiple, risk_amount,
+       entry_price, exit_price, stop_loss, take_profit,
        reviewed_at, template_id`,
     )
     .gte('opened_at', startIso)
