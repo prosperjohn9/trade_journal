@@ -120,9 +120,10 @@ export function AiInsightsCard() {
       ) : (
         <div className='space-y-3'>
           <p className='text-sm text-[var(--text-secondary)]'>
-            A data-driven read on your whole journal: where your edge is, your
-            biggest leak, and what to work on next. Refreshes automatically as
-            you trade.
+            A behavioural read on your whole journal — where your edge is, the
+            single most costly leak (revenge trading, session decay, holding
+            losers too long), and the one pattern to break. Refreshes
+            automatically as you trade.
           </p>
           <button
             type='button'
