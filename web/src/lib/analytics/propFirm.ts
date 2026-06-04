@@ -36,6 +36,7 @@ export type PropStatus = {
   maxDrawdownBreached: boolean;
 
   dailyLossLimit: number | null;
+  dailyRemainingToday: number | null;
   worstDayLoss: number | null;
   worstDayDate: string | null;
   dailyLimitBreached: boolean;
@@ -73,6 +74,10 @@ export function computePropStatus(params: {
   const trailing = rules.maxDrawdownType === 'trailing';
   const maxDdAmount =
     rules.maxDrawdownPct != null ? (accountSize * rules.maxDrawdownPct) / 100 : null;
+  // Daily loss is a FIXED amount: the % of ACCOUNT SIZE (5% of 10k = 500),
+  // applied to each day's starting balance (day floor = dayStart - dailyAmount).
+  const dailyAmount =
+    rules.dailyLossPct != null ? (accountSize * rules.dailyLossPct) / 100 : null;
 
   const pnlByDay = new Map<string, number>();
   for (const t of trades) {
@@ -92,7 +97,6 @@ export function computePropStatus(params: {
   // Walk days chronologically to find the lowest running balance (static
   // drawdown breach) and the worst single trading day (daily-limit breach).
   const days = [...new Set([...pnlByDay.keys(), ...cashByDay.keys()])].sort();
-  const dailyPct = rules.dailyLossPct ?? null;
   let running = startingBalance;
   let minRunning = startingBalance;
   let peak = startingBalance;
@@ -103,11 +107,9 @@ export function computePropStatus(params: {
   for (const d of days) {
     const dayPnl = pnlByDay.get(d) ?? 0;
     const dayCash = cashByDay.get(d) ?? 0;
-    const dayStart = running; // balance at the start of this trading day
-    if (dailyPct != null) {
-      const dayLimit = (dayStart * dailyPct) / 100;
-      if (dayLimit > 0 && Math.max(0, -dayPnl) >= dayLimit) dailyBreached = true;
-    }
+    // A day breaches if its loss exceeds the fixed daily amount (balance drops
+    // below dayStart - dailyAmount).
+    if (dailyAmount != null && -dayPnl > dailyAmount) dailyBreached = true;
     running += dayPnl + dayCash;
     if (running > peak) peak = running;
     if (running < minRunning) minRunning = running;
@@ -153,12 +155,20 @@ export function computePropStatus(params: {
         ? trailingBreached
         : minRunning <= startingBalance - maxDdAmount;
 
-  // Daily loss limit is a percentage of the day's STARTING balance (how
-  // FundingPips and most firms compute it), so the limit shown is for today and
-  // the breach flag checks each day against its own day-start limit.
-  const dailyLossLimit =
-    dailyPct != null ? (todayStartBalance * dailyPct) / 100 : null;
+  // Limit is the fixed daily amount. "Remaining today" is how much can still be
+  // lost before hitting today's daily floor OR the overall floor, whichever
+  // binds first (e.g. near the overall floor the daily room shrinks).
+  const dailyLossLimit = dailyAmount;
   const dailyLimitBreached = dailyBreached;
+  const dailyTodayFloor =
+    dailyAmount != null ? todayStartBalance - dailyAmount : null;
+  const dailyRemainingToday =
+    dailyTodayFloor != null
+      ? Math.max(
+          0,
+          currentBalance - Math.max(dailyTodayFloor, maxDrawdownFloor ?? -Infinity),
+        )
+      : null;
 
   const tradingDays = pnlByDay.size;
   const minTradingDays = rules.minTradingDays ?? null;
@@ -184,6 +194,7 @@ export function computePropStatus(params: {
     drawdownBufferPct,
     maxDrawdownBreached,
     dailyLossLimit,
+    dailyRemainingToday,
     worstDayLoss,
     worstDayDate,
     dailyLimitBreached,

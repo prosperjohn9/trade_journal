@@ -304,7 +304,8 @@ export function PropRulesButton({
     if (s.dailyLossLimit != null) {
       const limit = s.dailyLossLimit;
       const usedToday = Math.max(0, -s.todayNet);
-      const remaining = Math.max(0, limit - usedToday);
+      // Binding remaining: smaller of today's daily room and the overall buffer.
+      const remaining = s.dailyRemainingToday ?? Math.max(0, limit - usedToday);
       objectives.push(
         <Objective
           key='daily'
