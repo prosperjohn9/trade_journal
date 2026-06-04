@@ -7,7 +7,7 @@ import { type ReactNode } from 'react';
  * fixed sections. Shared by the trade review and the insights card.
  */
 
-const INLINE_RE = /\[([^\]]+)\]\(([^)]+)\)|\*\*(.+?)\*\*/g;
+const INLINE_RE = /\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|\*([^*\n]+)\*/g;
 
 /** Allow only safe, non-script hrefs (internal paths, mailto, http(s)). */
 function safeHref(url: string): string | null {
@@ -31,7 +31,7 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
   let m: RegExpExecArray | null;
   INLINE_RE.lastIndex = 0;
   while ((m = INLINE_RE.exec(text)) !== null) {
-    if (m.index > last) nodes.push(text.slice(last, m.index).replace(/\*\*/g, ''));
+    if (m.index > last) nodes.push(text.slice(last, m.index).replace(/\*/g, ''));
     if (m[1] !== undefined && m[2] !== undefined) {
       const href = safeHref(m[2]);
       if (href) {
@@ -58,11 +58,17 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
           {m[3]}
         </strong>,
       );
+    } else if (m[4] !== undefined) {
+      nodes.push(
+        <em key={`${keyBase}-i-${idx}`} className='italic'>
+          {m[4]}
+        </em>,
+      );
     }
     last = m.index + m[0].length;
     idx++;
   }
-  if (last < text.length) nodes.push(text.slice(last).replace(/\*\*/g, ''));
+  if (last < text.length) nodes.push(text.slice(last).replace(/\*/g, ''));
   return nodes;
 }
 

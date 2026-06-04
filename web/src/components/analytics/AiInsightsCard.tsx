@@ -139,7 +139,7 @@ export function AiInsightsCard() {
 
       {insights ? (
         <p className='border-t border-[var(--border-default)] pt-3 text-xs text-[var(--text-muted)]'>
-          AI analysis of your aggregate stats. Educational only, not financial
+          AI read of your trading behaviour. Educational only, not financial
           advice.
         </p>
       ) : null}
