@@ -8,6 +8,7 @@ import { EmptyState } from '@/src/components/ui/EmptyState';
 import { useDashboard } from '@/src/hooks/useDashboard';
 import { DashboardCards } from './DashboardCards';
 import { DashboardTradeTable } from './DashboardTradeTable';
+import { PropChallengeWidget } from './PropChallengeWidget';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -377,6 +378,9 @@ export default function DashboardClient() {
           />
         ) : (
           <>
+            {/* Prop-firm challenge status (renders nothing for non-prop users) */}
+            <PropChallengeWidget accountId={s.accountId} />
+
             {/* KPI cards + insights */}
             <div className='pt-2'>
               <DashboardCards state={s} />
