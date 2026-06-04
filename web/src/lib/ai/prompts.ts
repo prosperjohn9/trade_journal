@@ -1,4 +1,5 @@
 import type { CoreReport } from '@/src/lib/analytics/core';
+import type { BehaviorSignals } from '@/src/lib/analytics/behavior';
 
 // System prompts and input builders for the AI features. System prompts are
 // kept as stable, frozen strings so they remain prompt-cacheable.
@@ -77,30 +78,40 @@ export function buildTradeReviewInput(
   return lines.join('\n');
 }
 
-export const INSIGHTS_SYSTEM = `You are a trading performance analyst reviewing a trader's aggregate stats across their whole journal. Surface the few patterns that will most improve their results.
+export const INSIGHTS_SYSTEM = `You are a sharp trading-performance coach. You are given a trader's aggregate stats AND behavioural signals computed across their whole journal. Find the few BEHAVIOURAL patterns — leaks — quietly costing them money, and the genuine edge worth protecting. These are patterns traders rarely see in themselves.
+
+Hunt specifically for:
+- Time/session decay: win rate or expectancy that collapses in a particular session (Asia / London / Overlap / New York) or on a particular weekday.
+- Tilt / revenge trading: worse results, or larger size, on the trade(s) right after a loss or after 2+ consecutive losses.
+- The disposition effect: holding losers much longer than winners.
+- Emotion leaks: emotion tags that correlate with losing trades.
+- Sizing leaks: bigger size on losers than winners.
 
 Principles:
-- Work ONLY from the stats provided (win rate, expectancy, profit factor, average win/loss, R:R, drawdown, and the per-instrument breakdown). Never invent trades or numbers you were not given.
-- Be specific and quantified: cite the actual numbers. No generic advice.
-- Prioritise the highest-leverage points: where the real edge is, and the single most costly leak.
-- This is educational performance analysis, NOT financial or investment advice. Never tell them what to buy, sell, or hold, and never predict markets.
-- If the sample is small, say so and keep conclusions tentative.
+- Work ONLY from the numbers provided. Never invent trades, sessions, or figures.
+- Quantify everything with the actual number, and contrast against the overall baseline so the leak is obvious. "Win rate is 58% overall but 31% in the Asian session" beats "watch your Asian trades".
+- Prioritise the SINGLE most costly leak. Don't list ten small things.
+- If the sample behind a pattern is small (few trades), say so and keep it tentative.
+- This is educational behavioural coaching, NOT financial or investment advice. Never tell them what to buy, sell, or hold, and never predict markets.
 
 Format in Markdown with exactly these sections and headings:
 
-**Where your edge is** — 1 to 2 bullets on genuine strengths, each with the number behind it.
-**Biggest leak** — the single most costly pattern to fix, with the stat that proves it.
-**Watch / next step** — 1 to 2 concrete, measurable actions.
+**Your edge** — 1 to 2 bullets on what genuinely works (a session, weekday, setup, or condition where they make money), each with the number.
+**Your biggest leak** — the single most costly behavioural pattern, named plainly, with the stat that proves it and a sense of the cost.
+**The pattern to break** — one concrete, measurable rule to fix that leak (e.g. "no new trade within 15 minutes of a loss", "stop after 2 reds", "cut size back to baseline after a loss").
 
-Keep the whole thing under 220 words.`;
+Keep the whole thing under 240 words.`;
 
 function num(n: number, digits = 2): string {
   if (!Number.isFinite(n)) return '0';
   return n.toFixed(digits);
 }
 
-/** Render an aggregate CoreReport into the compact user-turn text for insights. */
-export function buildInsightsInput(report: CoreReport): string {
+/** Render the aggregate CoreReport + behavioural signals into the user-turn text. */
+export function buildInsightsInput(
+  report: CoreReport,
+  behavior?: BehaviorSignals,
+): string {
   const ranked = [...report.bySymbol].sort((a, b) => b.pnl - a.pnl);
   const best = ranked.slice(0, 5);
   const worst = ranked.slice(-5).reverse();
@@ -135,10 +146,82 @@ export function buildInsightsInput(report: CoreReport): string {
     }
   }
 
+  if (behavior) lines.push(formatBehavior(behavior));
+
   lines.push(
     '',
     'P&L figures are in account base currency and may mix currencies across accounts; lean on the ratios (win rate, R:R, profit factor, expectancy) for cross-cutting conclusions.',
   );
+
+  return lines.join('\n');
+}
+
+function pad1(n: number | null, suffix = ''): string {
+  return n != null ? `${num(n, 0)}${suffix}` : 'n/a';
+}
+
+function formatBehavior(b: BehaviorSignals): string {
+  const lines: string[] = ['', '## Behavioural signals (use these to find leaks)'];
+
+  lines.push('', '### By session (worst P&L first)');
+  for (const s of b.bySession) {
+    lines.push(
+      `- ${s.key}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${num(s.netPnl)} (avg ${num(s.avgPnl)})`,
+    );
+  }
+
+  lines.push('', '### By weekday (worst P&L first)');
+  for (const s of b.byDayOfWeek) {
+    lines.push(
+      `- ${s.key}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${num(s.netPnl)}`,
+    );
+  }
+
+  if (b.byEmotion.length) {
+    lines.push('', '### By emotion tag (worst P&L first)');
+    for (const s of b.byEmotion) {
+      lines.push(
+        `- ${s.key}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${num(s.netPnl)}`,
+      );
+    }
+  }
+
+  const seq = b.sequence;
+  lines.push('', '### Sequence / tilt after losses');
+  lines.push(`- Overall win rate: ${num(seq.overallWinRate, 0)}%`);
+  lines.push(
+    `- Right after a loss: ${seq.afterLoss.count} trades, ${num(seq.afterLoss.winRate, 0)}% win, avg P&L ${num(seq.afterLoss.avgPnl)}`,
+  );
+  lines.push(
+    `- Right after a win: ${seq.afterWin.count} trades, ${num(seq.afterWin.winRate, 0)}% win, avg P&L ${num(seq.afterWin.avgPnl)}`,
+  );
+  lines.push(
+    `- After 2+ losses in a row: ${seq.afterTwoLosses.count} trades, ${num(seq.afterTwoLosses.winRate, 0)}% win, avg P&L ${num(seq.afterTwoLosses.avgPnl)}`,
+  );
+  lines.push(`- Longest losing streak: ${seq.maxConsecutiveLosses}`);
+
+  if (b.holdTime.avgWinnerMin != null || b.holdTime.avgLoserMin != null) {
+    lines.push('', '### Hold time (disposition effect)');
+    lines.push(`- Avg winner held: ${pad1(b.holdTime.avgWinnerMin, ' min')}`);
+    lines.push(`- Avg loser held: ${pad1(b.holdTime.avgLoserMin, ' min')}`);
+    if (b.holdTime.ratioLoserOverWinner != null) {
+      lines.push(
+        `- Losers held ${num(b.holdTime.ratioLoserOverWinner, 1)}x as long as winners`,
+      );
+    }
+  }
+
+  if (b.size.avgWinnerVolume != null || b.size.avgLoserVolume != null) {
+    lines.push('', '### Position size (lots)');
+    if (b.size.avgWinnerVolume != null)
+      lines.push(`- Avg size on winners: ${num(b.size.avgWinnerVolume, 2)}`);
+    if (b.size.avgLoserVolume != null)
+      lines.push(`- Avg size on losers: ${num(b.size.avgLoserVolume, 2)}`);
+    if (b.size.avgVolumeAfterLoss != null && b.size.avgVolumeOverall != null)
+      lines.push(
+        `- Avg size right after a loss: ${num(b.size.avgVolumeAfterLoss, 2)} (overall avg ${num(b.size.avgVolumeOverall, 2)})`,
+      );
+  }
 
   return lines.join('\n');
 }

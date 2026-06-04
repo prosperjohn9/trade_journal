@@ -11,6 +11,10 @@ import {
 import { INSIGHTS_SYSTEM, buildInsightsInput } from '@/src/lib/ai/prompts';
 import { isOverDailyCap, logUsage } from '@/src/lib/ai/usage';
 import { computeReport, type TradeRow } from '@/src/lib/analytics/core';
+import {
+  computeBehaviorSignals,
+  type BehaviorTrade,
+} from '@/src/lib/analytics/behavior';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -18,7 +22,7 @@ export const maxDuration = 60;
 type Sb = ReturnType<typeof createSupabaseWithToken>;
 
 const TRADE_SELECT =
-  'id, opened_at, instrument, direction, outcome, pnl_amount, pnl_percent, risk_amount, r_multiple';
+  'id, opened_at, closed_at, instrument, direction, outcome, pnl_amount, pnl_percent, net_pnl, risk_amount, r_multiple, volume, emotion_tag';
 
 async function authed(request: Request) {
   const token = getToken(request);
@@ -138,6 +142,26 @@ export async function POST(request: Request) {
 
   const report = computeReport({ trades, startingBalance, timeZone });
 
+  const behaviorTrades: BehaviorTrade[] = (
+    (tradesRaw ?? []) as unknown as Array<{
+      opened_at: string;
+      closed_at: string | null;
+      outcome: 'WIN' | 'LOSS' | 'BREAKEVEN' | null;
+      pnl_amount: number | null;
+      net_pnl: number | null;
+      volume: number | null;
+      emotion_tag: string | null;
+    }>
+  ).map((r) => ({
+    opened_at: r.opened_at,
+    closed_at: r.closed_at,
+    outcome: r.outcome,
+    pnl: Number(r.net_pnl ?? r.pnl_amount ?? 0),
+    volume: r.volume,
+    emotion_tag: r.emotion_tag,
+  }));
+  const behavior = computeBehaviorSignals(behaviorTrades);
+
   let content = '';
   let usage:
     | {
@@ -154,7 +178,7 @@ export async function POST(request: Request) {
       system: [
         { type: 'text', text: INSIGHTS_SYSTEM, cache_control: { type: 'ephemeral' } },
       ],
-      messages: [{ role: 'user', content: buildInsightsInput(report) }],
+      messages: [{ role: 'user', content: buildInsightsInput(report, behavior) }],
     });
     content = message.content
       .map((b) => (b.type === 'text' ? b.text : ''))
