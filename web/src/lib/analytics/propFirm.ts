@@ -92,21 +92,29 @@ export function computePropStatus(params: {
   // Walk days chronologically to find the lowest running balance (static
   // drawdown breach) and the worst single trading day (daily-limit breach).
   const days = [...new Set([...pnlByDay.keys(), ...cashByDay.keys()])].sort();
+  const dailyPct = rules.dailyLossPct ?? null;
   let running = startingBalance;
   let minRunning = startingBalance;
   let peak = startingBalance;
   let trailingBreached = false;
+  let dailyBreached = false;
   let worstDayLoss: number | null = null;
   let worstDayDate: string | null = null;
   for (const d of days) {
-    running += (pnlByDay.get(d) ?? 0) + (cashByDay.get(d) ?? 0);
+    const dayPnl = pnlByDay.get(d) ?? 0;
+    const dayCash = cashByDay.get(d) ?? 0;
+    const dayStart = running; // balance at the start of this trading day
+    if (dailyPct != null) {
+      const dayLimit = (dayStart * dailyPct) / 100;
+      if (dayLimit > 0 && Math.max(0, -dayPnl) >= dayLimit) dailyBreached = true;
+    }
+    running += dayPnl + dayCash;
     if (running > peak) peak = running;
     if (running < minRunning) minRunning = running;
     if (maxDdAmount != null && running <= peak - maxDdAmount) {
       trailingBreached = true;
     }
     if (pnlByDay.has(d)) {
-      const dayPnl = pnlByDay.get(d) ?? 0;
       if (worstDayLoss == null || dayPnl < worstDayLoss) {
         worstDayLoss = dayPnl;
         worstDayDate = d;
@@ -114,8 +122,10 @@ export function computePropStatus(params: {
     }
   }
 
-  const todayNet =
-    pnlByDay.get(dayKeyUTC(new Date().toISOString(), resetHour)) ?? 0;
+  const todayKey = dayKeyUTC(new Date().toISOString(), resetHour);
+  const todayNet = pnlByDay.get(todayKey) ?? 0;
+  const todayCash = cashByDay.get(todayKey) ?? 0;
+  const todayStartBalance = currentBalance - todayNet - todayCash;
 
   const profitTargetAmount =
     rules.profitTargetPct != null
@@ -143,12 +153,12 @@ export function computePropStatus(params: {
         ? trailingBreached
         : minRunning <= startingBalance - maxDdAmount;
 
+  // Daily loss limit is a percentage of the day's STARTING balance (how
+  // FundingPips and most firms compute it), so the limit shown is for today and
+  // the breach flag checks each day against its own day-start limit.
   const dailyLossLimit =
-    rules.dailyLossPct != null ? (accountSize * rules.dailyLossPct) / 100 : null;
-  const dailyLimitBreached =
-    dailyLossLimit != null && worstDayLoss != null
-      ? worstDayLoss <= -dailyLossLimit
-      : false;
+    dailyPct != null ? (todayStartBalance * dailyPct) / 100 : null;
+  const dailyLimitBreached = dailyBreached;
 
   const tradingDays = pnlByDay.size;
   const minTradingDays = rules.minTradingDays ?? null;
