@@ -8,6 +8,7 @@ import type { useAccounts } from '@/src/hooks/useAccounts';
 import { MetaTraderConnect } from './MetaTraderConnect';
 import { BalanceEventsButton } from './BalanceEventsButton';
 import { PropRulesButton } from './PropRulesButton';
+import { computePropQuickStatus } from '@/src/lib/analytics/propFirm';
 
 const MAX_VISIBLE_TAGS = 3;
 const TYPE_ACCENTS: Record<string, string> = {
@@ -81,6 +82,14 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
           const cashflow = Number(a.net_cashflow ?? 0);
           const startingBalance = Number(a.starting_balance ?? 0);
           const currentBalance = startingBalance + netPnl + cashflow;
+          const propQuick = a.prop_rules
+            ? computePropQuickStatus({
+                startingBalance,
+                netProfit: netPnl,
+                netCashflow: cashflow,
+                rules: a.prop_rules,
+              })
+            : null;
           const visibleTags = a.tags.slice(0, MAX_VISIBLE_TAGS);
           const hiddenTagCount = Math.max(a.tags.length - visibleTags.length, 0);
 
@@ -194,6 +203,52 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
                   </span>
                 ) : null}
               </div>
+
+              {propQuick ? (
+                <div className='mt-3 rounded-lg border border-[var(--border-default)] p-3'>
+                  <div className='flex items-center justify-between text-xs'>
+                    <span className='font-medium text-[var(--text-secondary)]'>
+                      Challenge progress
+                    </span>
+                    {propQuick.targetMet ? (
+                      <span className='font-semibold text-[var(--profit)]'>
+                        Target met
+                      </span>
+                    ) : propQuick.profitProgressPct != null ? (
+                      <span className='text-[var(--text-muted)]'>
+                        {Math.round(propQuick.profitProgressPct)}% to target
+                      </span>
+                    ) : null}
+                  </div>
+                  {propQuick.profitTargetAmount != null ? (
+                    <div className='mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-muted)]'>
+                      <div
+                        className='h-full rounded-full'
+                        style={{
+                          width: `${Math.max(0, Math.min(100, propQuick.profitProgressPct ?? 0))}%`,
+                          backgroundColor: propQuick.targetMet
+                            ? 'var(--profit)'
+                            : 'var(--accent)',
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                  {propQuick.drawdownBufferAmount != null ? (
+                    <p
+                      className='mt-1.5 text-[11px]'
+                      style={{
+                        color:
+                          propQuick.drawdownBufferAmount <= 0
+                            ? 'var(--loss)'
+                            : 'var(--text-muted)',
+                      }}>
+                      {propQuick.drawdownBufferAmount <= 0
+                        ? 'Drawdown floor breached'
+                        : `${formatMoney(propQuick.drawdownBufferAmount, currency)} buffer before breach`}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div
                 className='mt-4 border-t pt-4'

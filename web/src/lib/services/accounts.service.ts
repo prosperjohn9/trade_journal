@@ -16,6 +16,7 @@ import {
   toDbAccountType,
   type Account,
 } from '@/src/domain/account';
+import type { PropRules } from '@/src/lib/analytics/propFirm';
 
 type AccountTradeStats = {
   trade_count: number;
@@ -85,10 +86,29 @@ async function fetchBalanceEventSums(
   return out;
 }
 
+async function fetchPropRules(
+  userId: string,
+): Promise<Record<string, PropRules>> {
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('id, prop_rules')
+    .eq('user_id', userId);
+  if (error) throw error;
+  const out: Record<string, PropRules> = {};
+  for (const row of (data ?? []) as {
+    id: string;
+    prop_rules: PropRules | null;
+  }[]) {
+    if (row.prop_rules) out[row.id] = row.prop_rules;
+  }
+  return out;
+}
+
 function mapAccount(
   row: AccountRow,
   stats?: AccountTradeStats,
   cashflow?: number,
+  propRules?: PropRules | null,
 ): Account {
   return {
     id: row.id,
@@ -102,19 +122,27 @@ function mapAccount(
     trade_count: stats?.trade_count ?? 0,
     net_pnl: stats?.net_pnl ?? 0,
     net_cashflow: cashflow ?? 0,
+    prop_rules: propRules ?? null,
     created_at: row.created_at,
   };
 }
 
 export async function listAccounts(): Promise<Account[]> {
   const user = await requireUser();
-  const [rows, statsByAccountId, cashflowByAccountId] = await Promise.all([
-    fetchAccountsByUser(user.id),
-    fetchAccountTradeStats(user.id),
-    fetchBalanceEventSums(user.id),
-  ]);
+  const [rows, statsByAccountId, cashflowByAccountId, propRulesByAccountId] =
+    await Promise.all([
+      fetchAccountsByUser(user.id),
+      fetchAccountTradeStats(user.id),
+      fetchBalanceEventSums(user.id),
+      fetchPropRules(user.id),
+    ]);
   return rows.map((row) =>
-    mapAccount(row, statsByAccountId[row.id], cashflowByAccountId[row.id]),
+    mapAccount(
+      row,
+      statsByAccountId[row.id],
+      cashflowByAccountId[row.id],
+      propRulesByAccountId[row.id],
+    ),
   );
 }
 

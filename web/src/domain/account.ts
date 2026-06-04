@@ -1,3 +1,5 @@
+import type { PropRules } from '@/src/lib/analytics/propFirm';
+
 export const ACCOUNT_TYPES = [
   'Live',
   'Demo',
@@ -26,6 +28,7 @@ export type Account = {
   trade_count?: number;
   net_pnl?: number;
   net_cashflow?: number;
+  prop_rules?: PropRules | null;
   created_at: string;
 };
 

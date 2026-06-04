@@ -184,3 +184,61 @@ export function computePropStatus(params: {
     status,
   };
 }
+
+export type PropQuickStatus = {
+  accountSize: number;
+  netProfit: number;
+  currentBalance: number;
+  profitTargetAmount: number | null;
+  profitProgressPct: number | null;
+  targetMet: boolean;
+  maxDrawdownFloor: number | null;
+  drawdownBufferAmount: number | null;
+  drawdownBufferPct: number | null;
+};
+
+/** Lightweight current-state status from aggregates only (no per-day data), for
+ *  the account-card summary. Uses the static drawdown floor; the full modal does
+ *  trailing + historical breach detection. */
+export function computePropQuickStatus(params: {
+  startingBalance: number;
+  netProfit: number;
+  netCashflow?: number;
+  rules: PropRules;
+}): PropQuickStatus {
+  const { startingBalance, netProfit, rules } = params;
+  const accountSize =
+    rules.accountSize && rules.accountSize > 0 ? rules.accountSize : startingBalance;
+  const currentBalance = startingBalance + netProfit + (params.netCashflow ?? 0);
+
+  const profitTargetAmount =
+    rules.profitTargetPct != null ? (accountSize * rules.profitTargetPct) / 100 : null;
+  const profitProgressPct =
+    profitTargetAmount && profitTargetAmount > 0
+      ? (netProfit / profitTargetAmount) * 100
+      : null;
+  const targetMet =
+    profitTargetAmount != null ? netProfit >= profitTargetAmount : false;
+
+  const maxDdAmount =
+    rules.maxDrawdownPct != null ? (accountSize * rules.maxDrawdownPct) / 100 : null;
+  const maxDrawdownFloor = maxDdAmount != null ? startingBalance - maxDdAmount : null;
+  const drawdownBufferAmount =
+    maxDrawdownFloor != null ? currentBalance - maxDrawdownFloor : null;
+  const drawdownBufferPct =
+    drawdownBufferAmount != null && accountSize > 0
+      ? (drawdownBufferAmount / accountSize) * 100
+      : null;
+
+  return {
+    accountSize,
+    netProfit,
+    currentBalance,
+    profitTargetAmount,
+    profitProgressPct,
+    targetMet,
+    maxDrawdownFloor,
+    drawdownBufferAmount,
+    drawdownBufferPct,
+  };
+}
