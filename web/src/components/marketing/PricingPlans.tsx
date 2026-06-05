@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/src/lib/supabase/client';
 import {
   EXTRA_SYNC_PRICE_MONTHLY,
   PLAN_ORDER,
@@ -51,7 +52,24 @@ function Check() {
 }
 
 export function PricingPlans() {
+  const router = useRouter();
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active) setLoggedIn(Boolean(data.session));
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Logged-in visitors subscribe on the billing page; everyone else signs up.
+  function getStarted() {
+    router.push(loggedIn ? '/settings/billing' : '/auth');
+  }
 
   return (
     <div>
@@ -113,15 +131,16 @@ export function PricingPlans() {
                   : `or $${p.priceYearly}/yr (2 months free)`}
               </p>
 
-              <Link
-                href='/auth'
+              <button
+                type='button'
+                onClick={getStarted}
                 className={`mt-6 inline-flex w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${
                   popular
                     ? 'bg-indigo-500 text-white hover:bg-indigo-400'
                     : 'border border-white/15 text-white hover:bg-white/5'
                 }`}>
                 Get started
-              </Link>
+              </button>
 
               <ul className='mt-6 space-y-2.5 text-sm'>
                 {highlights(p).map((h) => (
