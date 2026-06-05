@@ -164,19 +164,30 @@ export function BillingClient() {
 
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
   const [busy, setBusy] = useState<PlanId | 'cancel' | null>(null);
-  // This page is client-only (ssr: false), so reading the query once via a lazy
-  // initializer is safe and avoids a setState-inside-an-effect.
-  const [checkoutDone] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return (
-      new URLSearchParams(window.location.search).get('checkout') === 'done'
-    );
+  // Client-only page (ssr: false), so reading the query once via a lazy
+  // initializer is safe. Flutterwave appends a status on return, so a payment is
+  // only "received" when that status is successful, not when the user cancelled.
+  const [checkout] = useState<{ succeeded: boolean; cancelled: boolean }>(() => {
+    if (typeof window === 'undefined') {
+      return { succeeded: false, cancelled: false };
+    }
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('checkout') !== 'done') {
+      return { succeeded: false, cancelled: false };
+    }
+    const s = (p.get('status') ?? '').toLowerCase();
+    const succeeded = s === 'successful' || s === 'completed';
+    return { succeeded, cancelled: !succeeded };
   });
-  const [msg, setMsg] = useState<string | null>(() =>
-    checkoutDone
-      ? 'Payment received. Activating your plan, this can take a few seconds.'
-      : null,
-  );
+  const [msg, setMsg] = useState<string | null>(() => {
+    if (checkout.succeeded) {
+      return 'Payment received. Activating your plan, this can take a few seconds.';
+    }
+    if (checkout.cancelled) {
+      return 'Checkout was not completed, so you were not charged. Pick a plan whenever you are ready.';
+    }
+    return null;
+  });
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -212,12 +223,12 @@ export function BillingClient() {
   // Returning from Flutterwave: the webhook activates the plan a moment later,
   // so revalidate a few times until it shows up.
   useEffect(() => {
-    if (!checkoutDone) return;
+    if (!checkout.succeeded) return;
     const timers = [0, 3000, 6000, 10000, 15000].map((t) =>
       window.setTimeout(() => void mutate('subscription'), t),
     );
     return () => timers.forEach((id) => window.clearTimeout(id));
-  }, [checkoutDone]);
+  }, [checkout]);
 
   async function subscribe(plan: PlanId) {
     setMsg(null);
