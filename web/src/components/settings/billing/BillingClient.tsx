@@ -2,9 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { mutate } from 'swr';
 import { supabase } from '@/src/lib/supabase/client';
+import { apiPost } from '@/src/lib/api/fetcher';
 import { useEntitlements } from '@/src/hooks/useEntitlements';
-import { PLANS, PLAN_ORDER } from '@/src/lib/billing/plans';
+import {
+  PLANS,
+  PLAN_ORDER,
+  priceFor,
+  type BillingCycle,
+  type PlanId,
+} from '@/src/lib/billing/plans';
 import type { Entitlements } from '@/src/lib/billing/entitlements';
 
 type DashboardTheme = 'light' | 'dark';
@@ -119,6 +127,22 @@ export function BillingClient() {
   const [authChecked, setAuthChecked] = useState(false);
   const { entitlements, loading } = useEntitlements();
 
+  const [cycle, setCycle] = useState<BillingCycle>('monthly');
+  const [busy, setBusy] = useState<PlanId | 'cancel' | null>(null);
+  // This page is client-only (ssr: false), so reading the query once via a lazy
+  // initializer is safe and avoids a setState-inside-an-effect.
+  const [checkoutDone] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return (
+      new URLSearchParams(window.location.search).get('checkout') === 'done'
+    );
+  });
+  const [msg, setMsg] = useState<string | null>(() =>
+    checkoutDone
+      ? 'Payment received. Activating your plan, this can take a few seconds.'
+      : null,
+  );
+
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
       const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
@@ -150,6 +174,50 @@ export function BillingClient() {
     };
   }, [router]);
 
+  // Returning from Flutterwave: the webhook activates the plan a moment later,
+  // so revalidate a few times until it shows up.
+  useEffect(() => {
+    if (!checkoutDone) return;
+    const timers = [0, 3000, 6000, 10000, 15000].map((t) =>
+      window.setTimeout(() => void mutate('subscription'), t),
+    );
+    return () => timers.forEach((id) => window.clearTimeout(id));
+  }, [checkoutDone]);
+
+  async function subscribe(plan: PlanId) {
+    setMsg(null);
+    setBusy(plan);
+    try {
+      const { link } = await apiPost<{ link: string }>('/api/billing/checkout', {
+        plan,
+        cycle,
+      });
+      window.location.assign(link);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Could not start checkout.');
+      setBusy(null);
+    }
+  }
+
+  async function cancelPlan() {
+    setMsg(null);
+    setBusy('cancel');
+    try {
+      await apiPost('/api/billing/cancel', {});
+      await mutate('subscription');
+      setMsg('Your plan is set to cancel. You keep access until the period ends.');
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Could not cancel.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const e = entitlements;
+  const isLifetime = e.daysLeft != null && e.daysLeft > 3650;
+  const canCancel =
+    e.entitled && !e.isTrial && e.status === 'active' && !isLifetime;
+
   return (
     <main
       className='dashboard-theme min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]'
@@ -171,30 +239,64 @@ export function BillingClient() {
           </button>
         </header>
 
+        {msg ? (
+          <div className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3 text-sm text-[var(--text-secondary)]'>
+            {msg}
+          </div>
+        ) : null}
+
         {!authChecked || loading ? (
           <p className='text-sm text-[var(--text-secondary)]'>Loading...</p>
         ) : (
           <>
-            <CurrentPlanCard e={entitlements} />
+            <CurrentPlanCard e={e} />
+
+            {canCancel ? (
+              <div className='flex justify-end'>
+                <button
+                  className='rounded-lg border border-[var(--border-default)] bg-transparent px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:border-[var(--loss)] hover:text-[var(--loss)] disabled:opacity-60'
+                  onClick={() => void cancelPlan()}
+                  disabled={busy !== null}>
+                  {busy === 'cancel' ? 'Canceling...' : 'Cancel plan'}
+                </button>
+              </div>
+            ) : null}
 
             <section className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
               <div className='flex flex-wrap items-center justify-between gap-3'>
-                <h2 className='text-lg font-semibold'>Plans</h2>
-                <button
-                  className='rounded-lg bg-[var(--accent-cta)] px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110'
-                  onClick={() => router.push('/pricing')}>
-                  {entitlements.entitled ? 'Change plan' : 'View plans'}
-                </button>
+                <h2 className='text-lg font-semibold'>
+                  {e.entitled ? 'Plans' : 'Choose a plan'}
+                </h2>
+                <div className='flex items-center gap-1 rounded-full border border-[var(--border-default)] bg-[var(--bg-app)] p-1 text-xs'>
+                  <button
+                    onClick={() => setCycle('monthly')}
+                    className={`rounded-full px-3 py-1 font-medium transition-colors ${
+                      cycle === 'monthly'
+                        ? 'bg-[var(--accent-cta)] text-white'
+                        : 'text-[var(--text-secondary)]'
+                    }`}>
+                    Monthly
+                  </button>
+                  <button
+                    onClick={() => setCycle('yearly')}
+                    className={`rounded-full px-3 py-1 font-medium transition-colors ${
+                      cycle === 'yearly'
+                        ? 'bg-[var(--accent-cta)] text-white'
+                        : 'text-[var(--text-secondary)]'
+                    }`}>
+                    Yearly
+                  </button>
+                </div>
               </div>
 
               <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3'>
                 {PLAN_ORDER.map((id) => {
                   const p = PLANS[id];
-                  const isCurrent = entitlements.plan === id;
+                  const isCurrent = e.plan === id && e.entitled;
                   return (
                     <div
                       key={id}
-                      className='rounded-lg border p-4'
+                      className='flex flex-col rounded-lg border p-4'
                       style={{
                         borderColor: isCurrent
                           ? 'var(--accent-cta)'
@@ -209,12 +311,37 @@ export function BillingClient() {
                         ) : null}
                       </div>
                       <div className='mt-1 text-sm text-[var(--text-secondary)]'>
-                        ${p.priceMonthly}/mo
+                        ${priceFor(id, cycle)}
+                        {cycle === 'monthly' ? '/mo' : '/yr'}
                       </div>
                       <div className='mt-2 text-xs text-[var(--text-muted)]'>
                         {p.syncedAccounts} synced, sync{' '}
                         {syncEvery(p.syncIntervalHours)},{' '}
                         {p.aiActionsPerMonth.toLocaleString()} AI/mo
+                      </div>
+
+                      <div className='mt-3'>
+                        {isCurrent ? (
+                          <button
+                            disabled
+                            className='w-full rounded-lg border border-[var(--border-default)] px-3 py-2 text-sm text-[var(--text-muted)]'>
+                            Current plan
+                          </button>
+                        ) : e.entitled ? (
+                          <button
+                            disabled
+                            title='Cancel your current plan first to switch'
+                            className='w-full rounded-lg border border-[var(--border-default)] px-3 py-2 text-sm text-[var(--text-muted)]'>
+                            Cancel first to switch
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => void subscribe(id)}
+                            disabled={busy !== null}
+                            className='w-full rounded-lg bg-[var(--accent-cta)] px-3 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60'>
+                            {busy === id ? 'Starting...' : 'Subscribe'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -222,9 +349,8 @@ export function BillingClient() {
               </div>
 
               <p className='mt-4 text-xs text-[var(--text-muted)]'>
-                Subscribe and manage billing (card via Flutterwave, crypto via
-                NOWPayments) is being set up. Soon you will start a plan, add
-                extra synced accounts, and cancel right here.
+                Payments are processed securely by Flutterwave. Cancel anytime,
+                no lock-in. Yearly is two months free.
               </p>
             </section>
           </>
