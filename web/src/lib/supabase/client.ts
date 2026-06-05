@@ -11,4 +11,14 @@ if (!anonKey) {
   throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable');
 }
 
-export const supabase = createClient(url, anonKey);
+export const supabase = createClient(url, anonKey, {
+  auth: {
+    // PKCE returns an auth code to /auth/callback (which exchanges it), keeping
+    // OAuth and magic-link consistent. detectSessionInUrl finishes the session
+    // automatically when a code/token lands on a page that loads this client.
+    flowType: 'pkce',
+    detectSessionInUrl: true,
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+});

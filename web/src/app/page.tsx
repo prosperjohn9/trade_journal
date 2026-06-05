@@ -51,7 +51,7 @@ function Hero() {
           <Link
             href='/auth'
             className='rounded-lg bg-indigo-500 px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-indigo-400'>
-            Start your free trial
+            Get started
           </Link>
           <a
             href='#how-it-works'
@@ -60,7 +60,7 @@ function Hero() {
           </a>
         </div>
         <p className='mt-5 text-xs text-slate-400'>
-          Free trial. No credit card required.
+          Cancel anytime. No lock-in.
         </p>
       </div>
     </section>
@@ -281,14 +281,14 @@ function FinalCta() {
             </span>
           </h2>
           <p className='mx-auto mt-4 max-w-xl text-sm text-slate-300 sm:text-base'>
-            Start your free trial. Log your first trade in under a minute. Your
-            hindsight starts compounding the same day.
+            Log your first trade in under a minute. Your hindsight starts
+            compounding the same day.
           </p>
           <div className='mt-8 flex flex-wrap items-center justify-center gap-3'>
             <Link
               href='/auth'
               className='rounded-lg bg-indigo-500 px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-indigo-400'>
-              Start your free trial
+              Get started
             </Link>
             <a
               href='#how-it-works'

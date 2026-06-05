@@ -11,6 +11,7 @@ import {
   PLAN_ORDER,
   priceFor,
   type BillingCycle,
+  type PlanDef,
   type PlanId,
 } from '@/src/lib/billing/plans';
 import type { Entitlements } from '@/src/lib/billing/entitlements';
@@ -36,6 +37,40 @@ function statusColor(status: Entitlements['status']): string {
 function syncEvery(hours: number): string {
   if (!hours) return 'n/a';
   return hours === 1 ? 'every hour' : `every ${hours} hours`;
+}
+
+const COMMON_FEATURES = [
+  'Broker auto-sync (MT4 / MT5)',
+  'Behavioral-leak AI insights',
+  'Prop-firm challenge tracking',
+  'Advanced analytics (R-multiple, sessions)',
+  'Unlimited manual accounts',
+];
+
+function planHighlights(p: PlanDef): string[] {
+  return [
+    `${p.syncedAccounts} synced broker accounts`,
+    `Auto-sync ${p.syncIntervalHours === 1 ? 'every hour' : `every ${p.syncIntervalHours} hours`}`,
+    `${p.aiActionsPerMonth.toLocaleString()} AI actions / month`,
+  ];
+}
+
+function Check() {
+  return (
+    <svg
+      viewBox='0 0 20 20'
+      fill='none'
+      aria-hidden='true'
+      className='mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--accent-cta)]'>
+      <path
+        d='M4 10.5l3.5 3.5L16 6'
+        stroke='currentColor'
+        strokeWidth='2'
+        strokeLinecap='round'
+        strokeLinejoin='round'
+      />
+    </svg>
+  );
 }
 
 function CurrentPlanCard({ e }: { e: Entitlements }) {
@@ -314,13 +349,28 @@ export function BillingClient() {
                         ${priceFor(id, cycle)}
                         {cycle === 'monthly' ? '/mo' : '/yr'}
                       </div>
-                      <div className='mt-2 text-xs text-[var(--text-muted)]'>
-                        {p.syncedAccounts} synced, sync{' '}
-                        {syncEvery(p.syncIntervalHours)},{' '}
-                        {p.aiActionsPerMonth.toLocaleString()} AI/mo
-                      </div>
+                      <p className='mt-1 text-xs text-[var(--text-muted)]'>
+                        {p.blurb}
+                      </p>
 
-                      <div className='mt-3'>
+                      <ul className='mt-3 flex-1 space-y-1.5 text-xs text-[var(--text-secondary)]'>
+                        {planHighlights(p).map((h) => (
+                          <li key={h} className='flex gap-1.5'>
+                            <Check />
+                            <span className='font-medium text-[var(--text-primary)]'>
+                              {h}
+                            </span>
+                          </li>
+                        ))}
+                        {COMMON_FEATURES.map((f) => (
+                          <li key={f} className='flex gap-1.5'>
+                            <Check />
+                            <span>{f}</span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      <div className='mt-4'>
                         {isCurrent ? (
                           <button
                             disabled
