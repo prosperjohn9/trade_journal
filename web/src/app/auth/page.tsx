@@ -16,6 +16,41 @@ function readSavedEmail(): string {
 // "restore email from localStorage inside an effect" pattern.
 const subscribeSavedEmail = () => () => {};
 
+function GoogleIcon() {
+  return (
+    <svg viewBox='0 0 24 24' className='h-5 w-5' aria-hidden='true'>
+      <path
+        fill='#4285F4'
+        d='M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1Z'
+      />
+      <path
+        fill='#34A853'
+        d='M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z'
+      />
+      <path
+        fill='#FBBC05'
+        d='M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84Z'
+      />
+      <path
+        fill='#EA4335'
+        d='M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38Z'
+      />
+    </svg>
+  );
+}
+
+function AppleIcon() {
+  return (
+    <svg
+      viewBox='0 0 24 24'
+      className='h-5 w-5'
+      fill='currentColor'
+      aria-hidden='true'>
+      <path d='M16.37 12.78c.03 3.07 2.7 4.09 2.73 4.1-.02.07-.43 1.46-1.41 2.9-.85 1.24-1.73 2.48-3.12 2.5-1.36.03-1.8-.8-3.36-.8-1.55 0-2.04.78-3.33.83-1.34.05-2.36-1.34-3.22-2.58-1.76-2.54-3.1-7.18-1.3-10.31.9-1.56 2.5-2.54 4.24-2.57 1.32-.02 2.56.89 3.36.89.8 0 2.31-1.1 3.9-.94.66.03 2.52.27 3.72 2.01-.1.06-2.22 1.3-2.2 3.85M13.9 4.06c.71-.86 1.19-2.05 1.06-3.24-1.02.04-2.26.68-2.99 1.54-.66.76-1.23 1.98-1.08 3.14 1.14.09 2.3-.58 3.01-1.44' />
+    </svg>
+  );
+}
+
 export default function AuthPage() {
   const router = useRouter();
 
@@ -30,6 +65,9 @@ export default function AuthPage() {
   const email = emailDraft ?? savedEmail;
   const [msg, setMsg] = useState('');
   const [sending, setSending] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<'google' | 'apple' | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +81,26 @@ export default function AuthPage() {
       cancelled = true;
     };
   }, [router]);
+
+  async function signInWithProvider(provider: 'google' | 'apple') {
+    setMsg('');
+    setOauthLoading(provider);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+      // On success the browser redirects to the provider, so we only land here
+      // on error.
+      if (error) {
+        setMsg(error.message);
+        setOauthLoading(null);
+      }
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Could not start sign-in.');
+      setOauthLoading(null);
+    }
+  }
 
   async function signInWithEmail(e: React.FormEvent) {
     e.preventDefault();
@@ -103,6 +161,35 @@ export default function AuthPage() {
               Make your experience your edge.
             </p>
           </div>
+        </div>
+
+        <p className='text-sm font-medium text-[var(--text-secondary)]'>
+          Sign in or create your account
+        </p>
+
+        <div className='space-y-2'>
+          <button
+            type='button'
+            onClick={() => void signInWithProvider('google')}
+            disabled={oauthLoading !== null}
+            className='flex w-full items-center justify-center gap-2 rounded-lg border p-3 disabled:opacity-60'>
+            <GoogleIcon />
+            {oauthLoading === 'google' ? 'Redirecting…' : 'Continue with Google'}
+          </button>
+          <button
+            type='button'
+            onClick={() => void signInWithProvider('apple')}
+            disabled={oauthLoading !== null}
+            className='flex w-full items-center justify-center gap-2 rounded-lg border p-3 disabled:opacity-60'>
+            <AppleIcon />
+            {oauthLoading === 'apple' ? 'Redirecting…' : 'Continue with Apple'}
+          </button>
+        </div>
+
+        <div className='flex items-center gap-3 text-xs text-[var(--text-muted)]'>
+          <span className='h-px flex-1 border-t' />
+          or use your email
+          <span className='h-px flex-1 border-t' />
         </div>
 
         <form onSubmit={signInWithEmail} className='space-y-3'>
