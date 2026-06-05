@@ -33,6 +33,11 @@ export function MarketingNav() {
         </Link>
         <div className='flex items-center gap-2'>
           <Link
+            href='/pricing'
+            className='hidden rounded-lg px-3 py-2 text-sm text-slate-300 transition-colors hover:text-white sm:inline-flex'>
+            Pricing
+          </Link>
+          <Link
             href='/auth'
             className='hidden rounded-lg px-3 py-2 text-sm text-slate-300 transition-colors hover:text-white sm:inline-flex'>
             Sign in
@@ -61,6 +66,9 @@ export function MarketingFooter() {
           </div>
         </div>
         <div className='flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-400'>
+          <Link href='/pricing' className='hover:text-white'>
+            Pricing
+          </Link>
           <Link href='/auth' className='hover:text-white'>
             Sign in
           </Link>

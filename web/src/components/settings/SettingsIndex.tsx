@@ -73,6 +73,26 @@ const SECTIONS: Array<{
       </svg>
     ),
   },
+  {
+    href: '/settings/billing',
+    title: 'Billing & Plan',
+    description:
+      'Your subscription, what it unlocks, and how to change your plan.',
+    icon: (
+      <svg
+        viewBox='0 0 24 24'
+        fill='none'
+        stroke='currentColor'
+        strokeWidth='1.6'
+        strokeLinecap='round'
+        strokeLinejoin='round'
+        className='h-5 w-5'>
+        <rect x='2' y='5' width='20' height='14' rx='2' />
+        <path d='M2 10h20' />
+        <path d='M6 15h4' />
+      </svg>
+    ),
+  },
 ];
 
 export function SettingsIndex() {
