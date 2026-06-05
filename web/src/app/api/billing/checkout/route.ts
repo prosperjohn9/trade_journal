@@ -88,6 +88,12 @@ export async function POST(request: Request) {
     const origin = request.headers.get('origin') ?? FALLBACK_ORIGIN;
     const txRef = `th-${crypto.randomUUID()}`;
 
+    // Record who this checkout belongs to so the webhook can attribute the
+    // charge by tx_ref (Flutterwave's webhook does not return our meta).
+    await admin
+      .from('billing_checkouts')
+      .insert({ tx_ref: txRef, user_id: user.id, plan, cycle });
+
     const { link } = await createHostedPayment({
       txRef,
       amount,
