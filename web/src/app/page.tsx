@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { MarketingShell } from '@/src/components/marketing/MarketingShell';
+import { AuthCodeHandler } from '@/src/components/auth/AuthCodeHandler';
 
 // Public marketing landing page for The Trader's Hindsight.
 //
@@ -10,6 +11,7 @@ import { MarketingShell } from '@/src/components/marketing/MarketingShell';
 export default function LandingPage() {
   return (
     <MarketingShell>
+      <AuthCodeHandler />
       <Hero />
       <HowItWorks />
       <Features />
