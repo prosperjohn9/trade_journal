@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/src/lib/supabase/admin';
-import { verifyWebhookSignature } from '@/src/lib/billing/flutterwave';
+import {
+  verifyTransaction,
+  verifyWebhookSignature,
+} from '@/src/lib/billing/flutterwave';
 import { isPlanId, type BillingCycle, type PlanId } from '@/src/lib/billing/plans';
 
 export const runtime = 'nodejs';
@@ -29,9 +32,14 @@ function addInterval(d: Date, cycle: BillingCycle): Date {
 }
 
 async function handleChargeCompleted(admin: SupabaseAdmin, data: FlwWebhookData) {
-  const meta = data.meta ?? {};
+  if (data.id == null) return;
+  // Verify with Flutterwave instead of trusting the webhook body; the verify
+  // response carries the authoritative status, meta, and customer.
+  const verified = await verifyTransaction(data.id);
+  if (verified.status !== 'successful') return;
+  const meta = verified.meta ?? {};
   const customerId =
-    data.customer?.id != null ? String(data.customer.id) : null;
+    verified.customer?.id != null ? String(verified.customer.id) : null;
   const userId = meta.user_id;
   const planRaw = meta.plan;
   const cycle: BillingCycle | null =
@@ -141,7 +149,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (event === 'charge.completed' && data.status === 'successful') {
+    if (event === 'charge.completed') {
       await handleChargeCompleted(admin, data);
     } else if (event === 'subscription.cancelled') {
       await handleSubscriptionCancelled(admin, data);
