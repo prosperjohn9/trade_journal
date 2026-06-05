@@ -39,18 +39,6 @@ function GoogleIcon() {
   );
 }
 
-function AppleIcon() {
-  return (
-    <svg
-      viewBox='0 0 24 24'
-      className='h-5 w-5'
-      fill='currentColor'
-      aria-hidden='true'>
-      <path d='M16.37 12.78c.03 3.07 2.7 4.09 2.73 4.1-.02.07-.43 1.46-1.41 2.9-.85 1.24-1.73 2.48-3.12 2.5-1.36.03-1.8-.8-3.36-.8-1.55 0-2.04.78-3.33.83-1.34.05-2.36-1.34-3.22-2.58-1.76-2.54-3.1-7.18-1.3-10.31.9-1.56 2.5-2.54 4.24-2.57 1.32-.02 2.56.89 3.36.89.8 0 2.31-1.1 3.9-.94.66.03 2.52.27 3.72 2.01-.1.06-2.22 1.3-2.2 3.85M13.9 4.06c.71-.86 1.19-2.05 1.06-3.24-1.02.04-2.26.68-2.99 1.54-.66.76-1.23 1.98-1.08 3.14 1.14.09 2.3-.58 3.01-1.44' />
-    </svg>
-  );
-}
-
 export default function AuthPage() {
   const router = useRouter();
 
@@ -65,9 +53,7 @@ export default function AuthPage() {
   const email = emailDraft ?? savedEmail;
   const [msg, setMsg] = useState('');
   const [sending, setSending] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState<'google' | 'apple' | null>(
-    null,
-  );
+  const [oauthLoading, setOauthLoading] = useState<'google' | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,7 +68,7 @@ export default function AuthPage() {
     };
   }, [router]);
 
-  async function signInWithProvider(provider: 'google' | 'apple') {
+  async function signInWithProvider(provider: 'google') {
     setMsg('');
     setOauthLoading(provider);
     try {
@@ -175,14 +161,6 @@ export default function AuthPage() {
             className='flex w-full items-center justify-center gap-2 rounded-lg border p-3 disabled:opacity-60'>
             <GoogleIcon />
             {oauthLoading === 'google' ? 'Redirecting…' : 'Continue with Google'}
-          </button>
-          <button
-            type='button'
-            onClick={() => void signInWithProvider('apple')}
-            disabled={oauthLoading !== null}
-            className='flex w-full items-center justify-center gap-2 rounded-lg border p-3 disabled:opacity-60'>
-            <AppleIcon />
-            {oauthLoading === 'apple' ? 'Redirecting…' : 'Continue with Apple'}
           </button>
         </div>
 
