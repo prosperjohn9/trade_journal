@@ -6,7 +6,6 @@ import {
   EXTRA_SYNC_PRICE_MONTHLY,
   PLAN_ORDER,
   PLANS,
-  TRIAL_DAYS,
   type BillingCycle,
   type PlanDef,
 } from '@/src/lib/billing/plans';
@@ -121,7 +120,7 @@ export function PricingPlans() {
                     ? 'bg-indigo-500 text-white hover:bg-indigo-400'
                     : 'border border-white/15 text-white hover:bg-white/5'
                 }`}>
-                Start {TRIAL_DAYS}-day trial
+                Get started
               </Link>
 
               <ul className='mt-6 space-y-2.5 text-sm'>
@@ -144,8 +143,8 @@ export function PricingPlans() {
       </div>
 
       <p className='mt-8 text-center text-xs text-slate-500'>
-        {TRIAL_DAYS}-day free trial. Card required, cancel anytime. Need more
-        synced accounts? Add them for ${EXTRA_SYNC_PRICE_MONTHLY}/mo each.
+        Billed monthly or yearly. Cancel anytime, no lock-in. Need more synced
+        accounts? Add them for ${EXTRA_SYNC_PRICE_MONTHLY}/mo each.
       </p>
     </div>
   );

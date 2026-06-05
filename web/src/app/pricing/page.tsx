@@ -20,8 +20,8 @@ export default function PricingPage() {
             <p className='mt-4 text-[15px] leading-relaxed text-slate-300'>
               Every plan unlocks broker auto-sync, behavioral-leak AI, prop-firm
               tracking, and the deep analytics. The tiers differ by how many
-              accounts you sync, how often, and how much AI you use. Start with a
-              7-day free trial.
+              accounts you sync, how often, and how much AI you use. Pick a plan
+              and start now, cancel anytime.
             </p>
           </div>
 

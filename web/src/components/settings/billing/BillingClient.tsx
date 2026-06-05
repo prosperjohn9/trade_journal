@@ -105,8 +105,8 @@ function CurrentPlanCard({ e }: { e: Entitlements }) {
         </div>
       ) : (
         <p className='mt-3 text-sm text-[var(--text-secondary)]'>
-          You do not have an active plan. Start a 7-day trial to unlock broker
-          sync, the behavioral AI, prop tracking, and advanced analytics.
+          You do not have an active plan. Subscribe to unlock broker sync, the
+          behavioral AI, prop tracking, and advanced analytics.
         </p>
       )}
     </section>
