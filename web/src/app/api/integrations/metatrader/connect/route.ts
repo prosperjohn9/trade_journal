@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseWithToken, getToken } from '@/src/lib/supabase/server';
 import { provisionAccount, type MtPlatform } from '@/src/lib/integrations/metaapi';
+import { getServerEntitlements } from '@/src/lib/billing/server';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -24,6 +25,29 @@ export async function POST(request: Request) {
     error: authErr,
   } = await sb.auth.getUser();
   if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const entitlements = await getServerEntitlements(sb);
+  if (!entitlements.features.sync) {
+    return NextResponse.json(
+      {
+        error: 'Broker sync requires an active plan. Subscribe to connect an account.',
+        code: 'upgrade_required',
+      },
+      { status: 403 },
+    );
+  }
+  const { count: syncedCount } = await sb
+    .from('mt_connections')
+    .select('id', { count: 'exact', head: true });
+  if ((syncedCount ?? 0) >= entitlements.limits.syncedAccounts) {
+    return NextResponse.json(
+      {
+        error: `Your plan includes ${entitlements.limits.syncedAccounts} synced accounts. Upgrade or disconnect one to add another.`,
+        code: 'limit_reached',
+      },
+      { status: 403 },
+    );
+  }
 
   let body: {
     account_id?: string;

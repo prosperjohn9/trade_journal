@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseWithToken, getToken } from '@/src/lib/supabase/server';
+import { getServerEntitlements } from '@/src/lib/billing/server';
 import {
   AI_MODEL,
   INSIGHTS_REFRESH_THRESHOLD,
@@ -97,6 +98,14 @@ export async function POST(request: Request) {
   const a = await authed(request);
   if ('res' in a) return a.res;
   const { sb, user } = a;
+
+  const entitlements = await getServerEntitlements(sb);
+  if (!entitlements.features.ai) {
+    return NextResponse.json(
+      { error: 'AI insights require an active plan.', code: 'upgrade_required' },
+      { status: 403 },
+    );
+  }
 
   if (!isAiConfigured()) {
     return NextResponse.json(

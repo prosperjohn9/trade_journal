@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseWithToken, getToken } from '@/src/lib/supabase/server';
+import { getServerEntitlements } from '@/src/lib/billing/server';
 import {
   AI_MODEL,
   MAX_TOKENS,
@@ -69,6 +70,14 @@ export async function POST(request: Request) {
   } = await sb.auth.getUser();
   if (authErr || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const entitlements = await getServerEntitlements(sb);
+  if (!entitlements.features.ai) {
+    return NextResponse.json(
+      { error: 'AI trade reviews require an active plan.', code: 'upgrade_required' },
+      { status: 403 },
+    );
   }
 
   let body: { tradeId?: unknown; regenerate?: unknown };

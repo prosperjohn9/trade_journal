@@ -1,4 +1,5 @@
 import { createSupabaseWithToken, getToken } from '@/src/lib/supabase/server';
+import { getServerEntitlements } from '@/src/lib/billing/server';
 import {
   AI_MODEL,
   MAX_TOKENS,
@@ -35,6 +36,14 @@ export async function POST(request: Request) {
     error: authErr,
   } = await sb.auth.getUser();
   if (authErr || !user) return json({ error: 'Unauthorized' }, 401);
+
+  const entitlements = await getServerEntitlements(sb);
+  if (!entitlements.features.ai) {
+    return json(
+      { error: 'AI chat requires an active plan.', code: 'upgrade_required' },
+      403,
+    );
+  }
 
   if (!isAiConfigured()) {
     return json({ error: 'AI is not configured yet.' }, 503);
