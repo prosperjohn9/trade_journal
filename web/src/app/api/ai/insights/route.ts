@@ -138,7 +138,7 @@ export async function POST(request: Request) {
       sb.from('accounts').select('starting_balance'),
       sb
         .from('profiles')
-        .select('timezone, starting_balance')
+        .select('timezone, starting_balance, base_currency')
         .eq('id', user.id)
         .maybeSingle(),
     ]);
@@ -155,6 +155,7 @@ export async function POST(request: Request) {
   const profileRow = (profile ?? null) as {
     timezone?: string | null;
     starting_balance?: number | null;
+    base_currency?: string | null;
   } | null;
   const startingBalance =
     accountRows.reduce((sum, acc) => sum + Number(acc.starting_balance ?? 0), 0) ||
@@ -199,7 +200,16 @@ export async function POST(request: Request) {
       system: [
         { type: 'text', text: INSIGHTS_SYSTEM, cache_control: { type: 'ephemeral' } },
       ],
-      messages: [{ role: 'user', content: buildInsightsInput(report, behavior) }],
+      messages: [
+        {
+          role: 'user',
+          content: buildInsightsInput(
+            report,
+            behavior,
+            profileRow?.base_currency ?? 'USD',
+          ),
+        },
+      ],
     });
     content = message.content
       .map((b) => (b.type === 'text' ? b.text : ''))

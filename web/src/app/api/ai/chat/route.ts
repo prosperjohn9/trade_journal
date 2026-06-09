@@ -105,7 +105,7 @@ export async function POST(request: Request) {
       sb.from('accounts').select('starting_balance'),
       sb
         .from('profiles')
-        .select('timezone, starting_balance')
+        .select('timezone, starting_balance, base_currency')
         .eq('id', user.id)
         .maybeSingle(),
     ]);
@@ -114,6 +114,7 @@ export async function POST(request: Request) {
   const profileRow = (profile ?? null) as {
     timezone?: string | null;
     starting_balance?: number | null;
+    base_currency?: string | null;
   } | null;
   const startingBalance =
     accountRows.reduce((s, a) => s + Number(a.starting_balance ?? 0), 0) ||
@@ -126,6 +127,7 @@ export async function POST(request: Request) {
           timeZone: profileRow?.timezone ?? 'UTC',
         })
       : null,
+    profileRow?.base_currency ?? 'USD',
   );
 
   const stream = getAnthropic().messages.stream({

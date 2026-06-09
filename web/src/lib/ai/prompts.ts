@@ -10,6 +10,7 @@ Principles:
 - Judge the PROCESS, not just the outcome. A losing trade taken with discipline beats a lucky win that broke the plan.
 - Ground every point in the data provided: the trade details, the setup checklist (what they did and didn't tick), and their own notes, emotions, and lessons. Never invent facts you were not given.
 - Be direct and specific. No filler, no hedging, no generic platitudes.
+- Money figures come with the account currency symbol (for example $231 or £554). Keep that symbol on every profit, loss, and P&L number you write.
 - This is educational coaching, not financial or investment advice. Never tell them what to buy, sell, or hold, and never predict markets. Do not add your own disclaimer line; the app already shows one.
 - Write in a natural, human voice. Never use em-dashes or en-dashes (the "—" / "–" characters); use full stops and commas, and finish every sentence.
 - If key information is missing (no checklist, no notes), say so in one short phrase rather than guessing.
@@ -37,21 +38,23 @@ export function buildTradeReviewInput(
   const account = trade.account as
     | { name?: string | null; account_type?: string | null; base_currency?: string | null }
     | null;
+  const ccy = account?.base_currency ?? 'USD';
+  const netPnlRaw = trade.net_pnl ?? trade.pnl_amount;
 
   const lines: string[] = ['Review this trade.', '', '## Trade'];
   const tradeFields = [
     field('Instrument', trade.instrument),
     field('Direction', trade.direction),
     field('Outcome', trade.outcome),
-    field('Net P&L', trade.net_pnl ?? trade.pnl_amount),
+    field('Net P&L', netPnlRaw != null ? money(Number(netPnlRaw), ccy, true) : null),
     field('P&L %', trade.pnl_percent),
     field('R multiple', trade.r_multiple),
-    field('Risk amount', trade.risk_amount),
+    field('Risk amount', trade.risk_amount != null ? money(Number(trade.risk_amount), ccy) : null),
     field('Entry', trade.entry_price),
     field('Stop loss', trade.stop_loss),
     field('Take profit', trade.take_profit),
     field('Exit', trade.exit_price),
-    field('Commission', trade.commission),
+    field('Commission', trade.commission != null ? money(Number(trade.commission), ccy) : null),
     field('Opened at', trade.opened_at),
     field('Closed at', trade.closed_at),
     field('Account', account?.name),
@@ -91,6 +94,7 @@ Hunt specifically for:
 Principles:
 - Work ONLY from the numbers provided. Never invent trades, sessions, or figures.
 - Quantify everything with the actual number, and contrast against the overall baseline so the leak is obvious. "Win rate is 58% overall but 31% in the Asian session" beats "watch your Asian trades".
+- Money figures come with the account currency symbol (for example $231 or £554). Keep that symbol on every profit, loss, and P&L number you write. Never output a bare number for money.
 - Prioritise the SINGLE most costly leak. Don't list ten small things.
 - If the sample behind a pattern is small (few trades), say so and keep it tentative.
 - This is educational behavioural coaching, not financial or investment advice. Never tell them what to buy, sell, or hold, and never predict markets. Do not add your own disclaimer line; the app already shows one.
@@ -113,10 +117,31 @@ function num(n: number, digits = 2): string {
   return n.toFixed(digits);
 }
 
+/** Format a money amount with the account currency symbol, e.g. "$231" or
+ *  "-£990". signed=true always shows the +/- sign (good for P&L). Falls back to
+ *  "CODE 231" for currencies Intl does not recognise. */
+function money(amount: number, currency = 'USD', signed = false): string {
+  const value = Number.isFinite(amount) ? amount : 0;
+  const code = (currency || 'USD').toUpperCase();
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+      signDisplay: signed ? 'always' : 'auto',
+    }).format(value);
+  } catch {
+    const n = value.toFixed(2);
+    return signed && value > 0 ? `+${code} ${n}` : `${code} ${n}`;
+  }
+}
+
 /** Render the aggregate CoreReport + behavioural signals into the user-turn text. */
 export function buildInsightsInput(
   report: CoreReport,
   behavior?: BehaviorSignals,
+  currency = 'USD',
 ): string {
   const ranked = [...report.bySymbol].sort((a, b) => b.pnl - a.pnl);
   const best = ranked.slice(0, 5);
@@ -128,10 +153,10 @@ export function buildInsightsInput(
     '## Overall',
     `- Trades: ${report.totalTrades} (W ${report.wins} / L ${report.losses} / BE ${report.breakeven})`,
     `- Win rate: ${num(report.winRate, 1)}%`,
-    `- Expectancy per trade: ${num(report.expectancy)}`,
+    `- Expectancy per trade: ${money(report.expectancy, currency, true)}`,
     `- Profit factor: ${num(report.profitFactor)}`,
-    `- Avg win: ${num(report.avgWin)} | Avg loss: ${num(report.avgLoss)} | R:R ${num(report.rrr)}`,
-    `- Net P&L: ${num(report.netPnl)}`,
+    `- Avg win: ${money(report.avgWin, currency)} | Avg loss: ${money(report.avgLoss, currency)} | R:R ${num(report.rrr)}`,
+    `- Net P&L: ${money(report.netPnl, currency, true)}`,
     `- Max drawdown: ${num(report.maxDrawdownPct * 100, 1)}%`,
   ];
 
@@ -139,7 +164,7 @@ export function buildInsightsInput(
     lines.push('', '## Best instruments (by P&L)');
     for (const s of best) {
       lines.push(
-        `- ${s.symbol || '(unspecified)'}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${num(s.pnl)}`,
+        `- ${s.symbol || '(unspecified)'}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${money(s.pnl, currency, true)}`,
       );
     }
   }
@@ -147,16 +172,16 @@ export function buildInsightsInput(
     lines.push('', '## Weakest instruments (by P&L)');
     for (const s of worst) {
       lines.push(
-        `- ${s.symbol || '(unspecified)'}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${num(s.pnl)}`,
+        `- ${s.symbol || '(unspecified)'}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${money(s.pnl, currency, true)}`,
       );
     }
   }
 
-  if (behavior) lines.push(formatBehavior(behavior));
+  if (behavior) lines.push(formatBehavior(behavior, currency));
 
   lines.push(
     '',
-    'P&L figures are in account base currency and may mix currencies across accounts; lean on the ratios (win rate, R:R, profit factor, expectancy) for cross-cutting conclusions.',
+    `Money is shown in ${currency} with its symbol; keep that symbol on every profit, loss, and P&L figure in your reply. Stats may mix currencies across accounts, so lean on ratios (win rate, R:R, profit factor) for cross-cutting conclusions.`,
   );
 
   return lines.join('\n');
@@ -166,20 +191,20 @@ function pad1(n: number | null, suffix = ''): string {
   return n != null ? `${num(n, 0)}${suffix}` : 'n/a';
 }
 
-function formatBehavior(b: BehaviorSignals): string {
+function formatBehavior(b: BehaviorSignals, currency = 'USD'): string {
   const lines: string[] = ['', '## Behavioural signals (use these to find leaks)'];
 
   lines.push('', '### By session (worst P&L first)');
   for (const s of b.bySession) {
     lines.push(
-      `- ${s.key}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${num(s.netPnl)} (avg ${num(s.avgPnl)})`,
+      `- ${s.key}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${money(s.netPnl, currency, true)} (avg ${money(s.avgPnl, currency, true)})`,
     );
   }
 
   lines.push('', '### By weekday (worst P&L first)');
   for (const s of b.byDayOfWeek) {
     lines.push(
-      `- ${s.key}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${num(s.netPnl)}`,
+      `- ${s.key}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${money(s.netPnl, currency, true)}`,
     );
   }
 
@@ -187,7 +212,7 @@ function formatBehavior(b: BehaviorSignals): string {
     lines.push('', '### By emotion tag (worst P&L first)');
     for (const s of b.byEmotion) {
       lines.push(
-        `- ${s.key}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${num(s.netPnl)}`,
+        `- ${s.key}: ${s.count} trades, ${num(s.winRate, 0)}% win, P&L ${money(s.netPnl, currency, true)}`,
       );
     }
   }
@@ -196,13 +221,13 @@ function formatBehavior(b: BehaviorSignals): string {
   lines.push('', '### Sequence / tilt after losses');
   lines.push(`- Overall win rate: ${num(seq.overallWinRate, 0)}%`);
   lines.push(
-    `- Right after a loss: ${seq.afterLoss.count} trades, ${num(seq.afterLoss.winRate, 0)}% win, avg P&L ${num(seq.afterLoss.avgPnl)}`,
+    `- Right after a loss: ${seq.afterLoss.count} trades, ${num(seq.afterLoss.winRate, 0)}% win, avg P&L ${money(seq.afterLoss.avgPnl, currency, true)}`,
   );
   lines.push(
-    `- Right after a win: ${seq.afterWin.count} trades, ${num(seq.afterWin.winRate, 0)}% win, avg P&L ${num(seq.afterWin.avgPnl)}`,
+    `- Right after a win: ${seq.afterWin.count} trades, ${num(seq.afterWin.winRate, 0)}% win, avg P&L ${money(seq.afterWin.avgPnl, currency, true)}`,
   );
   lines.push(
-    `- After 2+ losses in a row: ${seq.afterTwoLosses.count} trades, ${num(seq.afterTwoLosses.winRate, 0)}% win, avg P&L ${num(seq.afterTwoLosses.avgPnl)}`,
+    `- After 2+ losses in a row: ${seq.afterTwoLosses.count} trades, ${num(seq.afterTwoLosses.winRate, 0)}% win, avg P&L ${money(seq.afterTwoLosses.avgPnl, currency, true)}`,
   );
   lines.push(`- Longest losing streak: ${seq.maxConsecutiveLosses}`);
 
@@ -270,6 +295,7 @@ HOW TO ANSWER:
 - Never show internal URLs, route paths, or developer details (for example "/trades/new"). Refer to pages by their on-screen names. When you point someone to the Contact page, write it as a Markdown link: [Contact page](/contact).
 - For trading psychology and discipline, give thoughtful, experience-grounded coaching.
 - You may be given the user's current performance numbers below; use them ONLY when they ask about their own results, and don't volunteer them.
+- Money figures come with the account currency symbol (for example $231 or £554). Keep that symbol on every money number you mention.
 - This is educational guidance, NOT financial or investment advice. Never tell anyone what to buy, sell, or hold, never predict markets, and never present a trade or strategy as a way to make money.
 - If you genuinely don't know whether the app does something, say so rather than inventing it.
 
@@ -277,7 +303,10 @@ Keep replies tight: a few sentences or a short list unless the user asks for dep
 
 /** Compact, opt-in performance context so the chatbot can answer questions about
  *  the user's own results without being handed raw trades. */
-export function buildChatStatsContext(report: CoreReport | null): string {
+export function buildChatStatsContext(
+  report: CoreReport | null,
+  currency = 'USD',
+): string {
   if (!report || report.totalTrades === 0) {
     return "The user has no trades logged yet. If they ask about their performance, tell them to add some trades first.";
   }
@@ -287,17 +316,17 @@ export function buildChatStatsContext(report: CoreReport | null): string {
   const lines = [
     "The user's current performance (use only if they ask about their own stats; do not volunteer):",
     `- Trades: ${report.totalTrades}, win rate ${num(report.winRate, 1)}%`,
-    `- Profit factor ${num(report.profitFactor)}, expectancy ${num(report.expectancy)} per trade, avg R:R ${num(report.rrr)}`,
-    `- Net P&L ${num(report.netPnl)}, max drawdown ${num(report.maxDrawdownPct * 100, 1)}%`,
+    `- Profit factor ${num(report.profitFactor)}, expectancy ${money(report.expectancy, currency, true)} per trade, avg R:R ${num(report.rrr)}`,
+    `- Net P&L ${money(report.netPnl, currency, true)}, max drawdown ${num(report.maxDrawdownPct * 100, 1)}%`,
   ];
   if (best) {
     lines.push(
-      `- Best instrument by P&L: ${best.symbol || 'n/a'} (${best.count} trades, ${num(best.winRate, 0)}% win, P&L ${num(best.pnl)})`,
+      `- Best instrument by P&L: ${best.symbol || 'n/a'} (${best.count} trades, ${num(best.winRate, 0)}% win, P&L ${money(best.pnl, currency, true)})`,
     );
   }
   if (worst && worst !== best) {
     lines.push(
-      `- Weakest by P&L: ${worst.symbol || 'n/a'} (${worst.count} trades, ${num(worst.winRate, 0)}% win, P&L ${num(worst.pnl)})`,
+      `- Weakest by P&L: ${worst.symbol || 'n/a'} (${worst.count} trades, ${num(worst.winRate, 0)}% win, P&L ${money(worst.pnl, currency, true)})`,
     );
   }
   if (report.totalTrades < 10) {
