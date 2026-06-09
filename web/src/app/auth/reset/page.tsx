@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
 
-// Landed here after clicking the password-reset email link. The /auth/callback
-// handler has already exchanged the recovery code for a session, so we just
-// confirm a session exists and let the user set a new password.
+// Landed here from the password-reset email link. The link carries a PKCE code
+// (or detectSessionInUrl has already established the recovery session); we
+// confirm or establish the session here, then let the user set a new password.
 
 type Ready = 'checking' | 'ok' | 'nosession';
 type Tone = 'error' | 'info';
@@ -23,8 +23,41 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!cancelled) setReady(data.session ? 'ok' : 'nosession');
+      // A session may already exist (user signed in, or detectSessionInUrl
+      // handled the link).
+      const { data: existing } = await supabase.auth.getSession();
+      if (existing.session) {
+        if (!cancelled) setReady('ok');
+        return;
+      }
+
+      const url = new URL(window.location.href);
+      const errDesc = url.searchParams.get('error_description');
+      if (errDesc) {
+        if (!cancelled) {
+          setTone('error');
+          setMsg(errDesc);
+          setReady('nosession');
+        }
+        return;
+      }
+
+      // PKCE recovery link: exchange the code for a recovery session.
+      const code = url.searchParams.get('code');
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (cancelled) return;
+        if (error) {
+          // detectSessionInUrl may have already consumed the code; re-check.
+          const { data: after } = await supabase.auth.getSession();
+          setReady(after.session ? 'ok' : 'nosession');
+        } else {
+          setReady('ok');
+        }
+        return;
+      }
+
+      if (!cancelled) setReady('nosession');
     })();
     return () => {
       cancelled = true;
@@ -73,7 +106,7 @@ export default function ResetPasswordPage() {
         {ready === 'nosession' && (
           <div className='space-y-3'>
             <p className='text-sm text-red-600'>
-              This reset link is invalid or has expired.
+              {msg || 'This reset link is invalid or has expired.'}
             </p>
             <a
               href='/auth'
