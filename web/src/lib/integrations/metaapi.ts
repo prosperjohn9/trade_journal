@@ -162,9 +162,9 @@ export async function fetchHistoricalTrades(params: {
   return Array.isArray(body.trades) ? body.trades : [];
 }
 
-/** Provision a read-only MetaApi account for a user's MT login. MetaStats is
- *  enabled at creation so trade history is available without an extra step. The
- *  investor password is sent to MetaApi once here and never stored by us. */
+/** Provision a read-only MetaApi account for a user's MT login. Trade history is
+ *  read later from the account's raw deal history (no MetaStats). The investor
+ *  password is sent to MetaApi once here and never stored by us. */
 export async function provisionAccount(params: {
   name: string;
   login: string;
@@ -192,7 +192,6 @@ export async function provisionAccount(params: {
       type: 'cloud-g2',
       region,
       reliability: params.reliability ?? 'high',
-      metastatsApiEnabled: true,
     }),
   });
 
@@ -309,4 +308,280 @@ export function splitBalanceOps(
     });
   }
   return { initialBalance, events };
+}
+
+// === Deploy-on-demand lifecycle + raw deal history (replaces MetaStats) ========
+
+// Region-specific client API host (account data + history live here).
+function clientApiHost(region: string): string {
+  return `https://mt-client-api-v1.${region}.agiliumtrade.ai`;
+}
+
+export type AccountStatus = { state: string; connectionStatus: string };
+
+/** Read an account's deployment state and broker-connection status. */
+export async function getAccountStatus(
+  metaApiAccountId: string,
+): Promise<AccountStatus> {
+  const res = await fetch(
+    `${PROVISIONING_HOST}/users/current/accounts/${encodeURIComponent(metaApiAccountId)}`,
+    { headers: { 'auth-token': getMetaApiToken() }, cache: 'no-store' },
+  );
+  if (!res.ok) throw await metaApiError('account read', res);
+  const data = (await res.json()) as {
+    state?: string;
+    connectionStatus?: string;
+  };
+  return {
+    state: data.state ?? 'UNKNOWN',
+    connectionStatus: data.connectionStatus ?? 'DISCONNECTED',
+  };
+}
+
+/** Start the account (begins metered hosting). Idempotent on MetaApi's side. */
+export async function deployAccount(metaApiAccountId: string): Promise<void> {
+  const res = await fetch(
+    `${PROVISIONING_HOST}/users/current/accounts/${encodeURIComponent(metaApiAccountId)}/deploy`,
+    { method: 'POST', headers: { 'auth-token': getMetaApiToken() } },
+  );
+  if (![200, 201, 202, 204].includes(res.status)) {
+    throw await metaApiError('deploy', res);
+  }
+}
+
+/** Stop the account (ends ongoing hosting; the 6-hour minimum deploy fee still
+ *  applies). Core of deploy-on-demand cost control. */
+export async function undeployAccount(metaApiAccountId: string): Promise<void> {
+  const res = await fetch(
+    `${PROVISIONING_HOST}/users/current/accounts/${encodeURIComponent(metaApiAccountId)}/undeploy`,
+    { method: 'POST', headers: { 'auth-token': getMetaApiToken() } },
+  );
+  if (![200, 201, 202, 204].includes(res.status)) {
+    throw await metaApiError('undeploy', res);
+  }
+}
+
+/** Poll until the account is connected to the broker (history is then readable),
+ *  or until the time budget runs out. Returns true if it connected in time. */
+export async function waitUntilConnected(
+  metaApiAccountId: string,
+  opts: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<boolean> {
+  const timeoutMs = opts.timeoutMs ?? 35_000;
+  const intervalMs = opts.intervalMs ?? 3_000;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const { connectionStatus } = await getAccountStatus(metaApiAccountId);
+    if (connectionStatus === 'CONNECTED') return true;
+    if (Date.now() + intervalMs >= deadline) return false;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
+/** A raw MetaTrader deal from the (free) MetaApi client REST API. */
+export type MetatraderDeal = {
+  id: string;
+  type: string; // DEAL_TYPE_BUY | DEAL_TYPE_SELL | DEAL_TYPE_BALANCE | ...
+  entryType?: string; // DEAL_ENTRY_IN | DEAL_ENTRY_OUT | DEAL_ENTRY_INOUT | DEAL_ENTRY_OUT_BY
+  positionId?: string;
+  orderId?: string;
+  symbol?: string;
+  volume?: number;
+  price?: number;
+  profit?: number;
+  commission?: number;
+  swap?: number;
+  time?: string; // ISO 8601 (UTC)
+  comment?: string;
+};
+
+/** Fetch raw historical deals for a DEPLOYED + CONNECTED account. Free on MetaApi
+ *  (no MetaStats fee). */
+export async function fetchHistoricalDeals(params: {
+  metaApiAccountId: string;
+  region: string;
+  from: Date;
+  to: Date;
+}): Promise<MetatraderDeal[]> {
+  const { metaApiAccountId, region, from, to } = params;
+  const url =
+    `${clientApiHost(region)}/users/current/accounts/${encodeURIComponent(metaApiAccountId)}` +
+    `/history-deals/time/${encodeURIComponent(from.toISOString())}/${encodeURIComponent(to.toISOString())}`;
+
+  let res = await fetch(url, {
+    headers: { 'auth-token': getMetaApiToken() },
+    cache: 'no-store',
+  });
+  for (
+    let attempt = 0;
+    attempt < 2 && [502, 503, 504].includes(res.status);
+    attempt++
+  ) {
+    await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    res = await fetch(url, {
+      headers: { 'auth-token': getMetaApiToken() },
+      cache: 'no-store',
+    });
+  }
+  if (!res.ok) throw await metaApiError('history-deals', res);
+
+  const body = (await res.json()) as
+    | MetatraderDeal[]
+    | { deals?: MetatraderDeal[] };
+  return Array.isArray(body) ? body : (body.deals ?? []);
+}
+
+/** Volume-weighted average price of a set of deals. */
+function vwap(deals: MetatraderDeal[]): number | null {
+  let vol = 0;
+  let pxVol = 0;
+  for (const d of deals) {
+    const v = num(d.volume);
+    const p = num(d.price);
+    if (v == null || p == null || v <= 0) continue;
+    vol += v;
+    pxVol += p * v;
+  }
+  return vol > 0 ? pxVol / vol : (num(deals[0]?.price) ?? null);
+}
+
+const IN_ENTRIES = new Set(['DEAL_ENTRY_IN', 'DEAL_ENTRY_INOUT']);
+const OUT_ENTRIES = new Set([
+  'DEAL_ENTRY_OUT',
+  'DEAL_ENTRY_OUT_BY',
+  'DEAL_ENTRY_INOUT',
+]);
+
+/** Pair raw deals into round-trip trades and extract balance ops, the in-house
+ *  replacement for MetaStats. external_id stays `metaapi:{positionId}` so trades
+ *  previously imported via MetaStats dedup cleanly. pnl_percent is derived from a
+ *  running account balance (approximates MetaStats' "gain"). */
+export function buildFromDeals(
+  deals: MetatraderDeal[],
+  ctx: {
+    userId: string;
+    accountId: string;
+    fallbackStartingBalance?: number | null;
+  },
+): {
+  initialBalance: number | null;
+  balanceEvents: BalanceEventRow[];
+  trades: ImportedTradeRow[];
+} {
+  // 1) Balance operations -> starting balance + deposit/withdrawal events.
+  const balanceDeals = deals
+    .filter((d) => d.type === 'DEAL_TYPE_BALANCE' && d.time)
+    .sort((a, b) => ((a.time ?? '') < (b.time ?? '') ? -1 : 1));
+
+  let initialBalance: number | null = null;
+  const balanceEvents: BalanceEventRow[] = [];
+  if (balanceDeals.length) {
+    const [first, ...rest] = balanceDeals;
+    initialBalance =
+      typeof first.profit === 'number' &&
+      Number.isFinite(first.profit) &&
+      first.profit > 0
+        ? first.profit
+        : null;
+    for (const op of rest) {
+      const amount = num(op.profit);
+      if (amount == null || amount === 0 || !op.time) continue;
+      balanceEvents.push({
+        user_id: ctx.userId,
+        account_id: ctx.accountId,
+        kind: amount > 0 ? 'DEPOSIT' : 'WITHDRAWAL',
+        amount: Math.abs(amount),
+        occurred_at: op.time,
+        source: 'metaapi',
+        external_id: `metaapi:${op.id}`,
+      });
+    }
+  }
+
+  // 2) Group trade deals by position.
+  const byPosition = new Map<string, MetatraderDeal[]>();
+  for (const d of deals) {
+    if (!TRADE_DEAL_TYPES.has(d.type)) continue;
+    if (!d.positionId || !d.symbol) continue;
+    const arr = byPosition.get(d.positionId);
+    if (arr) arr.push(d);
+    else byPosition.set(d.positionId, [d]);
+  }
+
+  // 3) Build one trade per CLOSED position.
+  type Pending = { row: ImportedTradeRow; net: number; closedMs: number };
+  const pending: Pending[] = [];
+  for (const [positionId, group] of byPosition) {
+    group.sort((a, b) => ((a.time ?? '') < (b.time ?? '') ? -1 : 1));
+    const ins = group.filter((d) => IN_ENTRIES.has(d.entryType ?? 'DEAL_ENTRY_IN'));
+    const outs = group.filter((d) => OUT_ENTRIES.has(d.entryType ?? ''));
+    if (!ins.length || !outs.length) continue; // not a closed round-trip yet
+
+    const openDeal = ins[0];
+    const opened_at = openDeal.time ?? null;
+    if (!opened_at) continue;
+    const closed_at = outs[outs.length - 1].time ?? null;
+
+    const grossProfit = group.reduce((s, d) => s + (num(d.profit) ?? 0), 0);
+    const commission = group.reduce((s, d) => s + (num(d.commission) ?? 0), 0);
+    const swap = group.reduce((s, d) => s + (num(d.swap) ?? 0), 0);
+    const net = grossProfit + commission + swap;
+
+    pending.push({
+      net,
+      closedMs: new Date(closed_at ?? opened_at).getTime(),
+      row: {
+        user_id: ctx.userId,
+        account_id: ctx.accountId,
+        external_id: `metaapi:${positionId}`,
+        import_source: 'metaapi',
+        instrument: (openDeal.symbol ?? '').toUpperCase(),
+        direction: openDeal.type === 'DEAL_TYPE_SELL' ? 'SELL' : 'BUY',
+        outcome: net > 0 ? 'WIN' : net < 0 ? 'LOSS' : 'BREAKEVEN',
+        opened_at,
+        closed_at,
+        entry_price: vwap(ins),
+        exit_price: vwap(outs),
+        stop_loss: parseLevel(openDeal.comment, 'sl'),
+        take_profit: parseLevel(openDeal.comment, 'tp'),
+        volume: ins.reduce((s, d) => s + (num(d.volume) ?? 0), 0) || null,
+        pnl_amount: grossProfit,
+        pnl_percent: 0, // filled from the running balance below
+        net_pnl: net,
+        commission: -(commission + swap), // positive = net cost (so pnl - cost = net)
+        risk_amount: null,
+        r_multiple: null,
+      },
+    });
+  }
+
+  // 4) Running-balance pass for pnl_percent: walk balance ops + trades in time
+  //    order, charging each trade's % against the balance just before it closed.
+  type TimelineItem =
+    | { ms: number; kind: 'balance'; signed: number }
+    | { ms: number; kind: 'trade'; ref: Pending };
+  const timeline: TimelineItem[] = [];
+  for (const op of balanceDeals) {
+    const amt = num(op.profit);
+    if (amt == null || !op.time) continue;
+    timeline.push({ ms: new Date(op.time).getTime(), kind: 'balance', signed: amt });
+  }
+  for (const p of pending) {
+    timeline.push({ ms: p.closedMs, kind: 'trade', ref: p });
+  }
+  timeline.sort((a, b) => a.ms - b.ms);
+
+  let balance = ctx.fallbackStartingBalance ?? 0;
+  for (const item of timeline) {
+    if (item.kind === 'balance') {
+      balance += item.signed;
+      continue;
+    }
+    if (balance > 0) {
+      item.ref.row.pnl_percent = (item.ref.net / balance) * 100;
+    }
+    balance += item.ref.net;
+  }
+
+  return { initialBalance, balanceEvents, trades: pending.map((p) => p.row) };
 }

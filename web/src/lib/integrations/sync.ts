@@ -1,8 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
-  fetchHistoricalTrades,
-  mapTradeToRow,
-  splitBalanceOps,
+  fetchHistoricalDeals,
+  buildFromDeals,
+  getAccountStatus,
+  deployAccount,
+  undeployAccount,
+  waitUntilConnected,
   DEFAULT_MT_REGION,
 } from '@/src/lib/integrations/metaapi';
 
@@ -61,9 +64,10 @@ export async function logRefresh(
 }
 
 /**
- * Pull paired trades and balance operations for one MetaTrader connection and
- * upsert them (idempotent via external_id), then update the connection's sync
- * state. Works with any Supabase client, the user's RLS-scoped client (manual
+ * Sync one MetaTrader connection with deploy-on-demand: make sure the account is
+ * deployed and connected, pull its full raw deal history (free MetaApi API), pair
+ * the deals into trades in-house, upsert idempotently via external_id, then
+ * undeploy to stop hosting cost. Works with the user's RLS-scoped client (manual
  * sync) or the service-role client (scheduled sync).
  */
 export async function syncConnection(
@@ -71,31 +75,74 @@ export async function syncConnection(
   c: SyncConnection,
   userId: string,
 ): Promise<SyncResult> {
+  const nowIso = () => new Date().toISOString();
+  let undeployWhenDone = false;
   try {
     const region = c.region ?? DEFAULT_MT_REGION;
-    // Always pull full history. An incremental window would exclude the original
-    // funding row (which sets starting_balance) and older trades, so re-syncs
-    // would never correct the balance. Dedup makes this idempotent.
+
+    // Deploy-on-demand: make sure the account is running and connected before we
+    // read history, so we only pay MetaApi while we actually need it.
+    const status = await getAccountStatus(c.metaapi_account_id);
+    if (status.state !== 'DEPLOYED' && status.state !== 'DEPLOYING') {
+      await deployAccount(c.metaapi_account_id);
+    }
+    if (status.connectionStatus !== 'CONNECTED') {
+      const connected = await waitUntilConnected(c.metaapi_account_id);
+      if (!connected) {
+        // Still connecting. Leave it deployed (same 6-hour billing window) so the
+        // next sync finishes fast; never undeploy mid-connect.
+        await sb
+          .from('mt_connections')
+          .update({ state: 'connecting', updated_at: nowIso() })
+          .eq('id', c.id);
+        return {
+          connectionId: c.id,
+          imported: 0,
+          skipped: 0,
+          error:
+            'Your account is still connecting to the broker. Try the sync again in a minute.',
+        };
+      }
+    }
+    undeployWhenDone = true;
+
+    // Pull the full raw deal history (free) and pair it into trades in-house.
+    // Full history each time: an incremental window would miss the funding row
+    // and older trades; dedup on external_id keeps it idempotent.
     const from = new Date('2000-01-01T00:00:00Z');
     const to = new Date(Date.now() + DAY_MS);
-
-    const trades = await fetchHistoricalTrades({
+    const deals = await fetchHistoricalDeals({
       metaApiAccountId: c.metaapi_account_id,
       region,
       from,
       to,
     });
 
-    const { initialBalance, events: balanceEvents } = splitBalanceOps(trades, {
+    const { data: acct } = await sb
+      .from('accounts')
+      .select('starting_balance')
+      .eq('id', c.account_id)
+      .maybeSingle();
+
+    const {
+      initialBalance,
+      balanceEvents,
+      trades: rows,
+    } = buildFromDeals(deals, {
       userId,
       accountId: c.account_id,
+      fallbackStartingBalance:
+        (acct as { starting_balance: number | null } | null)?.starting_balance ??
+        null,
     });
+
     if (initialBalance != null && initialBalance > 0) {
       await sb
         .from('accounts')
         .update({ starting_balance: initialBalance })
         .eq('id', c.account_id);
     }
+
     if (balanceEvents.length) {
       const exIds = balanceEvents.map((e) => e.external_id);
       const { data: existingEv } = await sb
@@ -112,13 +159,8 @@ export async function syncConnection(
       }
     }
 
-    const rows = trades
-      .map((t) => mapTradeToRow(t, { userId, accountId: c.account_id }))
-      .filter((r): r is NonNullable<typeof r> => r !== null);
-
     let imported = 0;
     let skipped = 0;
-
     if (rows.length) {
       const ids = rows.map((r) => r.external_id);
       const { data: existing } = await sb
@@ -131,7 +173,6 @@ export async function syncConnection(
       );
       const toInsert = rows.filter((r) => !have.has(r.external_id));
       skipped = rows.length - toInsert.length;
-
       if (toInsert.length) {
         const { error: insErr } = await sb.from('trades').insert(toInsert);
         if (insErr) throw new Error(insErr.message);
@@ -142,10 +183,10 @@ export async function syncConnection(
     await sb
       .from('mt_connections')
       .update({
-        last_synced_at: new Date().toISOString(),
+        last_synced_at: nowIso(),
         state: 'connected',
         last_error: null,
-        updated_at: new Date().toISOString(),
+        updated_at: nowIso(),
       })
       .eq('id', c.id);
 
@@ -157,9 +198,19 @@ export async function syncConnection(
       .update({
         state: 'error',
         last_error: msg.slice(0, 500),
-        updated_at: new Date().toISOString(),
+        updated_at: nowIso(),
       })
       .eq('id', c.id);
     return { connectionId: c.id, imported: 0, skipped: 0, error: msg };
+  } finally {
+    if (undeployWhenDone) {
+      // Cost control: stop hosting once we've pulled history. Best-effort; the
+      // daily cron reconciles any account left deployed.
+      try {
+        await undeployAccount(c.metaapi_account_id);
+      } catch {
+        // ignore
+      }
+    }
   }
 }
