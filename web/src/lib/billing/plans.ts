@@ -3,8 +3,10 @@
 // only tracks which plan a user is on and its status.
 //
 // Final model (USD): Pro $18/mo, Elite $28/mo, Master $48/mo. Annual is two
-// months free (monthly x 10). Tiers differ by synced-account count, sync
-// frequency, and AI quota; every paid feature is unlocked on every tier.
+// months free (monthly x 10). Auto-sync is once daily on every tier (MetaApi's
+// 6-hour deploy billing makes anything faster uneconomical); tiers differ by
+// synced-account count, AI quota, and manual-refresh allowance. Every paid
+// feature is unlocked on every tier. See docs/sync-cost-model.md.
 
 export type PlanId = 'pro' | 'elite' | 'master';
 export type BillingCycle = 'monthly' | 'yearly';
@@ -15,7 +17,8 @@ export type PlanDef = {
   priceMonthly: number;
   priceYearly: number;
   syncedAccounts: number; // included synced (broker) accounts
-  syncIntervalHours: number; // auto-sync frequency
+  syncIntervalHours: number; // auto-sync cadence (24 = once daily)
+  manualRefreshesPerMonth: number; // user-triggered "refresh now" allowance
   aiActionsPerMonth: number; // insight refreshes + trade reviews + chat turns
   blurb: string;
 };
@@ -27,8 +30,9 @@ export const PLANS: Record<PlanId, PlanDef> = {
     priceMonthly: 18,
     priceYearly: 180,
     syncedAccounts: 2,
-    syncIntervalHours: 4,
-    aiActionsPerMonth: 100,
+    syncIntervalHours: 24,
+    manualRefreshesPerMonth: 15,
+    aiActionsPerMonth: 40,
     blurb: 'For traders running one or two accounts who want sync and AI.',
   },
   elite: {
@@ -36,9 +40,10 @@ export const PLANS: Record<PlanId, PlanDef> = {
     name: 'Elite',
     priceMonthly: 28,
     priceYearly: 280,
-    syncedAccounts: 6,
-    syncIntervalHours: 2,
-    aiActionsPerMonth: 300,
+    syncedAccounts: 4,
+    syncIntervalHours: 24,
+    manualRefreshesPerMonth: 30,
+    aiActionsPerMonth: 100,
     blurb: 'For active prop traders juggling several challenges.',
   },
   master: {
@@ -46,10 +51,11 @@ export const PLANS: Record<PlanId, PlanDef> = {
     name: 'Master',
     priceMonthly: 48,
     priceYearly: 480,
-    syncedAccounts: 12,
-    syncIntervalHours: 1,
-    aiActionsPerMonth: 1000,
-    blurb: 'For full-time traders who want the fastest sync and the most AI.',
+    syncedAccounts: 8,
+    syncIntervalHours: 24,
+    manualRefreshesPerMonth: 50,
+    aiActionsPerMonth: 200,
+    blurb: 'For full-time traders running a book of accounts.',
   },
 };
 
@@ -62,7 +68,7 @@ export const TRIAL_DAYS = 7;
 export const TRIAL_PLAN: PlanId = 'pro';
 
 /** Pay-as-you-go price per extra synced account, per month (USD). */
-export const EXTRA_SYNC_PRICE_MONTHLY = 4;
+export const EXTRA_SYNC_PRICE_MONTHLY = 6;
 
 /** Absolute ceiling on synced accounts regardless of add-ons (abuse guard). */
 export const MAX_SYNCED_ACCOUNTS_HARD_CAP = 50;

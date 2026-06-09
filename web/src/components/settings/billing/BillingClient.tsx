@@ -34,9 +34,10 @@ function statusColor(status: Entitlements['status']): string {
   return 'var(--text-muted)';
 }
 
-function syncEvery(hours: number): string {
+function syncLabel(hours: number): string {
   if (!hours) return 'n/a';
-  return hours === 1 ? 'every hour' : `every ${hours} hours`;
+  if (hours >= 24) return 'Daily';
+  return hours === 1 ? 'Hourly' : `Every ${hours}h`;
 }
 
 const COMMON_FEATURES = [
@@ -50,8 +51,8 @@ const COMMON_FEATURES = [
 function planHighlights(p: PlanDef): string[] {
   return [
     `${p.syncedAccounts} synced broker accounts`,
-    `Auto-sync ${p.syncIntervalHours === 1 ? 'every hour' : `every ${p.syncIntervalHours} hours`}`,
-    `${p.aiActionsPerMonth.toLocaleString()} AI actions / month`,
+    `Daily auto-sync + ${p.manualRefreshesPerMonth} manual refreshes`,
+    `${p.aiActionsPerMonth} AI actions / month`,
   ];
 }
 
@@ -122,7 +123,7 @@ function CurrentPlanCard({ e }: { e: Entitlements }) {
       </div>
 
       {e.entitled ? (
-        <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3'>
+        <div className='mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4'>
           <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
             <div className='text-xs text-[var(--text-muted)]'>
               Synced accounts
@@ -134,7 +135,15 @@ function CurrentPlanCard({ e }: { e: Entitlements }) {
           <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
             <div className='text-xs text-[var(--text-muted)]'>Auto-sync</div>
             <div className='text-lg font-semibold text-[var(--text-primary)]'>
-              {syncEvery(e.limits.syncIntervalHours)}
+              {syncLabel(e.limits.syncIntervalHours)}
+            </div>
+          </div>
+          <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
+            <div className='text-xs text-[var(--text-muted)]'>
+              Manual refreshes / mo
+            </div>
+            <div className='text-lg font-semibold text-[var(--text-primary)]'>
+              {e.limits.manualRefreshesPerMonth}
             </div>
           </div>
           <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>

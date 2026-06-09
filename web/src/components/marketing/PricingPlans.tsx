@@ -21,15 +21,11 @@ const COMMON_FEATURES = [
 
 const POPULAR: PlanDef['id'] = 'elite';
 
-function syncEvery(hours: number): string {
-  return hours === 1 ? 'every hour' : `every ${hours} hours`;
-}
-
 function highlights(p: PlanDef): string[] {
   return [
     `${p.syncedAccounts} synced broker accounts`,
-    `Auto-sync ${syncEvery(p.syncIntervalHours)}`,
-    `${p.aiActionsPerMonth.toLocaleString()} AI actions / month`,
+    `Daily auto-sync + ${p.manualRefreshesPerMonth} manual refreshes`,
+    `${p.aiActionsPerMonth} AI actions / month`,
   ];
 }
 

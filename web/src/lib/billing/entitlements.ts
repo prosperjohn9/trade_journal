@@ -33,6 +33,7 @@ export type SubscriptionRow = {
 export type EntitlementLimits = {
   syncedAccounts: number;
   syncIntervalHours: number;
+  manualRefreshesPerMonth: number;
   aiActionsPerMonth: number;
 };
 
@@ -58,6 +59,7 @@ export type Entitlements = {
 const LOCKED_LIMITS: EntitlementLimits = {
   syncedAccounts: 0,
   syncIntervalHours: 0,
+  manualRefreshesPerMonth: 0,
   aiActionsPerMonth: 0,
 };
 
@@ -130,6 +132,7 @@ export function resolveEntitlements(
     limits: {
       syncedAccounts: plan.syncedAccounts + extra,
       syncIntervalHours: plan.syncIntervalHours,
+      manualRefreshesPerMonth: plan.manualRefreshesPerMonth,
       aiActionsPerMonth: plan.aiActionsPerMonth,
     },
     features: { ...ALL_FEATURES },
