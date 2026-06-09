@@ -129,7 +129,7 @@ export function MetaTraderConnect({
       );
       const r = res.results[0];
       if (r?.error) {
-        setMsg(`Still linking or no trades yet: ${r.error}`);
+        setMsg(r.error);
       } else {
         const imported = r?.imported ?? 0;
         setMsg(

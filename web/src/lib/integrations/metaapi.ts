@@ -26,6 +26,27 @@ export function getMetaApiToken(): string {
   return token;
 }
 
+/** Turn a failed MetaApi/MetaStats response into a clean, user-safe Error. The
+ *  raw provider body (often an HTML 5xx page) is logged server-side for
+ *  debugging but never surfaced to the client. */
+async function metaApiError(context: string, res: Response): Promise<Error> {
+  const raw = await res.text().catch(() => '');
+  console.error(`[metaapi] ${context} failed: ${res.status} ${raw.slice(0, 500)}`);
+  const message =
+    res.status === 400
+      ? 'The broker login, server, or investor password was not accepted. Please double-check them and try again.'
+      : res.status === 401 || res.status === 403
+        ? 'Broker authorization failed. Please reconnect the account.'
+        : res.status === 404
+          ? 'That broker account was not found on the sync service.'
+          : res.status === 429
+            ? 'Too many sync requests right now. Please wait a moment and try again.'
+            : res.status >= 500
+              ? 'The broker data service is busy right now. Please try again in a minute.'
+              : 'Broker sync is temporarily unavailable. Please try again shortly.';
+  return new Error(message);
+}
+
 /** A historical (closed, already-paired) trade from the MetaStats API. */
 export type MetaStatsTrade = {
   _id: string;
@@ -115,14 +136,26 @@ export async function fetchHistoricalTrades(params: {
     `/historical-trades/${encodeURIComponent(formatRange(from))}/${encodeURIComponent(formatRange(to))}` +
     `?updateHistory=${updateHistory ? 'true' : 'false'}`;
 
-  const res = await fetch(url, {
+  let res = await fetch(url, {
     headers: { 'auth-token': getMetaApiToken() },
     cache: 'no-store',
   });
+  // MetaStats often returns a transient 5xx while the account is still
+  // synchronizing; retry a couple of times before surfacing an error.
+  for (
+    let attempt = 0;
+    attempt < 2 && [502, 503, 504].includes(res.status);
+    attempt++
+  ) {
+    await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    res = await fetch(url, {
+      headers: { 'auth-token': getMetaApiToken() },
+      cache: 'no-store',
+    });
+  }
 
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`MetaStats request failed (${res.status}): ${text.slice(0, 300)}`);
+    throw await metaApiError('historical-trades', res);
   }
 
   const body = (await res.json()) as { trades?: MetaStatsTrade[] };
@@ -164,10 +197,7 @@ export async function provisionAccount(params: {
   });
 
   if (res.status !== 200 && res.status !== 201 && res.status !== 202) {
-    const text = await res.text().catch(() => '');
-    throw new Error(
-      `MetaApi provisioning failed (${res.status}): ${text.slice(0, 300)}`,
-    );
+    throw await metaApiError('provisioning', res);
   }
 
   const data = (await res.json()) as { id?: string; state?: string };
@@ -185,10 +215,7 @@ export async function removeMetaApiAccount(
     { method: 'DELETE', headers: { 'auth-token': getMetaApiToken() } },
   );
   if (![200, 202, 204, 404].includes(res.status)) {
-    const text = await res.text().catch(() => '');
-    throw new Error(
-      `MetaApi account removal failed (${res.status}): ${text.slice(0, 200)}`,
-    );
+    throw await metaApiError('account removal', res);
   }
 }
 
