@@ -17,11 +17,15 @@ function CallbackInner() {
     async function run() {
       try {
         const code = sp.get('code');
+        // Only allow local paths to prevent an open-redirect.
+        const rawNext = sp.get('next');
+        const next =
+          rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//')
+            ? rawNext
+            : '/dashboard';
 
         if (!code) {
-          setMsg(
-            'Missing code. Please re-open the magic link from your email.',
-          );
+          setMsg('Missing code. Please re-open the link from your email.');
           timeoutRef.current = window.setTimeout(() => {
             if (!cancelled) router.replace('/auth');
           }, 1200);
@@ -31,7 +35,7 @@ function CallbackInner() {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) throw error;
 
-        if (!cancelled) router.replace('/dashboard');
+        if (!cancelled) router.replace(next);
       } catch (e: unknown) {
         const message =
           e instanceof Error

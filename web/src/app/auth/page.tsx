@@ -7,14 +7,20 @@ import { useRouter } from 'next/navigation';
 
 function readSavedEmail(): string {
   if (typeof window === 'undefined') return '';
-  return window.localStorage.getItem('last_magic_email') ?? '';
+  return (
+    window.localStorage.getItem('last_auth_email') ??
+    window.localStorage.getItem('last_magic_email') ??
+    ''
+  );
 }
 
 // localStorage doesn't change under us while the auth screen is open, so
 // subscribe is a no-op. useSyncExternalStore still gives an SSR-safe read (the
-// server snapshot is '') with no hydration mismatch — replacing the old
-// "restore email from localStorage inside an effect" pattern.
+// server snapshot is '') with no hydration mismatch.
 const subscribeSavedEmail = () => () => {};
+
+type Mode = 'signin' | 'signup';
+type Tone = 'error' | 'info';
 
 function GoogleIcon() {
   return (
@@ -47,87 +53,156 @@ export default function AuthPage() {
     readSavedEmail,
     () => '',
   );
-  // Local edits win over the saved value; null means "untouched", '' means the
-  // user explicitly cleared the field.
+  // Local edits win over the saved value; null means "untouched".
   const [emailDraft, setEmailDraft] = useState<string | null>(null);
   const email = emailDraft ?? savedEmail;
-  const [msg, setMsg] = useState('');
-  const [sending, setSending] = useState(false);
+
+  const [mode, setMode] = useState<Mode>('signin');
+  const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<'google' | null>(null);
+  const [msg, setMsg] = useState('');
+  const [tone, setTone] = useState<Tone>('info');
 
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (!cancelled && data.session) router.replace('/dashboard');
     })();
-
     return () => {
       cancelled = true;
     };
   }, [router]);
 
+  function note(text: string, t: Tone = 'info') {
+    setTone(t);
+    setMsg(text);
+  }
+
+  function rememberEmail(value: string) {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('last_auth_email', value);
+    }
+  }
+
   async function signInWithProvider(provider: 'google') {
-    setMsg('');
+    note('');
     setOauthLoading(provider);
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo: `${window.location.origin}/auth/callback` },
       });
-      // On success the browser redirects to the provider, so we only land here
-      // on error.
+      // On success the browser redirects to the provider; we only land here on
+      // error.
       if (error) {
-        setMsg(error.message);
+        note(error.message, 'error');
         setOauthLoading(null);
       }
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Could not start sign-in.');
+      note(e instanceof Error ? e.message : 'Could not start sign-in.', 'error');
       setOauthLoading(null);
     }
   }
 
-  async function signInWithEmail(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = email.trim();
-
-    if (!trimmed) {
-      setMsg('Enter your email.');
+    const mail = email.trim();
+    if (!mail) {
+      note('Enter your email.', 'error');
+      return;
+    }
+    if (password.length < 8) {
+      note('Password must be at least 8 characters.', 'error');
       return;
     }
 
-    setSending(true);
-    setMsg('Sending magic link...');
-
+    setBusy(true);
+    note('');
     try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('last_magic_email', trimmed);
-      }
+      rememberEmail(mail);
 
-      const { error } = await supabase.auth.signInWithOtp({
-        email: trimmed,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-
-      if (error) {
-        setMsg(error.message);
+      if (mode === 'signin') {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: mail,
+          password,
+        });
+        if (error) {
+          if (/invalid login credentials/i.test(error.message)) {
+            note('Wrong email or password.', 'error');
+          } else if (/email not confirmed/i.test(error.message)) {
+            note(
+              'Confirm your email first, then sign in. Check your inbox for the link.',
+              'error',
+            );
+          } else {
+            note(error.message, 'error');
+          }
+          return;
+        }
+        router.replace('/dashboard');
         return;
       }
 
-      setMsg('Check your email for the login link.');
+      // Sign up.
+      const { data, error } = await supabase.auth.signUp({
+        email: mail,
+        password,
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) {
+        if (/already registered|already exists/i.test(error.message)) {
+          setMode('signin');
+          note('You already have an account. Sign in instead.', 'error');
+        } else {
+          note(error.message, 'error');
+        }
+        return;
+      }
+      // Email confirmation OFF: a session is returned, go straight in.
+      if (data.session) {
+        router.replace('/dashboard');
+        return;
+      }
+      // Supabase returns a user with no identities when the email already exists
+      // (and confirmation is on) so as not to leak which emails are registered.
+      if (data.user && (data.user.identities?.length ?? 0) === 0) {
+        setMode('signin');
+        note('You already have an account. Sign in instead.', 'error');
+        return;
+      }
+      note('Account created. Check your email to confirm, then sign in.', 'info');
     } finally {
-      setSending(false);
+      setBusy(false);
     }
   }
 
-  async function goToAppIfLoggedIn() {
-    const { data } = await supabase.auth.getSession();
-    if (data.session) router.push('/dashboard');
-    else setMsg('No active session yet. Use the magic link from your email.');
+  async function handleForgot() {
+    const mail = email.trim();
+    if (!mail) {
+      note('Enter your email above first, then tap reset.', 'error');
+      return;
+    }
+    setBusy(true);
+    note('');
+    try {
+      rememberEmail(mail);
+      const { error } = await supabase.auth.resetPasswordForEmail(mail, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset`,
+      });
+      if (error) {
+        note(error.message, 'error');
+        return;
+      }
+      note('If that email has an account, a reset link is on its way.', 'info');
+    } finally {
+      setBusy(false);
+    }
   }
+
+  const signingIn = mode === 'signin';
 
   return (
     <main className='min-h-screen flex items-center justify-center p-6'>
@@ -142,7 +217,9 @@ export default function AuthPage() {
             className='h-14 w-14'
           />
           <div>
-            <h1 className='text-2xl font-semibold leading-tight'>The Trader&apos;s Hindsight</h1>
+            <h1 className='text-2xl font-semibold leading-tight'>
+              The Trader&apos;s Hindsight
+            </h1>
             <p className='text-sm text-[var(--text-secondary)]'>
               Make your experience your edge.
             </p>
@@ -150,7 +227,7 @@ export default function AuthPage() {
         </div>
 
         <p className='text-sm font-medium text-[var(--text-secondary)]'>
-          Sign in or create your account
+          {signingIn ? 'Sign in to your account' : 'Create your account'}
         </p>
 
         <div className='space-y-2'>
@@ -170,41 +247,93 @@ export default function AuthPage() {
           <span className='h-px flex-1 border-t' />
         </div>
 
-        <form onSubmit={signInWithEmail} className='space-y-3'>
+        <form onSubmit={handleSubmit} className='space-y-3'>
           <input
             className='w-full border rounded-lg p-3'
             placeholder='Email address'
+            aria-label='Email address'
             value={email}
             onChange={(e) => setEmailDraft(e.target.value)}
             type='email'
+            autoComplete='email'
             required
           />
+
+          <div className='relative'>
+            <input
+              className='w-full border rounded-lg p-3 pr-16'
+              placeholder='Password'
+              aria-label='Password'
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type={showPw ? 'text' : 'password'}
+              autoComplete={signingIn ? 'current-password' : 'new-password'}
+              minLength={8}
+              required
+            />
+            <button
+              type='button'
+              onClick={() => setShowPw((v) => !v)}
+              className='absolute inset-y-0 right-0 px-3 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]'>
+              {showPw ? 'Hide' : 'Show'}
+            </button>
+          </div>
+
+          {signingIn && (
+            <div className='text-right'>
+              <button
+                type='button'
+                onClick={() => void handleForgot()}
+                disabled={busy}
+                className='text-xs text-[var(--text-muted)] underline hover:text-[var(--text-primary)] disabled:opacity-60'>
+                Forgot password?
+              </button>
+            </div>
+          )}
+
           <button
-            className='w-full rounded-lg p-3 border disabled:opacity-60'
-            disabled={sending}>
-            {sending ? 'Sending...' : 'Send magic link'}
+            type='submit'
+            className='w-full rounded-lg p-3 border font-medium disabled:opacity-60'
+            disabled={busy}>
+            {busy
+              ? 'Please wait…'
+              : signingIn
+                ? 'Sign in'
+                : 'Create account'}
           </button>
         </form>
 
-        <button
-          onClick={goToAppIfLoggedIn}
-          className='w-full rounded-lg p-3 border'>
-          I already logged in
-        </button>
+        <p className='text-sm text-[var(--text-secondary)]'>
+          {signingIn ? "New here? " : 'Already have an account? '}
+          <button
+            type='button'
+            onClick={() => {
+              setMode(signingIn ? 'signup' : 'signin');
+              note('');
+            }}
+            className='underline font-medium hover:text-[var(--text-primary)]'>
+            {signingIn ? 'Create an account' : 'Sign in'}
+          </button>
+        </p>
 
-        {msg && <p className='text-sm opacity-80'>{msg}</p>}
+        {msg && (
+          <p
+            className={
+              tone === 'error'
+                ? 'text-sm text-red-600'
+                : 'text-sm opacity-80'
+            }>
+            {msg}
+          </p>
+        )}
 
         <p className='text-xs text-[var(--text-muted)]'>
           By signing in or creating an account, you agree to our{' '}
-          <a
-            href='/terms'
-            className='underline hover:text-[var(--text-primary)]'>
+          <a href='/terms' className='underline hover:text-[var(--text-primary)]'>
             Terms of Service
           </a>{' '}
           and{' '}
-          <a
-            href='/privacy'
-            className='underline hover:text-[var(--text-primary)]'>
+          <a href='/privacy' className='underline hover:text-[var(--text-primary)]'>
             Privacy Policy
           </a>
           .
