@@ -32,6 +32,27 @@ export async function isOverDailyCap(sb: Sb, userId: string): Promise<boolean> {
   return (count ?? 0) >= AI_USAGE_DAILY_CAP;
 }
 
+function startOfMonthIso(now: number = Date.now()): string {
+  const d = new Date(now);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString();
+}
+
+/**
+ * AI generations the user has made since the start of the current calendar
+ * month (UTC). Enforces the per-plan monthly action quota. Counts under RLS so
+ * it only ever sees the caller's own rows.
+ */
+export async function monthlyUsageCount(sb: Sb, userId: string): Promise<number> {
+  const { count, error } = await sb
+    .from('ai_usage')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gte('created_at', startOfMonthIso());
+  // Fail open on error — the daily cap and prepaid balance still bound cost.
+  if (error) return 0;
+  return count ?? 0;
+}
+
 /** Record one AI call. Best-effort: callers should not fail the response if this throws. */
 export async function logUsage(
   sb: Sb,

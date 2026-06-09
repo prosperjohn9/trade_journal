@@ -8,7 +8,7 @@ import {
   isAiConfigured,
 } from '@/src/lib/ai/client';
 import { TRADE_REVIEW_SYSTEM, buildTradeReviewInput } from '@/src/lib/ai/prompts';
-import { isOverDailyCap, logUsage } from '@/src/lib/ai/usage';
+import { isOverDailyCap, logUsage, monthlyUsageCount } from '@/src/lib/ai/usage';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -120,6 +120,18 @@ export async function POST(request: Request) {
   if (await isOverDailyCap(sb, user.id)) {
     return NextResponse.json(
       { error: 'You have reached your daily AI limit. Try again tomorrow.' },
+      { status: 429 },
+    );
+  }
+  if (
+    (await monthlyUsageCount(sb, user.id)) >=
+    entitlements.limits.aiActionsPerMonth
+  ) {
+    return NextResponse.json(
+      {
+        error: `You have used all ${entitlements.limits.aiActionsPerMonth} AI actions in your plan this month. They reset on the 1st, or upgrade for more.`,
+        code: 'quota_reached',
+      },
       { status: 429 },
     );
   }
