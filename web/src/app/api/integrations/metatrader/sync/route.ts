@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
   let query = sb
     .from('mt_connections')
-    .select('id, account_id, metaapi_account_id, region')
+    .select('id, account_id, metaapi_account_id, region, last_synced_at')
     .eq('user_id', user.id);
   if (body.connectionId) query = query.eq('id', body.connectionId);
 

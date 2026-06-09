@@ -16,6 +16,7 @@ export type SyncConnection = {
   account_id: string;
   metaapi_account_id: string;
   region: string | null;
+  last_synced_at?: string | null;
 };
 
 export type SyncResult = {
@@ -87,20 +88,24 @@ export async function syncConnection(
       await deployAccount(c.metaapi_account_id);
     }
     if (status.connectionStatus !== 'CONNECTED') {
-      const connected = await waitUntilConnected(c.metaapi_account_id);
+      const connected = await waitUntilConnected(c.metaapi_account_id, {
+        timeoutMs: 45_000,
+      });
       if (!connected) {
         // Still connecting. Leave it deployed (same 6-hour billing window) so the
-        // next sync finishes fast; never undeploy mid-connect.
+        // connection finishes in the background; never undeploy mid-connect.
         await sb
           .from('mt_connections')
           .update({ state: 'connecting', updated_at: nowIso() })
           .eq('id', c.id);
+        const firstTime = !c.last_synced_at;
         return {
           connectionId: c.id,
           imported: 0,
           skipped: 0,
-          error:
-            'Your account is still connecting to the broker. Try the sync again in a minute.',
+          error: firstTime
+            ? 'Your account is connecting to the broker for the first time. This can take a few minutes, then tap Sync now again.'
+            : 'Your account is reconnecting to the broker. Give it a moment, then tap Sync now again.',
         };
       }
     }
