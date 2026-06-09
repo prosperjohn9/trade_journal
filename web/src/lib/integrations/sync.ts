@@ -22,6 +22,44 @@ export type SyncResult = {
   error?: string;
 };
 
+export type RefreshKind = 'manual' | 'auto';
+
+function startOfMonthIso(now: number = Date.now()): string {
+  const d = new Date(now);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString();
+}
+
+/**
+ * How many MANUAL broker refreshes the user has spent since the start of the
+ * current calendar month (UTC). Enforces the per-plan monthly cap. Counts under
+ * RLS so it only sees the caller's own rows.
+ */
+export async function manualRefreshCount(
+  sb: SupabaseClient,
+  userId: string,
+): Promise<number> {
+  const { count, error } = await sb
+    .from('mt_refreshes')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('kind', 'manual')
+    .gte('created_at', startOfMonthIso());
+  if (error) return 0; // fail open; the deploy itself is still the hard cost cap
+  return count ?? 0;
+}
+
+/** Record one refresh (one account sync / MetaApi deploy). Best-effort. */
+export async function logRefresh(
+  sb: SupabaseClient,
+  userId: string,
+  connectionId: string,
+  kind: RefreshKind,
+): Promise<void> {
+  await sb
+    .from('mt_refreshes')
+    .insert({ user_id: userId, connection_id: connectionId, kind });
+}
+
 /**
  * Pull paired trades and balance operations for one MetaTrader connection and
  * upsert them (idempotent via external_id), then update the connection's sync
