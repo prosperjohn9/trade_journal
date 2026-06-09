@@ -4,14 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { getErr } from '@/src/domain/errors';
-import type { Profile } from '@/src/domain/profile';
 import { toNumberSafe } from '@/src/lib/utils/number';
 import {
-  type AnalyticsAccount,
   loadAnalyticsBootstrap,
   loadAnalyticsTradesInRange,
   logoutAnalytics,
-  type AnalyticsSetupTemplate,
   type AnalyticsTrade,
 } from '@/src/lib/services/analytics.service';
 import { loadBalanceEvents } from '@/src/lib/services/balanceEvents.service';
@@ -231,9 +228,12 @@ export function useAnalytics() {
   );
 
   const profile = bootstrap?.profile ?? null;
-  const accounts = bootstrap?.accounts ?? [];
-  const setupTemplates = bootstrap?.setupTemplates ?? [];
-  const trades = tradesData ?? [];
+  const accounts = useMemo(() => bootstrap?.accounts ?? [], [bootstrap]);
+  const setupTemplates = useMemo(
+    () => bootstrap?.setupTemplates ?? [],
+    [bootstrap],
+  );
+  const trades = useMemo(() => tradesData ?? [], [tradesData]);
 
   const currency = profile?.base_currency ?? 'USD';
 

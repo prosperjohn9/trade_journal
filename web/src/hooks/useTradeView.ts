@@ -106,8 +106,8 @@ export function useTradeView() {
   }, [error]);
 
   const trade = data?.trade ?? null;
-  const items = data?.items ?? [];
-  const checks = data?.checks ?? {};
+  const items = useMemo(() => data?.items ?? [], [data]);
+  const checks = useMemo(() => data?.checks ?? {}, [data]);
   const beforeUrl = data?.beforeUrl ?? '';
   const afterUrl = data?.afterUrl ?? '';
   const equityBefore = data?.equityBefore ?? null;

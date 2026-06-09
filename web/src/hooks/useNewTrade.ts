@@ -252,8 +252,9 @@ export function useNewTrade() {
     });
     setCopyEntries((prev) => {
       if (prev[id]) {
-        // Already had an entry; toggling off, remove it; toggling on we'd already have it.
-        const { [id]: _, ...rest } = prev;
+        // Already had an entry; toggling off removes it.
+        const rest = { ...prev };
+        delete rest[id];
         return rest;
       }
       return { ...prev, [id]: defaultCopyEntry() };

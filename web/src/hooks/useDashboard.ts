@@ -191,7 +191,7 @@ export function useDashboard() {
     { revalidateOnFocus: false, dedupingInterval: 30_000 },
   );
 
-  const trades = dashData?.trades ?? [];
+  const trades = useMemo(() => dashData?.trades ?? [], [dashData]);
 
   const scoresKey = trades.length
     ? ['dashboard-scores', trades.map((t) => t.id).join(',')]
@@ -203,7 +203,7 @@ export function useDashboard() {
     { revalidateOnFocus: false, dedupingInterval: 30_000 },
   );
 
-  const accounts = dashData?.accounts ?? [];
+  const accounts = useMemo(() => dashData?.accounts ?? [], [dashData]);
 
   // Normalize accountId when the selected account no longer exists (e.g. it was
   // deleted, or a shared link pointed at one we don't have). Corrected during
