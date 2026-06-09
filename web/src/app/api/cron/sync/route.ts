@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/src/lib/supabase/admin';
-import { syncConnection, type SyncConnection } from '@/src/lib/integrations/sync';
+import {
+  syncConnection,
+  logRefresh,
+  type SyncConnection,
+} from '@/src/lib/integrations/sync';
 import {
   resolveEntitlements,
   SUBSCRIPTION_SELECT,
@@ -12,9 +16,17 @@ export const maxDuration = 60;
 
 // POST /api/cron/sync
 //
-// Scheduled by Supabase pg_cron (via pg_net). Syncs every connected MetaTrader
-// account that is "due" based on its owner's plan sync interval (Pro 4h, Elite
-// 2h, Master 1h). Not entitled = never synced. Authorized with CRON_SECRET.
+// Scheduled by Supabase pg_cron (every 30 min via pg_net). Each run syncs a few
+// "due" MetaTrader accounts via deploy-on-demand (deploy, fetch, undeploy),
+// oldest-due first. Auto-sync is once daily per account; accounts with no recent
+// trades drop to weekly so we never pay to deploy dormant accounts. Failing or
+// mid-connect accounts are backed off. Not entitled = skipped. Auth: CRON_SECRET.
+
+const DAILY_HOURS = 24;
+const IDLE_HOURS = 24 * 7; // dormant accounts (no recent trades) sync weekly
+const IDLE_TRADE_DAYS = 14; // no trade closed within this window => dormant
+const BACKOFF_HOURS = 1; // don't retry a failing / connecting account sooner
+const MAX_PER_RUN = 3; // bound the run against the 60s function limit
 
 function authorized(request: Request): boolean {
   const secret = process.env.CRON_SECRET;
@@ -28,6 +40,8 @@ function authorized(request: Request): boolean {
 type DueConnection = SyncConnection & {
   user_id: string;
   last_synced_at: string | null;
+  state: string | null;
+  updated_at: string | null;
 };
 
 export async function POST(request: Request) {
@@ -45,34 +59,79 @@ export async function POST(request: Request) {
   const [{ data: connections }, { data: subs }] = await Promise.all([
     admin
       .from('mt_connections')
-      .select('id, account_id, metaapi_account_id, region, last_synced_at, user_id'),
+      .select(
+        'id, account_id, metaapi_account_id, region, last_synced_at, state, updated_at, user_id',
+      ),
     admin.from('subscriptions').select(`user_id, ${SUBSCRIPTION_SELECT}`),
   ]);
 
-  // Per-user sync interval in hours (0 = not entitled, skip).
-  const intervalByUser = new Map<string, number>();
+  const entitledUsers = new Set<string>();
   for (const s of (subs ?? []) as Array<SubscriptionRow & { user_id: string }>) {
-    const ent = resolveEntitlements(s);
-    intervalByUser.set(
-      s.user_id,
-      ent.entitled ? ent.limits.syncIntervalHours : 0,
-    );
+    if (resolveEntitlements(s).entitled) entitledUsers.add(s.user_id);
+  }
+
+  const conns = ((connections ?? []) as DueConnection[]).filter((c) =>
+    entitledUsers.has(c.user_id),
+  );
+
+  // Accounts that traded recently keep the daily cadence; the rest go weekly so
+  // we don't pay to deploy dormant accounts every day.
+  const activeAccounts = new Set<string>();
+  if (conns.length) {
+    const cutoff = new Date(
+      Date.now() - IDLE_TRADE_DAYS * 86_400_000,
+    ).toISOString();
+    const { data: recent } = await admin
+      .from('trades')
+      .select('account_id')
+      .in(
+        'account_id',
+        conns.map((c) => c.account_id),
+      )
+      .gt('closed_at', cutoff);
+    for (const r of (recent ?? []) as Array<{ account_id: string }>) {
+      activeAccounts.add(r.account_id);
+    }
   }
 
   const now = Date.now();
-  const due = ((connections ?? []) as DueConnection[]).filter((c) => {
-    const interval = intervalByUser.get(c.user_id) ?? 0;
-    if (interval <= 0) return false;
-    if (!c.last_synced_at) return true;
-    const elapsedHours =
-      (now - new Date(c.last_synced_at).getTime()) / 3_600_000;
-    return elapsedHours >= interval;
-  });
+  const hoursSince = (iso: string | null) =>
+    iso ? (now - new Date(iso).getTime()) / 3_600_000 : Infinity;
+
+  const due = conns
+    .filter((c) => {
+      // Back off accounts that just failed or are still connecting.
+      if (
+        (c.state === 'connecting' || c.state === 'error') &&
+        hoursSince(c.updated_at) < BACKOFF_HOURS
+      ) {
+        return false;
+      }
+      if (!c.last_synced_at) return true; // never synced -> first sync
+      const interval = activeAccounts.has(c.account_id)
+        ? DAILY_HOURS
+        : IDLE_HOURS;
+      return hoursSince(c.last_synced_at) >= interval;
+    })
+    // Most overdue first (never-synced sorts to the front).
+    .sort((a, b) => hoursSince(b.last_synced_at) - hoursSince(a.last_synced_at));
+
+  // Each deploy-on-demand sync can take up to ~45s and the function caps at 60s,
+  // so process a bounded slice; the rest get picked up on the next tick.
+  const batch = due.slice(0, MAX_PER_RUN);
 
   const results = [];
-  for (const c of due) {
-    results.push(await syncConnection(admin, c, c.user_id));
+  for (const c of batch) {
+    const r = await syncConnection(admin, c, c.user_id);
+    results.push(r);
+    // Log only completed syncs (a real deploy + fetch) for the cost audit. Auto
+    // syncs never count against the user's manual-refresh cap.
+    if (!r.error) await logRefresh(admin, c.user_id, c.id, 'auto');
   }
 
-  return NextResponse.json({ due: due.length, results });
+  return NextResponse.json({
+    dueTotal: due.length,
+    processed: batch.length,
+    results,
+  });
 }

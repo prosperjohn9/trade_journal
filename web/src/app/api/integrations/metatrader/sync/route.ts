@@ -73,15 +73,18 @@ export async function POST(request: Request) {
 
   const results = [];
   for (const c of toSync) {
-    results.push(await syncConnection(sb, c, user.id));
-    // Count the deploy whether or not new trades came back.
-    await logRefresh(sb, user.id, c.id, 'manual');
+    const r = await syncConnection(sb, c, user.id);
+    results.push(r);
+    // Count a refresh only when it actually completed (a real deploy + fetch). A
+    // "still connecting" result pulled nothing, so it does not count.
+    if (!r.error) await logRefresh(sb, user.id, c.id, 'manual');
   }
+  const charged = results.filter((r) => !r.error).length;
 
   return NextResponse.json({
     results,
     skipped,
-    manualRefreshesUsed: used + toSync.length,
+    manualRefreshesUsed: used + charged,
     manualRefreshesLimit: limit,
   });
 }
