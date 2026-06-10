@@ -9,6 +9,7 @@ import { useDashboard } from '@/src/hooks/useDashboard';
 import { DashboardCards } from './DashboardCards';
 import { DashboardTradeTable } from './DashboardTradeTable';
 import { PropChallengeWidget } from './PropChallengeWidget';
+import { PropCareerCard } from './PropCareerCard';
 import { PlanExpiryBanner } from '@/src/components/billing/PlanExpiryBanner';
 
 type DashboardTheme = 'light' | 'dark';
@@ -382,6 +383,9 @@ export default function DashboardClient() {
           <>
             {/* Prop-firm challenge status (renders nothing for non-prop users) */}
             <PropChallengeWidget accountId={s.accountId} />
+
+            {/* Prop career ROI (renders nothing for non-prop users) */}
+            <PropCareerCard />
 
             {/* KPI cards + insights */}
             <div className='pt-2'>
