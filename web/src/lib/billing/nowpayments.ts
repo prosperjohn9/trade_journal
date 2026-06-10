@@ -25,9 +25,12 @@ export function isCryptoConfigured(): boolean {
 }
 
 /** Create a hosted crypto invoice; the customer picks the coin on the hosted
- *  page. order_id carries our tx_ref so the IPN can attribute the payment. */
+ *  page (limited to the coins enabled in the NOWPayments dashboard). Priced in
+ *  USDT rather than USD so stablecoin payers see the exact plan number (18
+ *  USDT, not 17.98); other coins convert from that. order_id carries our
+ *  tx_ref so the IPN can attribute the payment. */
 export async function createCryptoInvoice(params: {
-  amountUsd: number;
+  amount: number; // plan price; charged 1:1 in USDT
   orderId: string;
   description: string;
   ipnCallbackUrl: string;
@@ -41,8 +44,8 @@ export async function createCryptoInvoice(params: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      price_amount: params.amountUsd,
-      price_currency: 'usd',
+      price_amount: params.amount,
+      price_currency: 'usdttrc20',
       order_id: params.orderId,
       order_description: params.description,
       ipn_callback_url: params.ipnCallbackUrl,

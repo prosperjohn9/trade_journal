@@ -384,10 +384,12 @@ export function BillingClient() {
 
               {method === 'crypto' ? (
                 <p className='mt-3 text-xs text-[var(--text-muted)]'>
-                  Crypto payments cover one billing period and do not renew
-                  automatically. Pay again any time to extend; paying early adds
-                  to your remaining time. After you pay, activation takes a few
-                  minutes while the network confirms the transaction.
+                  Crypto plans are billed in USDT at the listed price (the $18
+                  plan is exactly 18 USDT; other coins convert at checkout).
+                  They cover one billing period and do not renew automatically:
+                  pay again any time to extend, and paying early adds to your
+                  remaining time. After you pay, activation takes a few minutes
+                  while the network confirms the transaction.
                 </p>
               ) : null}
 

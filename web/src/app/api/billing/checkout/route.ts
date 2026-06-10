@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       // One-time crypto payment for one period; no auto-renewal. The IPN must
       // hit the public deployment, so it always uses the canonical origin.
       const { invoiceUrl } = await createCryptoInvoice({
-        amountUsd: amount,
+        amount,
         orderId: txRef,
         description: `The Trader's Hindsight ${PLANS[plan].name} (${cycle})`,
         ipnCallbackUrl: `${FALLBACK_ORIGIN}/api/billing/nowpayments/webhook`,
