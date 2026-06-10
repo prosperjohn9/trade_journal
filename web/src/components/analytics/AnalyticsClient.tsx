@@ -12,6 +12,7 @@ import {
 import { AnalyticsSkeleton } from '@/src/components/ui/Skeleton';
 import { EmptyState } from '@/src/components/ui/EmptyState';
 import { AiInsightsCard } from '@/src/components/analytics/AiInsightsCard';
+import { HindsightReportCard } from '@/src/components/analytics/HindsightReportCard';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -850,6 +851,8 @@ export function AnalyticsClient() {
           </button>
         </div>
       </header>
+
+      <HindsightReportCard />
 
       <AiInsightsCard />
 
