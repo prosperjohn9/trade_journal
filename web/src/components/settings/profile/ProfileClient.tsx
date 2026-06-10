@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
 import { getOrCreateProfile, updateProfile } from '@/src/lib/db/profiles.repo';
 import { DeleteAccountModal } from './DeleteAccountModal';
+import { ExportTradesButton } from './ExportTradesButton';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -173,6 +174,18 @@ export function ProfileClient() {
               </button>
             </div>
           </form>
+        </section>
+
+        {/* Your data — portability, as promised in the privacy policy. */}
+        <section className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
+          <h2 className='text-lg font-semibold'>Your data</h2>
+          <p className='mt-1 text-sm text-[var(--text-secondary)]'>
+            Export your full trade history as a CSV file you can open in Excel
+            or import anywhere. Your data is yours.
+          </p>
+          <div className='mt-4'>
+            <ExportTradesButton />
+          </div>
         </section>
 
         {/* Danger zone — destructive actions. Red-bordered to set tone. */}
