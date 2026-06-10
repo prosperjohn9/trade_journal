@@ -54,7 +54,7 @@ differ by **account count + AI quota + manual-refresh allowance**. AI stays Opus
 |---|---|---|---|
 | Included synced accounts | 2 | 4 | 8 |
 | Auto-sync | 1x / day | 1x / day | 1x / day |
-| Manual refreshes (per account) | 15 / mo | 30 / mo | 50 / mo |
+| Manual refreshes (per account) | 14 / mo | 28 / mo | 48 / mo |
 | AI actions (Opus) | 40 | 100 | 200 |
 | Extra synced account (PAYG) | **$6 / mo** (cost ~$3) |
 
