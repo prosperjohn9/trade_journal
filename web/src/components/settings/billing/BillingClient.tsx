@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { mutate } from 'swr';
+import useSWR, { mutate } from 'swr';
+import { apiFetch } from '@/src/lib/api/fetcher';
 import { supabase } from '@/src/lib/supabase/client';
 import { apiPost } from '@/src/lib/api/fetcher';
 import { useEntitlements } from '@/src/hooks/useEntitlements';
@@ -74,7 +75,37 @@ function Check() {
   );
 }
 
-function CurrentPlanCard({ e }: { e: Entitlements }) {
+type Usage = {
+  entitled: boolean;
+  aiUsed: number;
+  aiLimit: number;
+  refreshesUsed: number;
+  refreshesLimit: number;
+  daysLeft: number | null;
+  willRenew: boolean;
+  provider: string | null;
+};
+
+function Meter({ used, limit }: { used: number; limit: number }) {
+  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const tone =
+    pct >= 100 ? 'var(--loss)' : pct >= 75 ? '#f59e0b' : 'var(--accent-cta)';
+  return (
+    <div className='mt-2'>
+      <div className='h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-subtle)]'>
+        <div
+          className='h-full rounded-full transition-all'
+          style={{ width: `${pct}%`, backgroundColor: tone }}
+        />
+      </div>
+      <div className='mt-1 text-[11px] text-[var(--text-muted)]'>
+        {used} of {limit} used this month
+      </div>
+    </div>
+  );
+}
+
+function CurrentPlanCard({ e, usage }: { e: Entitlements; usage: Usage | null }) {
   const planName = e.plan ? PLANS[e.plan].name : null;
   const lifetime = e.daysLeft != null && e.daysLeft > 3650;
   const periodLabel = e.currentPeriodEnd
@@ -145,6 +176,12 @@ function CurrentPlanCard({ e }: { e: Entitlements }) {
             <div className='text-lg font-semibold text-[var(--text-primary)]'>
               {e.limits.manualRefreshesPerMonth}
             </div>
+            {usage ? (
+              <Meter
+                used={usage.refreshesUsed}
+                limit={usage.refreshesLimit || e.limits.manualRefreshesPerMonth}
+              />
+            ) : null}
           </div>
           <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
             <div className='text-xs text-[var(--text-muted)]'>
@@ -153,6 +190,12 @@ function CurrentPlanCard({ e }: { e: Entitlements }) {
             <div className='text-lg font-semibold text-[var(--text-primary)]'>
               {e.limits.aiActionsPerMonth.toLocaleString()}
             </div>
+            {usage ? (
+              <Meter
+                used={usage.aiUsed}
+                limit={usage.aiLimit || e.limits.aiActionsPerMonth}
+              />
+            ) : null}
           </div>
         </div>
       ) : (
@@ -170,6 +213,11 @@ export function BillingClient() {
   const [theme, setTheme] = useState<DashboardTheme>('light');
   const [authChecked, setAuthChecked] = useState(false);
   const { entitlements, loading } = useEntitlements();
+  const { data: usage } = useSWR<Usage>(
+    authChecked ? '/api/billing/usage' : null,
+    apiFetch,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
 
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
   const [method, setMethod] = useState<'card' | 'crypto'>('card');
@@ -320,7 +368,7 @@ export function BillingClient() {
           <p className='text-sm text-[var(--text-secondary)]'>Loading...</p>
         ) : (
           <>
-            <CurrentPlanCard e={e} />
+            <CurrentPlanCard e={e} usage={usage ?? null} />
 
             {canCancel ? (
               <div className='flex justify-end'>

@@ -9,6 +9,7 @@ import { useDashboard } from '@/src/hooks/useDashboard';
 import { DashboardCards } from './DashboardCards';
 import { DashboardTradeTable } from './DashboardTradeTable';
 import { PropChallengeWidget } from './PropChallengeWidget';
+import { PlanExpiryBanner } from '@/src/components/billing/PlanExpiryBanner';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -229,6 +230,7 @@ export default function DashboardClient() {
       </Modal>
 
       <div className='mx-auto w-full max-w-[1280px] space-y-9 px-4 py-8 sm:px-6 lg:px-8'>
+        <PlanExpiryBanner />
         <header className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
           <div className='flex flex-wrap items-start justify-between gap-3'>
             <div>
