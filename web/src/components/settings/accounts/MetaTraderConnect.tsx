@@ -3,7 +3,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { mutate } from 'swr';
 import { supabase } from '@/src/lib/supabase/client';
-import { apiPost } from '@/src/lib/api/fetcher';
+import { apiPost, isUpgradeError } from '@/src/lib/api/fetcher';
+import { UpgradePrompt } from '@/src/components/ui/UpgradePrompt';
 
 type MtConnection = {
   id: string;
@@ -67,6 +68,7 @@ export function MetaTraderConnect({
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,6 +96,7 @@ export function MetaTraderConnect({
 
   async function connect() {
     setMsg(null);
+    setUpgradeMsg(null);
     if (!login.trim() || !server.trim() || !password) {
       setMsg('Login, server and investor password are all required.');
       return;
@@ -113,7 +116,8 @@ export function MetaTraderConnect({
         'Connected. Your account is linking to the broker — give it a minute, then tap "Sync now".',
       );
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Could not connect.');
+      if (isUpgradeError(e)) setUpgradeMsg(e.message);
+      else setMsg(e instanceof Error ? e.message : 'Could not connect.');
     } finally {
       setBusy(false);
     }
@@ -121,6 +125,7 @@ export function MetaTraderConnect({
 
   async function syncNow() {
     setMsg(null);
+    setUpgradeMsg(null);
     setSyncing(true);
     try {
       const res = await apiPost<SyncResult>(
@@ -145,7 +150,8 @@ export function MetaTraderConnect({
       }
       await refresh();
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Sync failed.');
+      if (isUpgradeError(e)) setUpgradeMsg(e.message);
+      else setMsg(e instanceof Error ? e.message : 'Sync failed.');
     } finally {
       setSyncing(false);
     }
@@ -183,6 +189,7 @@ export function MetaTraderConnect({
         className='text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]'
         onClick={() => {
           setMsg(null);
+          setUpgradeMsg(null);
           setOpen(true);
         }}>
         {conn ? 'MetaTrader ✓' : 'Connect MetaTrader'}
@@ -287,6 +294,11 @@ export function MetaTraderConnect({
               </div>
             )}
 
+            {upgradeMsg ? (
+              <div className='mt-3'>
+                <UpgradePrompt message={upgradeMsg} compact />
+              </div>
+            ) : null}
             {msg ? (
               <p className='mt-3 rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--text-secondary)]'>
                 {msg}

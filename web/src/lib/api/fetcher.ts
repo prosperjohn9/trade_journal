@@ -2,6 +2,31 @@
 
 import { supabase } from '@/src/lib/supabase/client';
 
+/** API error that keeps the server's machine-readable `code` so the UI can
+ *  distinguish plan-gate errors (upgrade prompts) from real failures. */
+export class ApiError extends Error {
+  code: string | null;
+  status: number;
+  constructor(message: string, status: number, code: string | null = null) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+const UPGRADE_CODES = new Set([
+  'upgrade_required', // feature locked (no active plan)
+  'limit_reached', // synced-account count at plan limit
+  'quota_reached', // AI monthly actions spent
+  'manual_refresh_limit', // manual broker refreshes spent
+]);
+
+/** True when the error is a plan gate the user can fix by upgrading. */
+export function isUpgradeError(e: unknown): e is ApiError {
+  return e instanceof ApiError && e.code != null && UPGRADE_CODES.has(e.code);
+}
+
 export async function apiFetch<T>(path: string): Promise<T> {
   const {
     data: { session },
@@ -22,7 +47,11 @@ export async function apiFetch<T>(path: string): Promise<T> {
   if (res.status === 401) throw new Error('Not authenticated');
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed (${res.status})`);
+    throw new ApiError(
+      body.error || `Request failed (${res.status})`,
+      res.status,
+      typeof body.code === 'string' ? body.code : null,
+    );
   }
 
   return res.json() as Promise<T>;
@@ -47,7 +76,11 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   if (res.status === 401) throw new Error('Not authenticated');
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({}));
-    throw new Error(errBody.error || `Request failed (${res.status})`);
+    throw new ApiError(
+      errBody.error || `Request failed (${res.status})`,
+      res.status,
+      typeof errBody.code === 'string' ? errBody.code : null,
+    );
   }
 
   return res.json() as Promise<T>;

@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { apiFetch, apiPost } from '@/src/lib/api/fetcher';
+import { apiFetch, apiPost, isUpgradeError } from '@/src/lib/api/fetcher';
 import { AiMarkdown } from '@/src/components/ui/AiMarkdown';
+import { UpgradePrompt } from '@/src/components/ui/UpgradePrompt';
 
 type ReviewResponse = {
   review: string | null;
@@ -18,6 +19,7 @@ export function TradeAiReview({ tradeId }: { tradeId: string }) {
   const [checking, setChecking] = useState(true); // initial (free) cached lookup
   const [loading, setLoading] = useState(false); // a paid generate/regenerate
   const [error, setError] = useState<string | null>(null);
+  const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
 
   // Read-only lookup on mount (never spends credits).
   useEffect(() => {
@@ -45,6 +47,7 @@ export function TradeAiReview({ tradeId }: { tradeId: string }) {
   async function generate(regenerate: boolean) {
     setLoading(true);
     setError(null);
+    setUpgradeMsg(null);
     try {
       const data = await apiPost<ReviewResponse>('/api/ai/trade-review', {
         tradeId,
@@ -55,7 +58,8 @@ export function TradeAiReview({ tradeId }: { tradeId: string }) {
         setStale(false);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not generate a review.');
+      if (isUpgradeError(e)) setUpgradeMsg(e.message);
+      else setError(e instanceof Error ? e.message : 'Could not generate a review.');
     } finally {
       setLoading(false);
     }
@@ -106,6 +110,11 @@ export function TradeAiReview({ tradeId }: { tradeId: string }) {
           </div>
         )}
 
+        {upgradeMsg ? (
+          <div className='mt-3'>
+            <UpgradePrompt message={upgradeMsg} />
+          </div>
+        ) : null}
         {error ? <p className='mt-3 text-sm text-[var(--loss)]'>{error}</p> : null}
 
         {review ? (

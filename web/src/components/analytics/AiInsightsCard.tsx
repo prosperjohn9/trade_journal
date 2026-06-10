@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { apiFetch, apiPost } from '@/src/lib/api/fetcher';
+import { apiFetch, apiPost, isUpgradeError } from '@/src/lib/api/fetcher';
 import { AiMarkdown } from '@/src/components/ui/AiMarkdown';
+import { UpgradePrompt } from '@/src/components/ui/UpgradePrompt';
 
 type InsightsResponse = {
   insights: string | null;
@@ -33,12 +34,14 @@ export function AiInsightsCard() {
   const [checking, setChecking] = useState(true); // initial (free) GET
   const [loading, setLoading] = useState(false); // a paid generate/refresh
   const [error, setError] = useState<string | null>(null);
+  const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
 
   // Explicit first-time generation (button). Subsequent refreshes are automatic
   // (handled in the effect when insights exist and have gone stale).
   async function generate() {
     setLoading(true);
     setError(null);
+    setUpgradeMsg(null);
     try {
       const data = await apiPost<InsightsResponse>('/api/ai/insights', {});
       if (data.insights) {
@@ -46,7 +49,8 @@ export function AiInsightsCard() {
         setGeneratedAt(data.generatedAt ?? new Date().toISOString());
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not generate insights.');
+      if (isUpgradeError(e)) setUpgradeMsg(e.message);
+      else setError(e instanceof Error ? e.message : 'Could not generate insights.');
     } finally {
       setLoading(false);
     }
@@ -83,7 +87,8 @@ export function AiInsightsCard() {
           }
         } catch (e) {
           if (!cancelled) {
-            setError(e instanceof Error ? e.message : 'Could not refresh insights.');
+            if (isUpgradeError(e)) setUpgradeMsg(e.message);
+            else setError(e instanceof Error ? e.message : 'Could not refresh insights.');
           }
         } finally {
           if (!cancelled) setLoading(false);
@@ -135,6 +140,7 @@ export function AiInsightsCard() {
         </div>
       )}
 
+      {upgradeMsg ? <UpgradePrompt message={upgradeMsg} /> : null}
       {error ? <p className='text-sm text-[var(--loss)]'>{error}</p> : null}
 
       {insights ? (

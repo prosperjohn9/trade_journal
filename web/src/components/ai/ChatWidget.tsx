@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
+import { ApiError, isUpgradeError } from '@/src/lib/api/fetcher';
 import { AiMarkdown } from '@/src/components/ui/AiMarkdown';
+import { UpgradePrompt } from '@/src/components/ui/UpgradePrompt';
 import { isSupportOnline, loadTawk, openTawk } from '@/src/lib/ai/tawk';
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string };
@@ -93,6 +95,7 @@ export function ChatWidget() {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
   const [confirmHuman, setConfirmHuman] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hydratedRef = useRef(false);
@@ -184,6 +187,7 @@ export function ChatWidget() {
     setInput('');
     setStreaming(true);
     setError(null);
+    setUpgradeMsg(null);
 
     try {
       const {
@@ -203,7 +207,11 @@ export function ChatWidget() {
 
       if (!res.ok || !res.body) {
         const errBody = await res.json().catch(() => ({}));
-        throw new Error(errBody.error || `Request failed (${res.status})`);
+        throw new ApiError(
+          errBody.error || `Request failed (${res.status})`,
+          res.status,
+          typeof errBody.code === 'string' ? errBody.code : null,
+        );
       }
 
       const reader = res.body.getReader();
@@ -226,7 +234,8 @@ export function ChatWidget() {
         if (last && last.role === 'assistant' && !last.content) copy.pop();
         return copy;
       });
-      setError(e instanceof Error ? e.message : 'Chat failed. Try again.');
+      if (isUpgradeError(e)) setUpgradeMsg(e.message);
+      else setError(e instanceof Error ? e.message : 'Chat failed. Try again.');
     } finally {
       setStreaming(false);
     }
@@ -375,6 +384,7 @@ export function ChatWidget() {
                 </div>
               ))
             )}
+            {upgradeMsg ? <UpgradePrompt message={upgradeMsg} compact /> : null}
             {error ? (
               <p className='text-xs text-[var(--loss)]'>{error}</p>
             ) : null}
