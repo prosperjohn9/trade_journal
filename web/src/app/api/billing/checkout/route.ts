@@ -5,6 +5,7 @@ import {
   createHostedPayment,
   createPaymentPlan,
 } from '@/src/lib/billing/flutterwave';
+import { createCryptoInvoice } from '@/src/lib/billing/nowpayments';
 import {
   PLANS,
   isPlanId,
@@ -41,9 +42,11 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     plan?: unknown;
     cycle?: unknown;
+    method?: unknown;
   };
   const plan = body.plan;
   const cycle: BillingCycle = body.cycle === 'yearly' ? 'yearly' : 'monthly';
+  const method = body.method === 'crypto' ? 'crypto' : 'card';
   if (!isPlanId(plan)) {
     return NextResponse.json({ error: 'Invalid plan.' }, { status: 400 });
   }
@@ -52,6 +55,28 @@ export async function POST(request: Request) {
 
   try {
     const admin = createServiceClient();
+    const origin = request.headers.get('origin') ?? FALLBACK_ORIGIN;
+    const txRef = `th-${crypto.randomUUID()}`;
+
+    // Record who this checkout belongs to so the webhook can attribute the
+    // payment by tx_ref (neither provider's webhook returns our meta reliably).
+    await admin
+      .from('billing_checkouts')
+      .insert({ tx_ref: txRef, user_id: user.id, plan, cycle });
+
+    if (method === 'crypto') {
+      // One-time crypto payment for one period; no auto-renewal. The IPN must
+      // hit the public deployment, so it always uses the canonical origin.
+      const { invoiceUrl } = await createCryptoInvoice({
+        amountUsd: amount,
+        orderId: txRef,
+        description: `The Trader's Hindsight ${PLANS[plan].name} (${cycle})`,
+        ipnCallbackUrl: `${FALLBACK_ORIGIN}/api/billing/nowpayments/webhook`,
+        successUrl: `${origin}/settings/billing?checkout=done&status=successful`,
+        cancelUrl: `${origin}/settings/billing?checkout=done&status=cancelled`,
+      });
+      return NextResponse.json({ link: invoiceUrl });
+    }
 
     // Reuse the Flutterwave payment plan for this (plan, cycle), or create it
     // the first time and cache its id.
@@ -84,15 +109,6 @@ export async function POST(request: Request) {
         { onConflict: 'provider,plan,cycle' },
       );
     }
-
-    const origin = request.headers.get('origin') ?? FALLBACK_ORIGIN;
-    const txRef = `th-${crypto.randomUUID()}`;
-
-    // Record who this checkout belongs to so the webhook can attribute the
-    // charge by tx_ref (Flutterwave's webhook does not return our meta).
-    await admin
-      .from('billing_checkouts')
-      .insert({ tx_ref: txRef, user_id: user.id, plan, cycle });
 
     const { link } = await createHostedPayment({
       txRef,

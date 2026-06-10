@@ -172,6 +172,7 @@ export function BillingClient() {
   const { entitlements, loading } = useEntitlements();
 
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
+  const [method, setMethod] = useState<'card' | 'crypto'>('card');
   const [busy, setBusy] = useState<PlanId | 'cancel' | null>(null);
   // Client-only page (ssr: false), so reading the query once via a lazy
   // initializer is safe. Flutterwave appends a status on return, so a payment is
@@ -246,6 +247,7 @@ export function BillingClient() {
       const { link } = await apiPost<{ link: string }>('/api/billing/checkout', {
         plan,
         cycle,
+        method,
       });
       window.location.assign(link);
     } catch (e) {
@@ -322,27 +324,57 @@ export function BillingClient() {
                 <h2 className='text-lg font-semibold'>
                   {e.entitled ? 'Plans' : 'Choose a plan'}
                 </h2>
-                <div className='flex items-center gap-1 rounded-full border border-[var(--border-default)] bg-[var(--bg-app)] p-1 text-xs'>
-                  <button
-                    onClick={() => setCycle('monthly')}
-                    className={`rounded-full px-3 py-1 font-medium transition-colors ${
-                      cycle === 'monthly'
-                        ? 'bg-[var(--accent-cta)] text-white'
-                        : 'text-[var(--text-secondary)]'
-                    }`}>
-                    Monthly
-                  </button>
-                  <button
-                    onClick={() => setCycle('yearly')}
-                    className={`rounded-full px-3 py-1 font-medium transition-colors ${
-                      cycle === 'yearly'
-                        ? 'bg-[var(--accent-cta)] text-white'
-                        : 'text-[var(--text-secondary)]'
-                    }`}>
-                    Yearly
-                  </button>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <div className='flex items-center gap-1 rounded-full border border-[var(--border-default)] bg-[var(--bg-app)] p-1 text-xs'>
+                    <button
+                      onClick={() => setCycle('monthly')}
+                      className={`rounded-full px-3 py-1 font-medium transition-colors ${
+                        cycle === 'monthly'
+                          ? 'bg-[var(--accent-cta)] text-white'
+                          : 'text-[var(--text-secondary)]'
+                      }`}>
+                      Monthly
+                    </button>
+                    <button
+                      onClick={() => setCycle('yearly')}
+                      className={`rounded-full px-3 py-1 font-medium transition-colors ${
+                        cycle === 'yearly'
+                          ? 'bg-[var(--accent-cta)] text-white'
+                          : 'text-[var(--text-secondary)]'
+                      }`}>
+                      Yearly
+                    </button>
+                  </div>
+                  <div className='flex items-center gap-1 rounded-full border border-[var(--border-default)] bg-[var(--bg-app)] p-1 text-xs'>
+                    <button
+                      onClick={() => setMethod('card')}
+                      className={`rounded-full px-3 py-1 font-medium transition-colors ${
+                        method === 'card'
+                          ? 'bg-[var(--accent-cta)] text-white'
+                          : 'text-[var(--text-secondary)]'
+                      }`}>
+                      Card
+                    </button>
+                    <button
+                      onClick={() => setMethod('crypto')}
+                      className={`rounded-full px-3 py-1 font-medium transition-colors ${
+                        method === 'crypto'
+                          ? 'bg-[var(--accent-cta)] text-white'
+                          : 'text-[var(--text-secondary)]'
+                      }`}>
+                      Crypto
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {method === 'crypto' ? (
+                <p className='mt-3 text-xs text-[var(--text-muted)]'>
+                  Crypto payments cover one billing period and do not renew
+                  automatically. Pay again any time to extend; paying early adds
+                  to your remaining time.
+                </p>
+              ) : null}
 
               <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3'>
                 {PLAN_ORDER.map((id) => {
@@ -419,8 +451,9 @@ export function BillingClient() {
               </div>
 
               <p className='mt-4 text-xs text-[var(--text-muted)]'>
-                Payments are processed securely by Flutterwave. Cancel anytime,
-                no lock-in. Yearly is two months free.
+                Card payments are processed securely by Flutterwave; crypto by
+                NOWPayments (300+ coins). Cancel anytime, no lock-in. Yearly is
+                two months free.
               </p>
             </section>
           </>
