@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
+import { apiPost } from '@/src/lib/api/fetcher';
 
 const CONFIRM_PHRASE = 'delete my account';
 
@@ -61,10 +62,10 @@ export function DeleteAccountModal({
     setState('deleting');
     setErrorMessage(null);
 
-    const { error: rpcError } = await supabase.rpc('delete_my_account');
-
-    if (rpcError) {
-      console.error('delete_my_account RPC failed:', rpcError);
+    try {
+      await apiPost('/api/account/delete', {});
+    } catch (e) {
+      console.error('account delete failed:', e);
       setErrorMessage(
         'We couldn\'t delete your account right now. Please try again, or email support@tradershindsight.com.',
       );
@@ -72,7 +73,7 @@ export function DeleteAccountModal({
       return;
     }
 
-    // The RPC nuked auth.users for this user, so the session is now invalid.
+    // The server deleted this auth user, so the session is now invalid.
     // signOut may 401 but we don't care — we just want the cookie cleared.
     try {
       await supabase.auth.signOut();
