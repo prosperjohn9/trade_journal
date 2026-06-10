@@ -72,8 +72,8 @@ export async function POST(request: Request) {
         orderId: txRef,
         description: `The Trader's Hindsight ${PLANS[plan].name} (${cycle})`,
         ipnCallbackUrl: `${FALLBACK_ORIGIN}/api/billing/nowpayments/webhook`,
-        successUrl: `${origin}/settings/billing?checkout=done&status=successful`,
-        cancelUrl: `${origin}/settings/billing?checkout=done&status=cancelled`,
+        successUrl: `${origin}/settings/billing?checkout=done&status=successful&method=crypto`,
+        cancelUrl: `${origin}/settings/billing?checkout=done&status=cancelled&method=crypto`,
       });
       return NextResponse.json({ link: invoiceUrl });
     }

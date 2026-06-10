@@ -177,21 +177,31 @@ export function BillingClient() {
   // Client-only page (ssr: false), so reading the query once via a lazy
   // initializer is safe. Flutterwave appends a status on return, so a payment is
   // only "received" when that status is successful, not when the user cancelled.
-  const [checkout] = useState<{ succeeded: boolean; cancelled: boolean }>(() => {
+  const [checkout] = useState<{
+    succeeded: boolean;
+    cancelled: boolean;
+    crypto: boolean;
+  }>(() => {
     if (typeof window === 'undefined') {
-      return { succeeded: false, cancelled: false };
+      return { succeeded: false, cancelled: false, crypto: false };
     }
     const p = new URLSearchParams(window.location.search);
     if (p.get('checkout') !== 'done') {
-      return { succeeded: false, cancelled: false };
+      return { succeeded: false, cancelled: false, crypto: false };
     }
     const s = (p.get('status') ?? '').toLowerCase();
     const succeeded = s === 'successful' || s === 'completed';
-    return { succeeded, cancelled: !succeeded };
+    return {
+      succeeded,
+      cancelled: !succeeded,
+      crypto: p.get('method') === 'crypto',
+    };
   });
   const [msg, setMsg] = useState<string | null>(() => {
     if (checkout.succeeded) {
-      return 'Payment received. Activating your plan, this can take a few seconds.';
+      return checkout.crypto
+        ? 'Crypto payment received. It settles on the blockchain, so your plan usually activates within a few minutes. This page will update automatically; you can also refresh.'
+        : 'Payment received. Activating your plan, this can take a few seconds.';
     }
     if (checkout.cancelled) {
       return 'Checkout was not completed, so you were not charged. Pick a plan whenever you are ready.';
@@ -230,11 +240,15 @@ export function BillingClient() {
     };
   }, [router]);
 
-  // Returning from Flutterwave: the webhook activates the plan a moment later,
-  // so revalidate a few times until it shows up.
+  // Returning from checkout: the webhook activates the plan after the payment
+  // settles, so revalidate until it shows up. Cards settle in seconds; crypto
+  // needs on-chain confirmation, so it gets a much longer polling window.
   useEffect(() => {
     if (!checkout.succeeded) return;
-    const timers = [0, 3000, 6000, 10000, 15000].map((t) =>
+    const schedule = checkout.crypto
+      ? [0, 10_000, 30_000, 60_000, 120_000, 180_000, 240_000, 300_000]
+      : [0, 3000, 6000, 10_000, 15_000];
+    const timers = schedule.map((t) =>
       window.setTimeout(() => void mutate('subscription'), t),
     );
     return () => timers.forEach((id) => window.clearTimeout(id));
@@ -372,7 +386,8 @@ export function BillingClient() {
                 <p className='mt-3 text-xs text-[var(--text-muted)]'>
                   Crypto payments cover one billing period and do not renew
                   automatically. Pay again any time to extend; paying early adds
-                  to your remaining time.
+                  to your remaining time. After you pay, activation takes a few
+                  minutes while the network confirms the transaction.
                 </p>
               ) : null}
 
