@@ -20,6 +20,7 @@ type SyncResult = {
     connectionId: string;
     imported: number;
     skipped: number;
+    breached?: boolean;
     error?: string;
   }>;
 };
@@ -138,9 +139,11 @@ export function MetaTraderConnect({
       } else {
         const imported = r?.imported ?? 0;
         setMsg(
-          imported > 0
-            ? `Synced — ${imported} new trade${imported === 1 ? '' : 's'} imported.`
-            : 'Up to date — balance and stats refreshed.',
+          r?.breached
+            ? `Synced ${imported} new trade${imported === 1 ? '' : 's'}, then auto-disconnected: this account hit its prop drawdown rules. Your trades are kept for review.`
+            : imported > 0
+              ? `Synced — ${imported} new trade${imported === 1 ? '' : 's'} imported.`
+              : 'Up to date — balance and stats refreshed.',
         );
         // Always refresh: the accounts list (trade count / starting balance) and
         // every SWR-backed page (dashboard / analytics / monthly), even when no
@@ -222,16 +225,31 @@ export function MetaTraderConnect({
                   (login {conn.login}). Last synced{' '}
                   {relativeTime(conn.last_synced_at)}.
                 </p>
-                <button
-                  className='w-full rounded-lg bg-[var(--accent-cta)] px-3 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60'
-                  onClick={() => void syncNow()}
-                  disabled={syncing}>
-                  {syncing ? 'Syncing…' : 'Sync now'}
-                </button>
-                <p className='text-[11px] text-[var(--text-muted)]'>
-                  Pulls any new closed trades from your broker into this account.
-                  First sync can take a minute or two after connecting.
-                </p>
+                {conn.state === 'breached' ? (
+                  <p className='rounded-lg border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-xs text-[var(--text-secondary)]'>
+                    <span className='font-semibold text-[var(--text-primary)]'>
+                      Auto-sync stopped:
+                    </span>{' '}
+                    this account hit its prop drawdown rules, so it was
+                    disconnected to stop sync charges. All trades are kept. If
+                    the configured rules were wrong, disconnect below and
+                    reconnect to start fresh.
+                  </p>
+                ) : (
+                  <>
+                    <button
+                      className='w-full rounded-lg bg-[var(--accent-cta)] px-3 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60'
+                      onClick={() => void syncNow()}
+                      disabled={syncing}>
+                      {syncing ? 'Syncing…' : 'Sync now'}
+                    </button>
+                    <p className='text-[11px] text-[var(--text-muted)]'>
+                      Pulls any new closed trades from your broker into this
+                      account. First sync can take a minute or two after
+                      connecting.
+                    </p>
+                  </>
+                )}
                 <button
                   className='w-full rounded-lg border border-[var(--border-default)] px-3 py-1.5 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--loss)] disabled:opacity-60'
                   onClick={() => void disconnect()}

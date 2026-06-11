@@ -46,7 +46,10 @@ export async function POST(request: Request) {
   let query = sb
     .from('mt_connections')
     .select('id, account_id, metaapi_account_id, region, last_synced_at')
-    .eq('user_id', user.id);
+    .eq('user_id', user.id)
+    // Breached prop accounts were auto-disconnected; their MetaApi account is
+    // gone, so a sync attempt would only produce a confusing error.
+    .neq('state', 'breached');
   if (body.connectionId) query = query.eq('id', body.connectionId);
 
   const { data: connections, error: connErr } = await query;

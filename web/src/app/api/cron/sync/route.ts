@@ -100,6 +100,8 @@ export async function POST(request: Request) {
 
   const due = conns
     .filter((c) => {
+      // Breached prop accounts are dead at the firm; never pay to sync them.
+      if (c.state === 'breached') return false;
       // Back off accounts that just failed or are still connecting.
       if (
         (c.state === 'connecting' || c.state === 'error') &&

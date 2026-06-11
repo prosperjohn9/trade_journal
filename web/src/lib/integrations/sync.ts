@@ -6,8 +6,13 @@ import {
   deployAccount,
   undeployAccount,
   waitUntilConnected,
+  removeMetaApiAccount,
   DEFAULT_MT_REGION,
 } from '@/src/lib/integrations/metaapi';
+import {
+  computePropStatus,
+  type PropRules,
+} from '@/src/lib/analytics/propFirm';
 
 const DAY_MS = 86_400_000;
 
@@ -23,6 +28,8 @@ export type SyncResult = {
   connectionId: string;
   imported: number;
   skipped: number;
+  /** The account breached its prop rules and auto-sync was disconnected. */
+  breached?: boolean;
   error?: string;
 };
 
@@ -50,6 +57,98 @@ export async function manualRefreshCount(
     .gte('created_at', startOfMonthIso());
   if (error) return 0; // fail open; the deploy itself is still the hard cost cap
   return count ?? 0;
+}
+
+/**
+ * Cost guard: when a prop account has crossed its configured drawdown rules,
+ * the account is dead at the firm, so keeping it on MetaApi only burns money.
+ * Recompute prop status from the freshly synced trades; on breach, remove the
+ * MetaApi account (stops ALL metering) and flag the connection so the UI can
+ * explain. The user can reconnect manually if their configured rules were
+ * wrong. Returns true when a disconnect happened.
+ */
+async function checkBreachAndDisconnect(
+  sb: SupabaseClient,
+  c: SyncConnection,
+): Promise<boolean> {
+  try {
+    const { data: acct } = await sb
+      .from('accounts')
+      .select('starting_balance, prop_rules')
+      .eq('id', c.account_id)
+      .maybeSingle();
+    const rules = ((acct as { prop_rules?: unknown } | null)?.prop_rules ??
+      null) as PropRules | null;
+    if (!rules || (rules.maxDrawdownPct == null && rules.dailyLossPct == null)) {
+      return false;
+    }
+
+    const [{ data: trades }, { data: events }] = await Promise.all([
+      sb
+        .from('trades')
+        .select('opened_at, closed_at, net_pnl, pnl_amount, commission')
+        .eq('account_id', c.account_id),
+      sb
+        .from('account_balance_events')
+        .select('kind, amount, occurred_at')
+        .eq('account_id', c.account_id),
+    ]);
+
+    const propTrades = (
+      (trades ?? []) as Array<{
+        opened_at: string;
+        closed_at: string | null;
+        net_pnl: number | null;
+        pnl_amount: number | null;
+        commission: number | null;
+      }>
+    ).map((t) => ({
+      at: t.closed_at ?? t.opened_at,
+      pnl:
+        t.net_pnl != null
+          ? Number(t.net_pnl)
+          : Number(t.pnl_amount ?? 0) - Number(t.commission ?? 0),
+    }));
+    const cashflows = (
+      (events ?? []) as Array<{
+        kind: string;
+        amount: number;
+        occurred_at: string;
+      }>
+    ).map((e) => ({
+      at: e.occurred_at,
+      amount: e.kind === 'DEPOSIT' ? Number(e.amount) : -Number(e.amount),
+    }));
+
+    const status = computePropStatus({
+      startingBalance: Number(
+        (acct as { starting_balance?: number | null } | null)
+          ?.starting_balance ?? 0,
+      ),
+      rules,
+      trades: propTrades,
+      cashflows,
+    });
+    if (status.status !== 'breached') return false;
+
+    try {
+      await removeMetaApiAccount(c.metaapi_account_id);
+    } catch {
+      // best-effort; the connection flag below still stops our cron
+    }
+    await sb
+      .from('mt_connections')
+      .update({
+        state: 'breached',
+        last_error:
+          'This account hit its prop drawdown rules, so auto-sync was disconnected to stop sync charges. All trades are kept.',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', c.id);
+    return true;
+  } catch {
+    return false; // never fail a sync over the breach check
+  }
 }
 
 /** Record one refresh (one account sync / MetaApi deploy). Best-effort. */
@@ -195,7 +294,11 @@ export async function syncConnection(
       })
       .eq('id', c.id);
 
-    return { connectionId: c.id, imported, skipped };
+    // With fresh trades in, check the prop rules; a breached account is
+    // auto-disconnected so it stops costing anyone money.
+    const breached = await checkBreachAndDisconnect(sb, c);
+
+    return { connectionId: c.id, imported, skipped, breached };
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Sync failed';
     await sb
