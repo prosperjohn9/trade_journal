@@ -24,16 +24,22 @@ const MAX_BYTES = 8 * 1024 * 1024; // 8 MB is generous for any statement
 
 function toRow(t: ParsedTrade, ctx: { userId: string; accountId: string }) {
   const net = t.grossProfit - t.costs;
+  // MT5 reports carry the broker position id — the same id MetaApi auto-sync
+  // uses — so statement uploads dedupe against previously synced trades
+  // instead of duplicating them.
+  const externalId = t.positionId
+    ? `metaapi:${t.positionId}`
+    : `import:${rowHash([
+        t.instrument,
+        t.opened_at,
+        t.closed_at,
+        t.volume,
+        t.grossProfit,
+      ])}`;
   return {
     user_id: ctx.userId,
     account_id: ctx.accountId,
-    external_id: `import:${rowHash([
-      t.instrument,
-      t.opened_at,
-      t.closed_at,
-      t.volume,
-      t.grossProfit,
-    ])}`,
+    external_id: externalId,
     import_source: 'file',
     instrument: t.instrument,
     direction: t.direction,

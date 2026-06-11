@@ -15,6 +15,10 @@ export type ParsedTrade = {
   volume: number | null;
   grossProfit: number; // profit excluding commission/swap when those are separate
   costs: number; // commission + swap as a positive cost (0 if unknown)
+  /** Broker position id (MT5 reports carry it). Lets file imports dedupe
+   *  against trades previously auto-synced via MetaApi, which uses the same
+   *  position ids. */
+  positionId?: string;
 };
 
 export type ParseOutcome = {
@@ -197,7 +201,9 @@ export function parseMt5Html(html: string): ParseOutcome {
     }
     const commission = num(r[10]) ?? 0;
     const swap = num(r[11]) ?? 0;
+    const position = (r[1] ?? '').trim();
     trades.push({
+      positionId: /^\d+$/.test(position) ? position : undefined,
       instrument: symbol.toUpperCase(),
       direction: dir,
       opened_at: opened,
