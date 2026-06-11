@@ -1,8 +1,3 @@
-# Claude Code session data and worktrees
-.claude/
-
-# Personal IDE settings
-.vscode/
-
-# macOS
-.DS_Store
+# Build artifacts accidentally created at the repo root (the app lives in web/)
+.next/
+node_modules/
