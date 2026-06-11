@@ -6,6 +6,7 @@ import { cx } from '@/src/lib/utils/ui';
 import { EmptyState } from '@/src/components/ui/EmptyState';
 import type { useAccounts } from '@/src/hooks/useAccounts';
 import { MetaTraderConnect } from './MetaTraderConnect';
+import { ImportTrades } from './ImportTrades';
 import { BalanceEventsButton } from './BalanceEventsButton';
 import { PropRulesButton } from './PropRulesButton';
 import { computePropQuickStatus } from '@/src/lib/analytics/propFirm';
@@ -283,6 +284,8 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
                   </button>
 
                   <MetaTraderConnect accountId={a.id} onSynced={s.reload} />
+
+                  <ImportTrades accountId={a.id} onImported={s.reload} />
 
                   <BalanceEventsButton accountId={a.id} onChanged={s.reload} />
 
