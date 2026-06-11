@@ -19,6 +19,8 @@ export type LeakFinding = {
   kind: LeakKind;
   label: string;
   detail: string;
+  /** The specific subject of the pattern: session name, weekday, emotion tag. */
+  subject?: string;
   tradeCount: number;
   /** Money the leak cost over the period (always > 0 for reported findings). */
   cost: number;
@@ -152,6 +154,7 @@ export function computeHindsightReport(input: HindsightTrade[]): HindsightReport
     findings.push({
       kind: 'session',
       label: `${worstSession.name} session`,
+      subject: worstSession.name,
       detail: `All your trades opened during the ${worstSession.name} session`,
       tradeCount: worstSession.count,
       cost: -worstSession.pnl,
@@ -169,7 +172,8 @@ export function computeHindsightReport(input: HindsightTrade[]): HindsightReport
   if (worstDay) {
     findings.push({
       kind: 'weekday',
-      label: `${worstDay.name}s`,
+      label: `Trading on ${worstDay.name}s`,
+      subject: worstDay.name,
       detail: `All your trades opened on ${worstDay.name}s`,
       tradeCount: worstDay.count,
       cost: -worstDay.pnl,
@@ -187,7 +191,8 @@ export function computeHindsightReport(input: HindsightTrade[]): HindsightReport
   if (worstEmotion) {
     findings.push({
       kind: 'emotion',
-      label: `Trades tagged "${worstEmotion.name}"`,
+      label: `Trading while "${worstEmotion.name}"`,
+      subject: worstEmotion.name,
       detail: 'Trades you tagged with this emotion',
       tradeCount: worstEmotion.count,
       cost: -worstEmotion.pnl,

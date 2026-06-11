@@ -7,8 +7,9 @@ import type {
   LeakFinding,
 } from '@/src/lib/analytics/hindsight';
 
-// The flagship card: what this period actually cost you, in money, and what it
-// would have looked like without your biggest behavioral leak.
+// The flagship card: what this period actually cost you, in money, explained
+// in plain English. Every finding answers three questions: what is the
+// pattern, what is the evidence, and what should I do about it.
 
 type Payload =
   | { insufficient: true; totalTrades: number; minTrades: number }
@@ -36,29 +37,52 @@ function pnlColor(n: number): string {
   return n > 0 ? 'var(--profit)' : n < 0 ? 'var(--loss)' : 'var(--text-primary)';
 }
 
-function FindingRow({
-  f,
-  currency,
-}: {
-  f: LeakFinding;
-  currency: string;
-}) {
-  return (
-    <li className='flex items-baseline justify-between gap-3 py-1.5'>
-      <div className='min-w-0'>
-        <span className='text-sm font-medium text-[var(--text-primary)]'>
-          {f.label}
-        </span>
-        <span className='ml-2 text-xs text-[var(--text-muted)]'>
-          {f.tradeCount} trades
-          {f.lowSample ? ' · small sample' : ''}
-        </span>
-      </div>
-      <span className='shrink-0 text-sm font-semibold' style={{ color: 'var(--loss)' }}>
-        -{money(f.cost, currency, false)}
-      </span>
-    </li>
-  );
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+/** Plain-English coaching copy per leak type: what happened, and one concrete
+ *  rule to try. The card never shows a finding without explaining it. */
+function copyFor(
+  f: LeakFinding,
+  currency: string,
+): { explanation: string; advice: string; short: string } {
+  const cost = money(f.cost, currency, false);
+  const n = plural(f.tradeCount, 'trade');
+  switch (f.kind) {
+    case 'revenge':
+      return {
+        explanation: `${n} were opened within an hour of taking a loss, and together they lost ${cost}. That pattern is called revenge trading: the next trade tries to win the money back instead of waiting for a real setup.`,
+        advice: 'After any losing trade, no new entry for at least one hour.',
+        short: 'Quick re-entries after a loss',
+      };
+    case 'oversized':
+      return {
+        explanation: `Right after a loss, you sized up to 1.5x or more of your normal position on ${n}. At your normal size, those trades would have lost ${cost} less. Bigger bets at your worst moments.`,
+        advice:
+          'Hard rule: the trade after a loss can never be bigger than your usual size.',
+        short: 'Sizing up right after a loss',
+      };
+    case 'session':
+      return {
+        explanation: `Trades you open during the ${f.subject} session keep losing: ${n} cost you ${cost} this period. Whatever your edge is, it has not been showing up in those hours.`,
+        advice: `Skip the ${f.subject} session for your next 20 trades, then compare your numbers.`,
+        short: 'Trades opened during this session',
+      };
+    case 'weekday':
+      return {
+        explanation: `Your ${f.subject} trading keeps losing: ${n} opened on ${f.subject}s cost you ${cost} this period. Something about how you trade that day is not working.`,
+        advice: `Take the next two ${f.subject}s off. If your results improve, make it permanent.`,
+        short: 'Trades opened on this day',
+      };
+    case 'emotion':
+      return {
+        explanation: `Trades you yourself tagged "${f.subject}" lost ${cost} across ${n}. Your own journal is telling you which state of mind costs you money.`,
+        advice:
+          'When you notice that feeling, write it down and stop trading for the session.',
+        short: 'Trades tagged with this emotion',
+      };
+  }
 }
 
 export function HindsightReportCard() {
@@ -67,10 +91,18 @@ export function HindsightReportCard() {
     dedupingInterval: 5 * 60_000,
   });
 
+  const periodLabel = (p: '30d' | 'all') =>
+    p === '30d' ? 'last 30 days' : 'whole journal';
+
   return (
     <section className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)] space-y-3'>
       <div className='flex flex-wrap items-center justify-between gap-2'>
-        <h2 className='text-lg font-semibold'>Hindsight Report</h2>
+        <div>
+          <h2 className='text-lg font-semibold'>Hindsight Report</h2>
+          <p className='text-xs text-[var(--text-muted)]'>
+            What your trading habits cost you, in money.
+          </p>
+        </div>
         {data && !data.insufficient ? (
           <span className='text-xs text-[var(--text-muted)]'>
             {data.period === '30d' ? 'Last 30 days' : 'All time'}
@@ -93,64 +125,105 @@ export function HindsightReportCard() {
         </p>
       ) : (
         <>
-          <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
-            <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
-              <div className='text-xs text-[var(--text-muted)]'>Your P&L</div>
-              <div
-                className='text-2xl font-semibold'
-                style={{ color: pnlColor(data.report.actualPnl) }}>
-                {money(data.report.actualPnl, data.currency)}
-              </div>
-            </div>
-            <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
-              <div className='text-xs text-[var(--text-muted)]'>
-                Without your biggest leak
-              </div>
-              <div
-                className='text-2xl font-semibold'
-                style={{ color: pnlColor(data.report.biggest.counterfactualPnl) }}>
-                {money(data.report.biggest.counterfactualPnl, data.currency)}
-              </div>
-            </div>
-            <div className='rounded-lg border border-[var(--loss)]/40 bg-[var(--loss)]/[0.06] p-3'>
-              <div className='text-xs text-[var(--text-muted)]'>
-                {data.report.biggest.label} cost you
-              </div>
-              <div className='text-2xl font-semibold' style={{ color: 'var(--loss)' }}>
-                {money(-data.report.biggest.cost, data.currency)}
-              </div>
-            </div>
-          </div>
+          {(() => {
+            const biggest = data.report.biggest;
+            const c = copyFor(biggest, data.currency);
+            return (
+              <>
+                <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
+                  <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
+                    <div className='text-xs text-[var(--text-muted)]'>
+                      Your P&L ({periodLabel(data.period)})
+                    </div>
+                    <div
+                      className='text-2xl font-semibold'
+                      style={{ color: pnlColor(data.report.actualPnl) }}>
+                      {money(data.report.actualPnl, data.currency)}
+                    </div>
+                  </div>
+                  <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
+                    <div className='text-xs text-[var(--text-muted)]'>
+                      What it could have been
+                    </div>
+                    <div
+                      className='text-2xl font-semibold'
+                      style={{ color: pnlColor(biggest.counterfactualPnl) }}>
+                      {money(biggest.counterfactualPnl, data.currency)}
+                    </div>
+                  </div>
+                  <div className='rounded-lg border border-[var(--loss)]/40 bg-[var(--loss)]/[0.06] p-3'>
+                    <div className='text-xs text-[var(--text-muted)]'>
+                      Cost of your biggest leak
+                    </div>
+                    <div
+                      className='text-2xl font-semibold'
+                      style={{ color: 'var(--loss)' }}>
+                      {money(-biggest.cost, data.currency)}
+                    </div>
+                  </div>
+                </div>
 
-          <p className='text-sm text-[var(--text-secondary)]'>
-            <span className='font-medium text-[var(--text-primary)]'>
-              {data.report.biggest.label}:
-            </span>{' '}
-            {data.report.biggest.detail.toLowerCase()},{' '}
-            {data.report.biggest.tradeCount} trades
-            {data.report.biggest.lowSample
-              ? ' (small sample, treat as an early signal)'
-              : ''}
-            .
-          </p>
+                <div className='space-y-2'>
+                  <p className='text-sm text-[var(--text-secondary)]'>
+                    <span className='font-semibold text-[var(--text-primary)]'>
+                      Your biggest leak: {biggest.label}.
+                    </span>{' '}
+                    {c.explanation}
+                    {biggest.lowSample
+                      ? ' The sample is small, so treat this as an early signal rather than a verdict.'
+                      : ''}
+                  </p>
+                  <div className='rounded-lg border border-[var(--accent-cta)]/35 bg-[var(--accent-cta)]/[0.07] px-3 py-2'>
+                    <p className='text-sm text-[var(--text-secondary)]'>
+                      <span className='font-semibold text-[var(--text-primary)]'>
+                        Try this:
+                      </span>{' '}
+                      {c.advice}
+                    </p>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
 
           {data.report.findings.length > 1 ? (
             <div>
               <div className='text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]'>
-                Other leaks
+                Smaller leaks
               </div>
               <ul className='mt-1 divide-y divide-[var(--border-default)]'>
-                {data.report.findings.slice(1, 4).map((f) => (
-                  <FindingRow key={f.kind + f.label} f={f} currency={data.currency} />
-                ))}
+                {data.report.findings.slice(1, 4).map((f) => {
+                  const c = copyFor(f, data.currency);
+                  return (
+                    <li
+                      key={f.kind + f.label}
+                      className='flex items-baseline justify-between gap-3 py-2'>
+                      <div className='min-w-0'>
+                        <div className='text-sm font-medium text-[var(--text-primary)]'>
+                          {f.label}
+                        </div>
+                        <div className='text-xs text-[var(--text-muted)]'>
+                          {c.short} · {plural(f.tradeCount, 'trade')}
+                          {f.lowSample ? ' · small sample, early signal' : ''}
+                        </div>
+                      </div>
+                      <span
+                        className='shrink-0 text-sm font-semibold'
+                        style={{ color: 'var(--loss)' }}>
+                        -{money(f.cost, data.currency, false)}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ) : null}
 
           <p className='border-t border-[var(--border-default)] pt-3 text-xs text-[var(--text-muted)]'>
-            Counterfactuals remove or resize only the flagged trades; leaks can
-            overlap, so costs are per-leak, not additive. Directional, not a
-            promise. Educational only, not financial advice.
+            How this works: we recalculate your P&L with the flagged trades
+            removed (or resized to your normal size). Leaks can overlap, so each
+            cost stands alone. Directional, not a promise. Educational only,
+            not financial advice.
           </p>
         </>
       )}
