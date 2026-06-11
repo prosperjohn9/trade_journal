@@ -1,3 +1,4 @@
 # Build artifacts accidentally created at the repo root (the app lives in web/)
 .next/
 node_modules/
+.vscode/
