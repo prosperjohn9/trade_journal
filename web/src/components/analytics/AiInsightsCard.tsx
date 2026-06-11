@@ -103,7 +103,13 @@ export function AiInsightsCard() {
   return (
     <section className='border rounded-xl p-4 bg-[var(--bg-surface)] border-[var(--border-default)] space-y-3'>
       <div className='flex flex-wrap items-center justify-between gap-2'>
-        <h2 className='text-lg font-semibold'>AI Insights</h2>
+        <div>
+          <h2 className='text-lg font-semibold'>AI Insights</h2>
+          <p className='text-xs text-[var(--text-muted)]'>
+            Your AI coach reads the whole journal: your edge, your habits, and
+            the one pattern to break.
+          </p>
+        </div>
         {insights ? (
           <span className='text-xs text-[var(--text-muted)]'>
             {loading ? 'Refreshing...' : `Updated ${timeAgo(generatedAt)}`}

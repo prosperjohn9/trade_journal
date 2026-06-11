@@ -46,7 +46,7 @@ function plural(n: number, word: string): string {
 function copyFor(
   f: LeakFinding,
   currency: string,
-): { explanation: string; advice: string; short: string } {
+): { explanation: string; advice: string } {
   const cost = money(f.cost, currency, false);
   const n = plural(f.tradeCount, 'trade');
   switch (f.kind) {
@@ -54,33 +54,28 @@ function copyFor(
       return {
         explanation: `${n} were opened within an hour of taking a loss, and together they lost ${cost}. That pattern is called revenge trading: the next trade tries to win the money back instead of waiting for a real setup.`,
         advice: 'After any losing trade, no new entry for at least one hour.',
-        short: 'Quick re-entries after a loss',
       };
     case 'oversized':
       return {
         explanation: `Right after a loss, you sized up to 1.5x or more of your normal position on ${n}. At your normal size, those trades would have lost ${cost} less. Bigger bets at your worst moments.`,
         advice:
           'Hard rule: the trade after a loss can never be bigger than your usual size.',
-        short: 'Sizing up right after a loss',
       };
     case 'session':
       return {
         explanation: `Trades you open during the ${f.subject} session keep losing: ${n} cost you ${cost} this period. Whatever your edge is, it has not been showing up in those hours.`,
         advice: `Skip the ${f.subject} session for your next 20 trades, then compare your numbers.`,
-        short: 'Trades opened during this session',
       };
     case 'weekday':
       return {
         explanation: `Your ${f.subject} trading keeps losing: ${n} opened on ${f.subject}s cost you ${cost} this period. Something about how you trade that day is not working.`,
         advice: `Take the next two ${f.subject}s off. If your results improve, make it permanent.`,
-        short: 'Trades opened on this day',
       };
     case 'emotion':
       return {
         explanation: `Trades you yourself tagged "${f.subject}" lost ${cost} across ${n}. Your own journal is telling you which state of mind costs you money.`,
         advice:
           'When you notice that feeling, write it down and stop trading for the session.',
-        short: 'Trades tagged with this emotion',
       };
   }
 }
@@ -197,15 +192,20 @@ export function HindsightReportCard() {
                   return (
                     <li
                       key={f.kind + f.label}
-                      className='flex items-baseline justify-between gap-3 py-2'>
+                      className='flex items-start justify-between gap-3 py-2.5'>
                       <div className='min-w-0'>
                         <div className='text-sm font-medium text-[var(--text-primary)]'>
                           {f.label}
                         </div>
-                        <div className='text-xs text-[var(--text-muted)]'>
-                          {c.short} · {plural(f.tradeCount, 'trade')}
-                          {f.lowSample ? ' · small sample, early signal' : ''}
-                        </div>
+                        <p className='mt-0.5 text-xs leading-relaxed text-[var(--text-secondary)]'>
+                          {c.explanation}
+                          {f.lowSample
+                            ? ' Small sample, treat it as an early signal.'
+                            : ''}{' '}
+                          <span className='text-[var(--text-muted)]'>
+                            Fix: {c.advice}
+                          </span>
+                        </p>
                       </div>
                       <span
                         className='shrink-0 text-sm font-semibold'
