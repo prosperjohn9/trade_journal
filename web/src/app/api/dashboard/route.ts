@@ -38,7 +38,7 @@ export async function GET(request: Request) {
         id: user.id,
         display_name: null,
         base_currency: 'USD',
-        timezone: 'Europe/Istanbul',
+        timezone: 'Africa/Lagos',
         risk_per_trade_percent: 1,
         rr_win: 2,
       })

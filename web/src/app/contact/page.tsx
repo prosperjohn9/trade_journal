@@ -27,8 +27,17 @@ export default function ContactPage() {
               href='mailto:support@tradershindsight.com'
               className='text-indigo-300 underline-offset-4 hover:underline'>
               support@tradershindsight.com
+            </a>{' '}
+            or call us at{' '}
+            <a
+              href='tel:+2348118698266'
+              className='text-indigo-300 underline-offset-4 hover:underline'>
+              +234 811 869 8266
             </a>
             .
+          </p>
+          <p className='mt-2 text-sm text-slate-400'>
+            The Trader&apos;s Hindsight, Agbor, Delta State, Nigeria.
           </p>
 
           <div className='mt-10'>

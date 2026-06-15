@@ -278,7 +278,7 @@ export function ChatWidget() {
       .map((m) => m.content);
     if (!userQuestions.length) {
       botSay(
-        "Our live team is online 8am to 10pm Istanbul time and is offline right now. Tell me your question first, then tap 'Talk to a human' and I'll forward it so the team can email you back.",
+        "Our live team is online 8am to 10pm Lagos time (WAT) and is offline right now. Tell me your question first, then tap 'Talk to a human' and I'll forward it so the team can email you back.",
       );
       return;
     }
@@ -297,11 +297,11 @@ export function ChatWidget() {
       });
       if (insErr) throw insErr;
       botSay(
-        `Our live team is offline right now (online 8am to 10pm Istanbul time). I've forwarded your message — they'll email you at ${email}.`,
+        `Our live team is offline right now (online 8am to 10pm Lagos time (WAT)). I've forwarded your message — they'll email you at ${email}.`,
       );
     } catch {
       botSay(
-        "Our live team is offline right now (8am to 10pm Istanbul time). I couldn't forward your message automatically — please use the [Contact page](/contact) and we'll email you back.",
+        "Our live team is offline right now (8am to 10pm Lagos time (WAT)). I couldn't forward your message automatically — please use the [Contact page](/contact) and we'll email you back.",
       );
     }
   }

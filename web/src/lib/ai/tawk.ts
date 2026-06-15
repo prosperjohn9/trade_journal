@@ -23,17 +23,17 @@ declare global {
 
 const TAWK_SRC = 'https://embed.tawk.to/6a1e9b85d0b6e01c2e34b46c/1jq3ov0cr';
 
-// Support hours, Europe/Istanbul. Live chat is available in this window; outside
-// it the assistant forwards the message to the Contact inbox instead.
+// Support hours, Africa/Lagos (WAT). Live chat is available in this window;
+// outside it the assistant forwards the message to the Contact inbox instead.
 export const SUPPORT_OPEN_HOUR = 8;
 export const SUPPORT_CLOSE_HOUR = 22;
 
 let injected = false;
 
-/** Current hour (0-23) in Europe/Istanbul, independent of the user's timezone. */
-export function istanbulHour(): number {
+/** Current hour (0-23) in Africa/Lagos, independent of the user's timezone. */
+export function lagosHour(): number {
   const part = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Europe/Istanbul',
+    timeZone: 'Africa/Lagos',
     hour: 'numeric',
     hour12: false,
   })
@@ -44,7 +44,7 @@ export function istanbulHour(): number {
 }
 
 export function isSupportOnline(): boolean {
-  const h = istanbulHour();
+  const h = lagosHour();
   return h >= SUPPORT_OPEN_HOUR && h < SUPPORT_CLOSE_HOUR;
 }
 

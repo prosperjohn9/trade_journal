@@ -793,6 +793,28 @@ export default function PrivacyPage() {
           </a>{' '}
           (general enquiries) or via the POPIA/PAIA Form 5 process.
         </p>
+        <h3>Nigeria</h3>
+        <p>
+          We are based in Nigeria and process your personal information in
+          accordance with the Nigeria Data Protection Act 2023 (NDPA) and the
+          Nigeria Data Protection Regulation 2019 (NDPR). We process personal
+          data on lawful bases that include your consent, the performance of
+          our contract with you, our legitimate interests in operating and
+          securing the Services, and compliance with legal obligations. We
+          collect only the data described in this notice, store it with our
+          processors, use it to provide and improve the Services, and retain it
+          only as long as needed for those purposes.
+        </p>
+        <p>
+          As a data subject under Nigerian law you have the right to be
+          informed about how your data is used, to access your data, to request
+          correction or deletion, to object to or restrict processing, to data
+          portability, and to withdraw consent at any time. To exercise any of
+          these rights, email us at{' '}
+          <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>. If you
+          believe we have processed your data unlawfully, you have the right to
+          lodge a complaint with the Nigeria Data Protection Commission (NDPC).
+        </p>
 
         <h2>16. Do we make updates to this notice?</h2>
         <p>
@@ -814,13 +836,13 @@ export default function PrivacyPage() {
         <p>
           The Trader&apos;s Hindsight
           <br />
-          Dumlupinar Mah. Yavuz Sok.
+          Agbor
           <br />
-          Kadıköy, Istanbul 34720
+          Delta State
           <br />
-          Turkey
+          Nigeria
           <br />
-          Phone: +90 501 326 2900
+          Phone: +234 811 869 8266
         </p>
 
         <h2>18. How can you review, update, or delete the data we collect from you?</h2>

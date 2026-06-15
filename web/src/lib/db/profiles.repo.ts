@@ -51,7 +51,7 @@ export async function getOrCreateProfile(): Promise<{
       display_name: null,
       starting_balance: null,
       base_currency: 'USD',
-      timezone: 'Europe/Istanbul',
+      timezone: 'Africa/Lagos',
       risk_per_trade_percent: 1,
       rr_win: 2,
     };

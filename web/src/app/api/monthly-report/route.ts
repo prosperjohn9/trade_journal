@@ -63,7 +63,7 @@ export async function GET(request: Request) {
   if (!profile && profileRes.error?.code === 'PGRST116') {
     const { data: created, error: insErr } = await sb
       .from('profiles')
-      .insert({ id: user.id, display_name: null, base_currency: 'USD', timezone: 'Europe/Istanbul', risk_per_trade_percent: 1, rr_win: 2 })
+      .insert({ id: user.id, display_name: null, base_currency: 'USD', timezone: 'Africa/Lagos', risk_per_trade_percent: 1, rr_win: 2 })
       .select(PROFILE_SELECT)
       .single();
     if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });

@@ -207,13 +207,13 @@ export default function CookiesPage() {
         <p>
           The Trader&apos;s Hindsight
           <br />
-          Dumlupinar Mah. Yavuz Sok.
+          Agbor
           <br />
-          Kadıköy, Istanbul 34720
+          Delta State
           <br />
-          Turkey
+          Nigeria
           <br />
-          Phone: +90 501 326 2900
+          Phone: +234 811 869 8266
         </p>
       </LegalContainer>
     </MarketingShell>

@@ -22,8 +22,7 @@ export default function TermsPage() {
           We are The Trader&apos;s Hindsight (&ldquo;<strong>Company</strong>
           &rdquo;, &ldquo;<strong>we</strong>&rdquo;, &ldquo;
           <strong>us</strong>&rdquo;, or &ldquo;<strong>our</strong>&rdquo;), a
-          business operating from Turkey at Dumlupinar Mah. Yavuz Sok.,
-          Kadıköy, Istanbul 34720.
+          business operating from Nigeria at Agbor, Delta State, Nigeria.
         </p>
         <p>
           We operate the website{' '}
@@ -47,9 +46,9 @@ export default function TermsPage() {
           performance analytics (win rate, profit factor, drawdown, etc.).
         </p>
         <p>
-          You can contact us by phone at +90 501 326 2900, email at{' '}
+          You can contact us by phone at +234 811 869 8266, email at{' '}
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>, or by mail
-          to Dumlupinar Mah. Yavuz Sok., Kadıköy, Istanbul 34720, Turkey.
+          to Agbor, Delta State, Nigeria.
         </p>
         <p>
           These Legal Terms constitute a legally binding agreement made between
@@ -614,10 +613,10 @@ export default function TermsPage() {
         <h2>16. Governing Law</h2>
         <p>
           These Legal Terms shall be governed by and defined following the
-          laws of Turkey. The Trader&apos;s Hindsight and yourself irrevocably
-          consent that the courts of Turkey shall have exclusive jurisdiction
-          to resolve any dispute which may arise in connection with these
-          Legal Terms.
+          laws of the Federal Republic of Nigeria. The Trader&apos;s Hindsight
+          and yourself irrevocably consent that the courts of Nigeria shall
+          have exclusive jurisdiction to resolve any dispute which may arise in
+          connection with these Legal Terms.
         </p>
 
         <h2>17. Dispute Resolution</h2>
@@ -639,10 +638,11 @@ export default function TermsPage() {
           Any dispute arising out of or in connection with these Legal Terms,
           including any question regarding its existence, validity, or
           termination, shall be referred to and finally resolved by binding
-          arbitration. The number of arbitrators shall be one (1). The seat
-          of arbitration shall be Istanbul, Turkey. The language of the
-          proceedings shall be English. The governing law of these Legal
-          Terms shall be the substantive law of Turkey.
+          arbitration under the Arbitration and Mediation Act of Nigeria. The
+          number of arbitrators shall be one (1). The seat of arbitration shall
+          be Lagos, Nigeria. The language of the proceedings shall be English.
+          The governing law of these Legal Terms shall be the substantive law
+          of Nigeria.
         </p>
         <h3>Restrictions</h3>
         <p>
@@ -801,13 +801,13 @@ export default function TermsPage() {
         <p>
           The Trader&apos;s Hindsight
           <br />
-          Dumlupinar Mah. Yavuz Sok.
+          Agbor
           <br />
-          Kadıköy, Istanbul 34720
+          Delta State
           <br />
-          Turkey
+          Nigeria
           <br />
-          Phone: +90 501 326 2900
+          Phone: +234 811 869 8266
           <br />
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
         </p>
