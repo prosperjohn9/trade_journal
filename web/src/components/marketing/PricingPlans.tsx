@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
 import {
   EXTRA_SYNC_PRICE_MONTHLY,
+  GUARDRAIL_PRICE_MONTHLY,
   PLAN_ORDER,
   PLANS,
   type BillingCycle,
@@ -23,7 +24,9 @@ const POPULAR: PlanDef['id'] = 'elite';
 
 function highlights(p: PlanDef): string[] {
   return [
-    `${p.syncedAccounts} synced broker accounts`,
+    'Unlimited cTrader auto-sync, free',
+    `${p.syncedAccounts} MetaTrader account included`,
+    'Unlimited file import (MT5, cTrader, more)',
     `Daily auto-sync + ${p.manualRefreshesPerMonth} manual refreshes`,
     `${p.aiActionsPerMonth} AI actions / month`,
   ];
@@ -158,8 +161,10 @@ export function PricingPlans() {
       </div>
 
       <p className='mt-8 text-center text-xs text-slate-500'>
-        Billed monthly or yearly. Cancel anytime, no lock-in. Need more synced
-        accounts? Add them for ${EXTRA_SYNC_PRICE_MONTHLY}/mo each.
+        Billed monthly or yearly. Cancel anytime, no lock-in. cTrader auto-sync
+        is always free. Extra MetaTrader accounts are $
+        {EXTRA_SYNC_PRICE_MONTHLY}/mo each; real-time breach Live Guard is $
+        {GUARDRAIL_PRICE_MONTHLY}/mo per account (free for cTrader).
       </p>
     </div>
   );

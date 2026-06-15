@@ -21,7 +21,6 @@ type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
 
 const STATUS_LABEL: Record<Entitlements['status'], string> = {
-  trialing: 'Trial',
   active: 'Active',
   past_due: 'Past due',
   canceled: 'Canceling',
@@ -30,7 +29,7 @@ const STATUS_LABEL: Record<Entitlements['status'], string> = {
 };
 
 function statusColor(status: Entitlements['status']): string {
-  if (status === 'active' || status === 'trialing') return 'var(--profit)';
+  if (status === 'active') return 'var(--profit)';
   if (status === 'past_due' || status === 'canceled') return '#f59e0b';
   return 'var(--text-muted)';
 }
@@ -51,7 +50,8 @@ const COMMON_FEATURES = [
 
 function planHighlights(p: PlanDef): string[] {
   return [
-    `${p.syncedAccounts} synced broker accounts`,
+    'Unlimited cTrader auto-sync, free',
+    `${p.syncedAccounts} MetaTrader account included`,
     `Daily auto-sync + ${p.manualRefreshesPerMonth} manual refreshes`,
     `${p.aiActionsPerMonth} AI actions / month`,
   ];
@@ -117,9 +117,7 @@ function CurrentPlanCard({ e, usage }: { e: Entitlements; usage: Usage | null })
     : null;
 
   let timing: string | null = null;
-  if (e.isTrial && e.daysLeft != null) {
-    timing = `Trial ends in ${e.daysLeft} ${e.daysLeft === 1 ? 'day' : 'days'}`;
-  } else if (lifetime) {
+  if (lifetime) {
     timing = 'Lifetime access';
   } else if (e.status === 'canceled' && periodLabel) {
     timing = `Access until ${periodLabel}, then ends`;
@@ -157,7 +155,7 @@ function CurrentPlanCard({ e, usage }: { e: Entitlements; usage: Usage | null })
         <div className='mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4'>
           <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
             <div className='text-xs text-[var(--text-muted)]'>
-              Synced accounts
+              MetaTrader accounts
             </div>
             <div className='text-lg font-semibold text-[var(--text-primary)]'>
               {e.limits.syncedAccounts}
@@ -334,8 +332,7 @@ export function BillingClient() {
 
   const e = entitlements;
   const isLifetime = e.daysLeft != null && e.daysLeft > 3650;
-  const canCancel =
-    e.entitled && !e.isTrial && e.status === 'active' && !isLifetime;
+  const canCancel = e.entitled && e.status === 'active' && !isLifetime;
 
   return (
     <main

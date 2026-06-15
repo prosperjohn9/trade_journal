@@ -3,7 +3,6 @@
 // the server (real enforcement on the costly endpoints).
 //
 // Access rules:
-//   trialing  -> entitled while now < trial_ends_at; runs at Pro limits.
 //   active    -> entitled while now < current_period_end.
 //   past_due  -> still entitled until current_period_end (grace, no hard cutoff
 //                mid-cycle on a failed renewal).
@@ -11,10 +10,9 @@
 //                for), then locked.
 //   expired / none -> locked: view existing data only, every paid feature off.
 
-import { PLANS, TRIAL_PLAN, type PlanId } from './plans';
+import { PLANS, type PlanId } from './plans';
 
 export type SubscriptionStatus =
-  | 'trialing'
   | 'active'
   | 'past_due'
   | 'canceled'
@@ -25,7 +23,6 @@ export type SubscriptionRow = {
   status: SubscriptionStatus;
   billing_cycle: 'monthly' | 'yearly';
   extra_synced_accounts: number;
-  trial_ends_at: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
 };
@@ -48,8 +45,6 @@ export type Entitlements = {
   entitled: boolean;
   status: SubscriptionStatus | 'none';
   plan: PlanId | null; // effective plan used for limits
-  isTrial: boolean;
-  trialEndsAt: string | null;
   currentPeriodEnd: string | null;
   daysLeft: number | null;
   limits: EntitlementLimits;
@@ -95,8 +90,6 @@ export function resolveEntitlements(
     entitled: false,
     status: sub?.status ?? 'none',
     plan: null,
-    isTrial: false,
-    trialEndsAt: sub?.trial_ends_at ?? null,
     currentPeriodEnd: sub?.current_period_end ?? null,
     daysLeft: null,
     limits: { ...LOCKED_LIMITS },
@@ -105,30 +98,24 @@ export function resolveEntitlements(
 
   if (!sub) return locked;
 
-  const isTrial = sub.status === 'trialing';
-  const trialOk = isTrial && before(sub.trial_ends_at, now);
   const paidOk =
     (sub.status === 'active' ||
       sub.status === 'past_due' ||
       sub.status === 'canceled') &&
     before(sub.current_period_end, now);
 
-  if (!trialOk && !paidOk) return locked;
+  if (!paidOk) return locked;
 
-  // Trials run at Pro-level limits to bound sync/AI cost; paid users get their
-  // plan's limits plus any pay-as-you-go synced accounts.
-  const effectivePlanId: PlanId = isTrial ? TRIAL_PLAN : sub.plan;
-  const plan = PLANS[effectivePlanId];
-  const extra = isTrial ? 0 : Math.max(0, sub.extra_synced_accounts || 0);
+  // Paid users get their plan's limits plus any pay-as-you-go synced accounts.
+  const plan = PLANS[sub.plan];
+  const extra = Math.max(0, sub.extra_synced_accounts || 0);
 
   return {
     entitled: true,
     status: sub.status,
-    plan: effectivePlanId,
-    isTrial,
-    trialEndsAt: sub.trial_ends_at,
+    plan: sub.plan,
     currentPeriodEnd: sub.current_period_end,
-    daysLeft: daysUntil(isTrial ? sub.trial_ends_at : sub.current_period_end, now),
+    daysLeft: daysUntil(sub.current_period_end, now),
     limits: {
       syncedAccounts: plan.syncedAccounts + extra,
       syncIntervalHours: plan.syncIntervalHours,
@@ -141,4 +128,4 @@ export function resolveEntitlements(
 
 /** Columns to select for entitlement resolution. */
 export const SUBSCRIPTION_SELECT =
-  'plan, status, billing_cycle, extra_synced_accounts, trial_ends_at, current_period_end, cancel_at_period_end';
+  'plan, status, billing_cycle, extra_synced_accounts, current_period_end, cancel_at_period_end';
