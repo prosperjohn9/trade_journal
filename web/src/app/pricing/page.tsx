@@ -5,7 +5,7 @@ import { PricingPlans } from '@/src/components/marketing/PricingPlans';
 export const metadata: Metadata = {
   title: "Pricing | The Trader's Hindsight",
   description:
-    'Simple plans for serious traders. Broker auto-sync, behavioral-leak AI, and prop-firm tracking, with a 7-day free trial.',
+    'Simple plans for serious traders. Broker auto-sync, behavioral-leak AI, and prop-firm tracking.',
 };
 
 export default function PricingPage() {

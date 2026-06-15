@@ -308,13 +308,6 @@ export default function TermsPage() {
           order. The length of your billing cycle will depend on the type of
           subscription plan you choose when you subscribed to the Services.
         </p>
-        <h3>Free Trial</h3>
-        <p>
-          We offer a 14-day free trial to new users who register with the
-          Services. The account will not be charged and the subscription will
-          be suspended until upgraded to a paid version at the end of the free
-          trial.
-        </p>
         <h3>Cancellation</h3>
         <p>
           All purchases are non-refundable. You can cancel your subscription
