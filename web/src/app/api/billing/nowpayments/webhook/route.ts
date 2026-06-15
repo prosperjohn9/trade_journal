@@ -5,6 +5,7 @@ import {
   type NowPaymentsIpn,
 } from '@/src/lib/billing/nowpayments';
 import { isPlanId, type BillingCycle } from '@/src/lib/billing/plans';
+import { activateAddonByTxRef } from '@/src/lib/billing/addons';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -28,6 +29,9 @@ function addInterval(d: Date, cycle: BillingCycle): Date {
 async function handleFinished(admin: SupabaseAdmin, ipn: NowPaymentsIpn) {
   const orderId = typeof ipn.order_id === 'string' ? ipn.order_id : null;
   if (!orderId) return;
+
+  // Add-on purchases reuse this IPN; activate and stop if it is one.
+  if (await activateAddonByTxRef(admin, orderId, null)) return;
 
   const { data: co } = await admin
     .from('billing_checkouts')

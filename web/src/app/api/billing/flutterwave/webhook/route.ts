@@ -5,6 +5,7 @@ import {
   verifyWebhookSignature,
 } from '@/src/lib/billing/flutterwave';
 import { isPlanId, type BillingCycle } from '@/src/lib/billing/plans';
+import { activateAddonByTxRef } from '@/src/lib/billing/addons';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -45,6 +46,9 @@ async function handleChargeCompleted(
 
   const customerId =
     verified.customer?.id != null ? String(verified.customer.id) : null;
+
+  // Add-on purchases reuse this webhook; activate and stop if it is one.
+  if (await activateAddonByTxRef(admin, verified.tx_ref, customerId)) return;
 
   // Attribute the charge to a user via the checkout we recorded by tx_ref.
   const { data: co } = await admin

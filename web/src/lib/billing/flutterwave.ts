@@ -89,6 +89,32 @@ export async function createHostedPayment(params: {
   return { link: json.data.link };
 }
 
+/** Create a hosted (redirect) one-time payment, with no recurring plan. Used
+ *  for one-period add-on purchases. Returns the pay link. */
+export async function createOneTimePayment(params: {
+  txRef: string;
+  amount: number;
+  currency: string;
+  redirectUrl: string;
+  customerEmail: string;
+  meta: Record<string, string>;
+  title?: string;
+}): Promise<{ link: string }> {
+  const json = await flwFetch<{ data: { link: string } }>('/payments', {
+    method: 'POST',
+    body: JSON.stringify({
+      tx_ref: params.txRef,
+      amount: params.amount,
+      currency: params.currency,
+      redirect_url: params.redirectUrl,
+      customer: { email: params.customerEmail },
+      customizations: { title: params.title ?? "The Trader's Hindsight" },
+      meta: params.meta,
+    }),
+  });
+  return { link: json.data.link };
+}
+
 export type FlwVerifyData = {
   status: string; // 'successful' on success
   amount: number;

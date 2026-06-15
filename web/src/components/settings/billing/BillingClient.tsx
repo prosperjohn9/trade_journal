@@ -6,6 +6,7 @@ import useSWR, { mutate } from 'swr';
 import { apiFetch } from '@/src/lib/api/fetcher';
 import { supabase } from '@/src/lib/supabase/client';
 import { apiPost } from '@/src/lib/api/fetcher';
+import { AddonsCard } from './AddonsCard';
 import { useEntitlements } from '@/src/hooks/useEntitlements';
 import {
   PLANS,
@@ -366,6 +367,8 @@ export function BillingClient() {
         ) : (
           <>
             <CurrentPlanCard e={e} usage={usage ?? null} />
+
+            <AddonsCard entitled={e.entitled} />
 
             {canCancel ? (
               <div className='flex justify-end'>

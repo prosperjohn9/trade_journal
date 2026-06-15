@@ -10,6 +10,7 @@ import {
   SUBSCRIPTION_SELECT,
   type SubscriptionRow,
 } from '@/src/lib/billing/entitlements';
+import { reconcileAddons } from '@/src/lib/billing/addons';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -55,6 +56,10 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: 'Server not configured' }, { status: 500 });
   }
+
+  // Expire any lapsed one-period add-ons and re-sync extra account slots before
+  // we decide who is due. Cheap and best-effort; never block the sync run on it.
+  await reconcileAddons(admin).catch(() => {});
 
   const [{ data: connections }, { data: subs }] = await Promise.all([
     admin
