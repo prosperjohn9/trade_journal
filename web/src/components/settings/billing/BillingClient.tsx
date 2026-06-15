@@ -515,11 +515,33 @@ export function BillingClient() {
                 })}
               </div>
 
-              <p className='mt-4 text-xs text-[var(--text-muted)]'>
-                Card payments are processed securely by Flutterwave; crypto by
-                NOWPayments (300+ coins). Cancel anytime, no lock-in. Yearly is
-                two months free.
-              </p>
+              <div className='mt-4 space-y-1.5 text-xs text-[var(--text-muted)]'>
+                <p>
+                  Prices are in US dollars; your card shows the local-currency
+                  amount at checkout. Yearly is two months free.
+                </p>
+                <p>
+                  <span className='font-medium text-[var(--text-secondary)]'>
+                    Auto-renewal:
+                  </span>{' '}
+                  card subscriptions renew automatically each {cycle === 'yearly'
+                    ? 'year'
+                    : 'month'}{' '}
+                  until cancelled. Crypto payments and add-ons are charged once
+                  per period and never auto-renew.
+                </p>
+                <p>
+                  <span className='font-medium text-[var(--text-secondary)]'>
+                    Cancel anytime:
+                  </span>{' '}
+                  use the Cancel plan button above; access continues until the
+                  end of the period you paid for, with no further charges.
+                </p>
+                <p>
+                  Card payments are processed securely by Flutterwave; crypto by
+                  NOWPayments (300+ coins).
+                </p>
+              </div>
             </section>
           </>
         )}

@@ -160,12 +160,27 @@ export function PricingPlans() {
         })}
       </div>
 
-      <p className='mt-8 text-center text-xs text-slate-500'>
-        Billed monthly or yearly. Cancel anytime, no lock-in. cTrader auto-sync
-        is always free. Extra MetaTrader accounts are $
-        {EXTRA_SYNC_PRICE_MONTHLY}/mo each; real-time breach Live Guard is $
-        {GUARDRAIL_PRICE_MONTHLY}/mo per account (free for cTrader).
-      </p>
+      <div className='mx-auto mt-8 max-w-2xl space-y-2 text-center text-xs text-slate-500'>
+        <p>
+          Prices are in US dollars. Your bank or card network shows the amount
+          in your local currency at checkout. Extra MetaTrader accounts are $
+          {EXTRA_SYNC_PRICE_MONTHLY}/account each; real-time breach Live Guard is
+          ${GUARDRAIL_PRICE_MONTHLY}/account (free for cTrader). cTrader auto-sync
+          is always free.
+        </p>
+        <p>
+          <span className='font-medium text-slate-400'>Billing & renewal:</span>{' '}
+          plans bill on the frequency you pick, monthly or yearly. Card
+          subscriptions renew automatically each period until you cancel. Crypto
+          payments and add-ons are charged once per period and do not auto-renew.
+        </p>
+        <p>
+          <span className='font-medium text-slate-400'>Cancel anytime:</span> go
+          to Settings, then Billing, and choose Cancel plan. Your access
+          continues until the end of the period you already paid for; no further
+          charges are made.
+        </p>
+      </div>
     </div>
   );
 }
