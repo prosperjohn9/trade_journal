@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '@/src/components/ui/Modal';
 import { DashboardSkeleton } from '@/src/components/ui/Skeleton';
 import { EmptyState } from '@/src/components/ui/EmptyState';
+import { OnboardingChecklist } from '@/src/components/dashboard/OnboardingChecklist';
 import { useDashboard } from '@/src/hooks/useDashboard';
 import { DashboardCards } from './DashboardCards';
 import { DashboardTradeTable } from './DashboardTradeTable';
@@ -364,20 +365,8 @@ export default function DashboardClient() {
 
         {/* Brand-new user — no accounts yet. Skip stats/table entirely. */}
         {!s.loading && s.accounts.length === 0 ? (
-          <EmptyState
-            icon='👋'
-            title="Welcome to The Trader's Hindsight"
-            body={
-              <>
-                Make your experience your edge. Start by creating your first
-                trading account — it&apos;s where every trade, lesson, and
-                equity curve lives.
-              </>
-            }
-            cta={{
-              label: 'Create your first account',
-              onClick: () => router.push('/settings/accounts'),
-            }}
+          <OnboardingChecklist
+            onCreateAccount={() => router.push('/settings/accounts')}
           />
         ) : (
           <>

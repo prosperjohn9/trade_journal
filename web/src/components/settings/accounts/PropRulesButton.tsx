@@ -126,6 +126,33 @@ export function PropRulesButton({
     );
   }
 
+  // One-click starting templates for the most common two-step challenges.
+  // Prop rules change often, so these are starting points to verify, not gospel.
+  const PRESETS: Array<{
+    name: string;
+    firm: string;
+    target: number;
+    maxDD: number;
+    daily: number;
+  }> = [
+    { name: 'FTMO', firm: 'FTMO', target: 10, maxDD: 10, daily: 5 },
+    { name: 'FundingPips', firm: 'FundingPips', target: 8, maxDD: 10, daily: 5 },
+    { name: 'FundedNext', firm: 'FundedNext', target: 8, maxDD: 10, daily: 5 },
+    { name: 'Generic 2-step', firm: '', target: 8, maxDD: 10, daily: 5 },
+  ];
+
+  function applyPreset(p: (typeof PRESETS)[number]) {
+    setFirm(p.firm);
+    setPhase('Phase 1');
+    setAccountSize(String(startingBalance > 0 ? startingBalance : 10000));
+    setProfitTargetPct(String(p.target));
+    setMaxDrawdownPct(String(p.maxDD));
+    setDailyLossPct(String(p.daily));
+    setMaxDrawdownType('static');
+    setMinTradingDays('');
+    setDailyResetHourUtc('');
+  }
+
   // Sensible starting point (FundingPips/FTMO two-step) so the form is never
   // empty; the user adjusts to their actual challenge.
   function fillDefaults() {
@@ -403,6 +430,22 @@ export function PropRulesButton({
                     Enter your challenge rules. Percentages are of the account
                     size. Leave a field blank to skip that rule.
                   </p>
+                  <div>
+                    <div className='mb-1 text-[11px] font-medium text-[var(--text-muted)]'>
+                      Quick start (Phase 1 templates, verify against your firm)
+                    </div>
+                    <div className='flex flex-wrap gap-1.5'>
+                      {PRESETS.map((p) => (
+                        <button
+                          key={p.name}
+                          type='button'
+                          onClick={() => applyPreset(p)}
+                          className='rounded-full border border-[var(--border-default)] px-2.5 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-cta)] hover:text-[var(--text-primary)]'>
+                          {p.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className='grid grid-cols-2 gap-3'>
                     <Field label='Firm'>
                       <input
