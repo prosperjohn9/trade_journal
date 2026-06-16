@@ -1,11 +1,61 @@
 'use client';
 
-import useSWR from 'swr';
-import { apiFetch } from '@/src/lib/api/fetcher';
+import { useState } from 'react';
+import useSWR, { mutate } from 'swr';
+import { apiFetch, apiPost } from '@/src/lib/api/fetcher';
 import type {
   HindsightReport,
   LeakFinding,
 } from '@/src/lib/analytics/hindsight';
+
+/** Turn a Hindsight finding into a committed rule, then refresh the
+ *  commitments card so the trader immediately sees it being tracked. */
+function CommitButton({
+  kind,
+  subject,
+  label,
+}: {
+  kind: string;
+  subject?: string;
+  label: string;
+}) {
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'err'>('idle');
+  async function commit() {
+    setState('busy');
+    try {
+      await apiPost('/api/rules', { kind, subject, label });
+      setState('done');
+      void mutate('/api/rules');
+    } catch (e) {
+      if ((e as { status?: number })?.status === 409) {
+        setState('done');
+        void mutate('/api/rules');
+      } else {
+        setState('err');
+      }
+    }
+  }
+  if (state === 'done') {
+    return (
+      <span className='text-xs font-medium text-[var(--profit)]'>
+        ✓ Committed, now tracking
+      </span>
+    );
+  }
+  return (
+    <button
+      type='button'
+      onClick={() => void commit()}
+      disabled={state === 'busy'}
+      className='rounded-lg border border-[var(--accent-cta)]/50 px-2.5 py-1 text-xs font-medium text-[var(--accent-cta)] transition-colors hover:bg-[var(--accent-cta)]/10 disabled:opacity-60'>
+      {state === 'busy'
+        ? 'Committing...'
+        : state === 'err'
+          ? 'Try again'
+          : 'Commit to this rule'}
+    </button>
+  );
+}
 
 // The flagship card: what this period actually cost you, in money, explained
 // in plain English. Every finding answers three questions: what is the
@@ -175,6 +225,13 @@ export function HindsightReportCard() {
                       </span>{' '}
                       {c.advice}
                     </p>
+                    <div className='mt-2'>
+                      <CommitButton
+                        kind={biggest.kind}
+                        subject={biggest.subject}
+                        label={c.advice}
+                      />
+                    </div>
                   </div>
                 </div>
               </>
@@ -206,6 +263,13 @@ export function HindsightReportCard() {
                             Fix: {c.advice}
                           </span>
                         </p>
+                        <div className='mt-1.5'>
+                          <CommitButton
+                            kind={f.kind}
+                            subject={f.subject}
+                            label={c.advice}
+                          />
+                        </div>
                       </div>
                       <span
                         className='shrink-0 text-sm font-semibold'

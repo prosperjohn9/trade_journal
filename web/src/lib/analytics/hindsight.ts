@@ -36,12 +36,12 @@ export type HindsightReport = {
   biggest: LeakFinding | null;
 };
 
-const REVENGE_WINDOW_MS = 60 * 60 * 1000; // entered within 1h of a loss
-const OVERSIZE_FACTOR = 1.5;
+export const REVENGE_WINDOW_MS = 60 * 60 * 1000; // entered within 1h of a loss
+export const OVERSIZE_FACTOR = 1.5;
 
-type Session = 'Asia' | 'London' | 'London-NY overlap' | 'New York';
+export type Session = 'Asia' | 'London' | 'London-NY overlap' | 'New York';
 
-function sessionOf(iso: string): Session {
+export function sessionOf(iso: string): Session {
   const h = new Date(iso).getUTCHours();
   if (h >= 21 || h <= 6) return 'Asia';
   if (h >= 7 && h <= 11) return 'London';
@@ -49,7 +49,7 @@ function sessionOf(iso: string): Session {
   return 'New York';
 }
 
-const WEEKDAYS = [
+export const WEEKDAYS = [
   'Sunday',
   'Monday',
   'Tuesday',
@@ -59,7 +59,7 @@ const WEEKDAYS = [
   'Saturday',
 ];
 
-function median(values: number[]): number | null {
+export function median(values: number[]): number | null {
   if (!values.length) return null;
   const s = [...values].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);

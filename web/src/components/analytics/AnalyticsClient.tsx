@@ -13,6 +13,7 @@ import { AnalyticsSkeleton } from '@/src/components/ui/Skeleton';
 import { EmptyState } from '@/src/components/ui/EmptyState';
 import { AiInsightsCard } from '@/src/components/analytics/AiInsightsCard';
 import { HindsightReportCard } from '@/src/components/analytics/HindsightReportCard';
+import { CommittedRulesCard } from '@/src/components/analytics/CommittedRulesCard';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -853,6 +854,8 @@ export function AnalyticsClient() {
       </header>
 
       <HindsightReportCard />
+
+      <CommittedRulesCard />
 
       <AiInsightsCard />
 

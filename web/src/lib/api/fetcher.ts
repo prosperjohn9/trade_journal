@@ -86,6 +86,31 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export async function apiDelete<T>(path: string): Promise<T> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  const res = await fetch(path, {
+    method: 'DELETE',
+    cache: 'no-store',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (res.status === 401) throw new Error('Not authenticated');
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new ApiError(
+      errBody.error || `Request failed (${res.status})`,
+      res.status,
+      typeof errBody.code === 'string' ? errBody.code : null,
+    );
+  }
+
+  return res.json() as Promise<T>;
+}
+
 export function buildQuery(params: Record<string, string | undefined>): string {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
