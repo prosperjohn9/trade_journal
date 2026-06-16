@@ -67,7 +67,7 @@ export function PricingPlans() {
 
   // Logged-in visitors subscribe on the billing page; everyone else signs up.
   function getStarted() {
-    router.push(loggedIn ? '/settings/billing' : '/auth');
+    router.push(loggedIn ? '/settings/billing' : '/auth?mode=signup');
   }
 
   return (

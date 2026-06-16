@@ -1,9 +1,16 @@
 'use client';
 
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import {
+  Suspense,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
-import { useRouter } from 'next/navigation';
 
 function readSavedEmail(): string {
   if (typeof window === 'undefined') return '';
@@ -45,8 +52,57 @@ function GoogleIcon() {
   );
 }
 
+function CheckIcon() {
+  return (
+    <svg
+      viewBox='0 0 20 20'
+      className='mt-0.5 h-4 w-4 shrink-0 text-indigo-300'
+      fill='none'
+      aria-hidden='true'>
+      <circle cx='10' cy='10' r='9' className='fill-indigo-500/15' />
+      <path
+        d='M6 10.2l2.6 2.6L14 7.4'
+        stroke='currentColor'
+        strokeWidth='1.8'
+        strokeLinecap='round'
+        strokeLinejoin='round'
+      />
+    </svg>
+  );
+}
+
+const SIGNUP_PERKS = [
+  'Free statement import and cTrader auto-sync',
+  'Your Hindsight Report in minutes, not spreadsheets',
+  'No card required to start',
+];
+
+// Full-bleed dark backdrop that matches the marketing side, with a soft glow
+// behind the card. Shown on its own as the Suspense fallback so the page never
+// flashes blank while the search params resolve.
+function AuthBackdrop({ children }: { children?: ReactNode }) {
+  return (
+    <main className='relative min-h-screen overflow-hidden bg-[#0b1220] text-slate-100 antialiased'>
+      <div
+        aria-hidden
+        className='pointer-events-none absolute left-1/2 top-[-120px] h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-indigo-500/20 blur-[130px]'
+      />
+      {children}
+    </main>
+  );
+}
+
 export default function AuthPage() {
+  return (
+    <Suspense fallback={<AuthBackdrop />}>
+      <AuthForm />
+    </Suspense>
+  );
+}
+
+function AuthForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const savedEmail = useSyncExternalStore(
     subscribeSavedEmail,
@@ -57,7 +113,11 @@ export default function AuthPage() {
   const [emailDraft, setEmailDraft] = useState<string | null>(null);
   const email = emailDraft ?? savedEmail;
 
-  const [mode, setMode] = useState<Mode>('signin');
+  // The entry point sets the starting view: "Get started" links land on signup,
+  // "Sign in" links land on signin. In-page toggling takes over from there.
+  const [mode, setMode] = useState<Mode>(
+    searchParams.get('mode') === 'signup' ? 'signup' : 'signin',
+  );
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -204,141 +264,174 @@ export default function AuthPage() {
 
   const signingIn = mode === 'signin';
 
+  const inputClass =
+    'w-full rounded-lg border border-white/10 bg-white/5 px-3.5 py-3 text-sm text-white placeholder-slate-500 outline-none transition-colors focus:border-indigo-400/70 focus:bg-white/[0.07]';
+
   return (
-    <main className='min-h-screen flex items-center justify-center p-6'>
-      <div className='w-full max-w-md border rounded-xl p-6 space-y-4'>
-        <div className='flex items-center gap-3'>
+    <AuthBackdrop>
+      <div className='relative z-10 mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-12'>
+        <Link
+          href='/'
+          className='mb-8 flex items-center justify-center gap-2.5 transition-opacity hover:opacity-90'>
           <Image
             src='/logo-mark-dark.png'
             alt=''
-            width={56}
-            height={56}
+            width={44}
+            height={44}
             priority
-            className='h-14 w-14'
+            className='h-11 w-11'
           />
-          <div>
-            <h1 className='text-2xl font-semibold leading-tight'>
-              The Trader&apos;s Hindsight
-            </h1>
-            <p className='text-sm text-[var(--text-secondary)]'>
-              Make your experience your edge.
-            </p>
-          </div>
-        </div>
+          <span className='text-lg font-semibold text-white'>
+            The Trader&apos;s Hindsight
+          </span>
+        </Link>
 
-        <p className='text-sm font-medium text-[var(--text-secondary)]'>
-          {signingIn ? 'Sign in to your account' : 'Create your account'}
-        </p>
+        <div className='rounded-2xl border border-white/10 bg-white/[0.03] p-7 shadow-2xl backdrop-blur-sm'>
+          <h1 className='text-2xl font-semibold tracking-tight text-white'>
+            {signingIn ? 'Welcome back' : 'Create your account'}
+          </h1>
+          <p className='mt-1.5 text-sm text-slate-400'>
+            {signingIn
+              ? 'Sign in to pick up where you left off.'
+              : 'See in dollars what your trading habits cost you. Free to start.'}
+          </p>
 
-        <div className='space-y-2'>
+          {!signingIn && (
+            <ul className='mt-5 space-y-2.5'>
+              {SIGNUP_PERKS.map((perk) => (
+                <li
+                  key={perk}
+                  className='flex items-start gap-2.5 text-sm text-slate-300'>
+                  <CheckIcon />
+                  <span>{perk}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <button
             type='button'
             onClick={() => void signInWithProvider('google')}
             disabled={oauthLoading !== null}
-            className='flex w-full items-center justify-center gap-2 rounded-lg border p-3 disabled:opacity-60'>
+            className='mt-6 flex w-full items-center justify-center gap-2.5 rounded-lg bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-60'>
             <GoogleIcon />
             {oauthLoading === 'google' ? 'Redirecting…' : 'Continue with Google'}
           </button>
-        </div>
 
-        <div className='flex items-center gap-3 text-xs text-[var(--text-muted)]'>
-          <span className='h-px flex-1 border-t' />
-          or use your email
-          <span className='h-px flex-1 border-t' />
-        </div>
-
-        <form onSubmit={handleSubmit} className='space-y-3'>
-          <input
-            className='w-full border rounded-lg p-3'
-            placeholder='Email address'
-            aria-label='Email address'
-            value={email}
-            onChange={(e) => setEmailDraft(e.target.value)}
-            type='email'
-            autoComplete='email'
-            required
-          />
-
-          <div className='relative'>
-            <input
-              className='w-full border rounded-lg p-3 pr-16'
-              placeholder='Password'
-              aria-label='Password'
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type={showPw ? 'text' : 'password'}
-              autoComplete={signingIn ? 'current-password' : 'new-password'}
-              minLength={8}
-              required
-            />
-            <button
-              type='button'
-              onClick={() => setShowPw((v) => !v)}
-              className='absolute inset-y-0 right-0 px-3 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]'>
-              {showPw ? 'Hide' : 'Show'}
-            </button>
+          <div className='my-5 flex items-center gap-3 text-xs uppercase tracking-wide text-slate-500'>
+            <span className='h-px flex-1 bg-white/10' />
+            or use your email
+            <span className='h-px flex-1 bg-white/10' />
           </div>
 
-          {signingIn && (
-            <div className='text-right'>
+          <form onSubmit={handleSubmit} className='space-y-3'>
+            <input
+              className={inputClass}
+              placeholder='Email address'
+              aria-label='Email address'
+              value={email}
+              onChange={(e) => setEmailDraft(e.target.value)}
+              type='email'
+              autoComplete='email'
+              required
+            />
+
+            <div className='relative'>
+              <input
+                className={`${inputClass} pr-16`}
+                placeholder='Password'
+                aria-label='Password'
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type={showPw ? 'text' : 'password'}
+                autoComplete={signingIn ? 'current-password' : 'new-password'}
+                minLength={8}
+                required
+              />
               <button
                 type='button'
-                onClick={() => void handleForgot()}
-                disabled={busy}
-                className='text-xs text-[var(--text-muted)] underline hover:text-[var(--text-primary)] disabled:opacity-60'>
-                Forgot password?
+                onClick={() => setShowPw((v) => !v)}
+                className='absolute inset-y-0 right-0 px-3.5 text-xs font-medium text-slate-400 hover:text-white'>
+                {showPw ? 'Hide' : 'Show'}
               </button>
             </div>
+
+            {signingIn && (
+              <div className='text-right'>
+                <button
+                  type='button'
+                  onClick={() => void handleForgot()}
+                  disabled={busy}
+                  className='text-xs text-slate-400 transition-colors hover:text-white disabled:opacity-60'>
+                  Forgot password?
+                </button>
+              </div>
+            )}
+
+            <button
+              type='submit'
+              className='w-full rounded-lg bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 transition-all hover:bg-indigo-400 disabled:opacity-60'
+              disabled={busy}>
+              {busy
+                ? 'Please wait…'
+                : signingIn
+                  ? 'Sign in'
+                  : 'Create account'}
+            </button>
+          </form>
+
+          {msg && (
+            <p
+              className={
+                tone === 'error'
+                  ? 'mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200'
+                  : 'mt-4 rounded-lg border border-indigo-400/30 bg-indigo-400/10 px-3 py-2 text-sm text-indigo-100'
+              }>
+              {msg}
+            </p>
           )}
 
-          <button
-            type='submit'
-            className='w-full rounded-lg p-3 border font-medium disabled:opacity-60'
-            disabled={busy}>
-            {busy
-              ? 'Please wait…'
-              : signingIn
-                ? 'Sign in'
-                : 'Create account'}
-          </button>
-        </form>
+          <p className='mt-5 text-center text-sm text-slate-400'>
+            {signingIn ? 'New here? ' : 'Already have an account? '}
+            <button
+              type='button'
+              onClick={() => {
+                setMode(signingIn ? 'signup' : 'signin');
+                note('');
+              }}
+              className='font-semibold text-indigo-300 underline-offset-2 transition-colors hover:text-indigo-200 hover:underline'>
+              {signingIn ? 'Create an account' : 'Sign in'}
+            </button>
+          </p>
+        </div>
 
-        <p className='text-sm text-[var(--text-secondary)]'>
-          {signingIn ? "New here? " : 'Already have an account? '}
-          <button
-            type='button'
-            onClick={() => {
-              setMode(signingIn ? 'signup' : 'signin');
-              note('');
-            }}
-            className='underline font-medium hover:text-[var(--text-primary)]'>
-            {signingIn ? 'Create an account' : 'Sign in'}
-          </button>
+        <p className='mt-5 flex items-center justify-center gap-1.5 text-center text-xs text-slate-500'>
+          <svg
+            viewBox='0 0 20 20'
+            className='h-3.5 w-3.5 text-slate-500'
+            fill='currentColor'
+            aria-hidden='true'>
+            <path d='M10 1l7 3v5c0 4.2-2.9 7.9-7 9-4.1-1.1-7-4.8-7-9V4l7-3z' />
+          </svg>
+          We connect read-only. We can never place trades or move your funds.
         </p>
 
-        {msg && (
-          <p
-            className={
-              tone === 'error'
-                ? 'text-sm text-red-600'
-                : 'text-sm opacity-80'
-            }>
-            {msg}
-          </p>
-        )}
-
-        <p className='text-xs text-[var(--text-muted)]'>
-          By signing in or creating an account, you agree to our{' '}
-          <a href='/terms' className='underline hover:text-[var(--text-primary)]'>
+        <p className='mt-3 text-center text-xs text-slate-500'>
+          By continuing you agree to our{' '}
+          <Link
+            href='/terms'
+            className='underline underline-offset-2 hover:text-slate-300'>
             Terms of Service
-          </a>{' '}
+          </Link>{' '}
           and{' '}
-          <a href='/privacy' className='underline hover:text-[var(--text-primary)]'>
+          <Link
+            href='/privacy'
+            className='underline underline-offset-2 hover:text-slate-300'>
             Privacy Policy
-          </a>
+          </Link>
           .
         </p>
       </div>
-    </main>
+    </AuthBackdrop>
   );
 }

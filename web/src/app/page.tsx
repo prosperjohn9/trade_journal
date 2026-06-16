@@ -51,7 +51,7 @@ function Hero() {
         </p>
         <div className='mt-9 flex flex-wrap items-center justify-center gap-3'>
           <Link
-            href='/auth'
+            href='/auth?mode=signup'
             className='rounded-lg bg-indigo-500 px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-indigo-400'>
             Start free
           </Link>
@@ -338,7 +338,7 @@ function FinalCta() {
           </p>
           <div className='mt-8 flex flex-wrap items-center justify-center gap-3'>
             <Link
-              href='/auth'
+              href='/auth?mode=signup'
               className='rounded-lg bg-indigo-500 px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-indigo-400'>
               Start free
             </Link>

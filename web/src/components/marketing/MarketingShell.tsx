@@ -43,7 +43,7 @@ export function MarketingNav() {
             Sign in
           </Link>
           <Link
-            href='/auth'
+            href='/auth?mode=signup'
             className='rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-indigo-400'>
             Get started
           </Link>
