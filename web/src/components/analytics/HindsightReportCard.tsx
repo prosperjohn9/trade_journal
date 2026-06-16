@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import useSWR, { mutate } from 'swr';
 import { apiFetch, apiPost } from '@/src/lib/api/fetcher';
+import { ShareButton } from '@/src/components/analytics/HindsightShare';
 import type {
   HindsightReport,
   LeakFinding,
@@ -149,9 +150,23 @@ export function HindsightReportCard() {
           </p>
         </div>
         {data && !data.insufficient ? (
-          <span className='text-xs text-[var(--text-muted)]'>
-            {data.period === '30d' ? 'Last 30 days' : 'All time'}
-          </span>
+          <div className='flex items-center gap-2'>
+            {data.report.biggest ? (
+              <ShareButton
+                data={{
+                  currency: data.currency,
+                  period: data.period,
+                  leakLabel: data.report.biggest.label,
+                  leakCost: data.report.biggest.cost,
+                  counterfactualPnl: data.report.biggest.counterfactualPnl,
+                  actualPnl: data.report.actualPnl,
+                }}
+              />
+            ) : null}
+            <span className='text-xs text-[var(--text-muted)]'>
+              {data.period === '30d' ? 'Last 30 days' : 'All time'}
+            </span>
+          </div>
         ) : null}
       </div>
 
