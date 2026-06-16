@@ -235,6 +235,17 @@ export function MetaTraderConnect({
                     the configured rules were wrong, disconnect below and
                     reconnect to start fresh.
                   </p>
+                ) : conn.state === 'over_limit' ? (
+                  <p className='rounded-lg border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-xs text-[var(--text-secondary)]'>
+                    <span className='font-semibold text-[var(--text-primary)]'>
+                      Auto-sync paused:
+                    </span>{' '}
+                    this account is over your plan&apos;s synced-account limit, so
+                    it was disconnected to stop sync charges. An extra-sync add-on
+                    lapsed or your plan changed. Renew the add-on (or disconnect
+                    another account), then disconnect below and reconnect to
+                    resume. All trades are kept.
+                  </p>
                 ) : (
                   <>
                     <button

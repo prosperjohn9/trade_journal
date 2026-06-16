@@ -3,6 +3,7 @@ import { createServiceClient } from '@/src/lib/supabase/admin';
 import {
   syncConnection,
   logRefresh,
+  enforceSyncCaps,
   type SyncConnection,
 } from '@/src/lib/integrations/sync';
 import {
@@ -61,6 +62,10 @@ export async function POST(request: Request) {
   // we decide who is due. Cheap and best-effort; never block the sync run on it.
   await reconcileAddons(admin).catch(() => {});
 
+  // Then suspend any MetaTrader accounts now over the user's (possibly reduced)
+  // synced-account cap, so a lapsed add-on or downgrade stops costing us money.
+  await enforceSyncCaps(admin).catch(() => {});
+
   const [{ data: connections }, { data: subs }] = await Promise.all([
     admin
       .from('mt_connections')
@@ -105,8 +110,9 @@ export async function POST(request: Request) {
 
   const due = conns
     .filter((c) => {
-      // Breached prop accounts are dead at the firm; never pay to sync them.
-      if (c.state === 'breached') return false;
+      // Breached prop accounts are dead at the firm, and over-limit accounts had
+      // their MetaApi account removed; never pay to sync either.
+      if (c.state === 'breached' || c.state === 'over_limit') return false;
       // Back off accounts that just failed or are still connecting.
       if (
         (c.state === 'connecting' || c.state === 'error') &&

@@ -13,6 +13,11 @@ import {
   computePropStatus,
   type PropRules,
 } from '@/src/lib/analytics/propFirm';
+import {
+  resolveEntitlements,
+  SUBSCRIPTION_SELECT,
+  type SubscriptionRow,
+} from '@/src/lib/billing/entitlements';
 
 const DAY_MS = 86_400_000;
 
@@ -149,6 +154,83 @@ async function checkBreachAndDisconnect(
   } catch {
     return false; // never fail a sync over the breach check
   }
+}
+
+/**
+ * Cost guard for the shrinking-cap case. When a user's synced-account
+ * entitlement drops below the number of MetaTrader accounts they have connected
+ * (an extra-sync add-on lapsed, or they downgraded a plan), the surplus accounts
+ * would otherwise keep deploying and billing MetaApi with no paid slot behind
+ * them. Keep the oldest `limit` connections; suspend the rest by removing their
+ * MetaApi account (stops ALL metering) and flagging state='over_limit' so the
+ * cron skips them and the UI can explain. Renewing the add-on (or disconnecting
+ * another account) and reconnecting brings one back. Returns how many were
+ * suspended. Pass a service-role client: this spans every user. Best-effort:
+ * never throws, so it can never break the cron run that calls it.
+ */
+export async function enforceSyncCaps(sb: SupabaseClient): Promise<number> {
+  let suspended = 0;
+  try {
+    const [{ data: connections }, { data: subs }] = await Promise.all([
+      sb
+        .from('mt_connections')
+        .select('id, metaapi_account_id, user_id, created_at, state')
+        .order('created_at', { ascending: true }),
+      sb.from('subscriptions').select(`user_id, ${SUBSCRIPTION_SELECT}`),
+    ]);
+
+    // Current synced-account allowance per user (0 when unentitled).
+    const limitByUser = new Map<string, number>();
+    for (const s of (subs ?? []) as Array<SubscriptionRow & { user_id: string }>) {
+      const ent = resolveEntitlements(s);
+      limitByUser.set(s.user_id, ent.entitled ? ent.limits.syncedAccounts : 0);
+    }
+
+    // Live connections grouped by user, oldest first (the query is ordered asc).
+    // Breached / already-suspended accounts have no MetaApi account, cost
+    // nothing, and so never count toward the cap.
+    const byUser = new Map<
+      string,
+      Array<{ id: string; metaapi_account_id: string }>
+    >();
+    for (const c of (connections ?? []) as Array<{
+      id: string;
+      metaapi_account_id: string;
+      user_id: string;
+      state: string | null;
+    }>) {
+      if (c.state === 'breached' || c.state === 'over_limit') continue;
+      const arr = byUser.get(c.user_id) ?? [];
+      arr.push({ id: c.id, metaapi_account_id: c.metaapi_account_id });
+      byUser.set(c.user_id, arr);
+    }
+
+    for (const [userId, conns] of byUser) {
+      const limit = limitByUser.get(userId) ?? 0;
+      if (conns.length <= limit) continue;
+      // Oldest `limit` stay live; suspend everything past the cap.
+      for (const c of conns.slice(limit)) {
+        try {
+          await removeMetaApiAccount(c.metaapi_account_id);
+        } catch {
+          // best-effort; the state flag below still stops the cron
+        }
+        await sb
+          .from('mt_connections')
+          .update({
+            state: 'over_limit',
+            last_error:
+              'Auto-sync paused: this account is over your plan limit. An extra-sync add-on lapsed or your plan changed. Renew the add-on or disconnect another account, then reconnect to resume. Your trades are kept.',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', c.id);
+        suspended += 1;
+      }
+    }
+  } catch {
+    // Cost control is best-effort; never break the caller (the cron run).
+  }
+  return suspended;
 }
 
 /** Record one refresh (one account sync / MetaApi deploy). Best-effort. */

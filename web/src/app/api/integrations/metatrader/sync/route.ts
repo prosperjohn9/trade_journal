@@ -47,9 +47,10 @@ export async function POST(request: Request) {
     .from('mt_connections')
     .select('id, account_id, metaapi_account_id, region, last_synced_at')
     .eq('user_id', user.id)
-    // Breached prop accounts were auto-disconnected; their MetaApi account is
-    // gone, so a sync attempt would only produce a confusing error.
-    .neq('state', 'breached');
+    // Breached and over-limit accounts were auto-disconnected; their MetaApi
+    // account is gone, so a sync attempt would only produce a confusing error.
+    .neq('state', 'breached')
+    .neq('state', 'over_limit');
   if (body.connectionId) query = query.eq('id', body.connectionId);
 
   const { data: connections, error: connErr } = await query;
