@@ -15,7 +15,7 @@ import { resolveEntitlements, SUBSCRIPTION_SELECT } from '@/src/lib/billing/enti
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const FALLBACK_ORIGIN = 'https://trade-journal-beta.vercel.app';
+const FALLBACK_ORIGIN = 'https://tradershindsight.com';
 
 // POST /api/billing/addons/checkout
 //

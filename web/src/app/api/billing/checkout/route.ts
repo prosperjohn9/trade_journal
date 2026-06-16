@@ -16,7 +16,7 @@ import {
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const FALLBACK_ORIGIN = 'https://trade-journal-beta.vercel.app';
+const FALLBACK_ORIGIN = 'https://tradershindsight.com';
 
 export async function POST(request: Request) {
   const token = getToken(request);
