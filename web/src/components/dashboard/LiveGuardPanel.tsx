@@ -319,9 +319,10 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
             </p>
           )}
 
-          {res.timeframesRead && res.timeframesRead.length > 0 ? (
+          {res.timeframesRead &&
+          res.timeframesRead.some((t) => t.status !== 'ok') ? (
             <p className='text-[10px] text-[var(--text-muted)]'>
-              candles:{' '}
+              Limited market data:{' '}
               {res.timeframesRead
                 .map((t) => `${t.tf} ${t.candles} (${t.status})`)
                 .join(', ')}
