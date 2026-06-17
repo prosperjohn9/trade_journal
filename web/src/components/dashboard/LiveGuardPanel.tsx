@@ -35,11 +35,12 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [res, setRes] = useState<Result | null>(null);
 
-  async function run() {
+  async function run(wake = false) {
     setBusy(true);
     setErr(null);
     try {
       const body: Record<string, unknown> = {};
+      if (wake) body.wake = true;
       if (accountId && accountId !== 'all') body.accountId = accountId;
       if (checkNews) {
         body.newsRule = {
@@ -74,12 +75,20 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
             structure, spread, news and your own leaks.
           </p>
         </div>
-        <button
-          onClick={() => void run()}
-          disabled={busy}
-          className='rounded-lg bg-[var(--accent-cta)] px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60'>
-          {busy ? 'Reading your trade...' : 'Run Foresight'}
-        </button>
+        <div className='flex flex-wrap items-center gap-2'>
+          <button
+            onClick={() => void run(false)}
+            disabled={busy}
+            className='rounded-lg bg-[var(--accent-cta)] px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60'>
+            {busy ? 'Reading your trade...' : 'Run Foresight'}
+          </button>
+          <button
+            onClick={() => void run(true)}
+            disabled={busy}
+            className='rounded-lg border border-[var(--border-default)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-60'>
+            Wake and analyze
+          </button>
+        </div>
       </div>
 
       <label className='mt-3 flex w-fit items-center gap-2 text-xs text-[var(--text-secondary)]'>
@@ -90,6 +99,12 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
         />
         Check high-impact news (5 min window, breach rule) for this test
       </label>
+
+      <p className='mt-2 text-[11px] text-[var(--text-muted)]'>
+        Run Foresight reads the trade only if the account is already live. Wake
+        and analyze briefly deploys a cold account (about $0.08) to read your
+        open trade, then powers it back down.
+      </p>
 
       {err ? (
         <p className='mt-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-secondary)]'>

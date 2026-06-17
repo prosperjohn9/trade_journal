@@ -16,6 +16,9 @@ import {
 } from '@/src/lib/analytics/newsRule';
 import {
   getAccountStatus,
+  deployAccount,
+  undeployAccount,
+  waitUntilConnected,
   fetchOpenPositions,
   fetchSymbolPrice,
   fetchTickSize,
@@ -107,7 +110,11 @@ export async function POST(request: Request) {
     accountId?: unknown;
     positionId?: unknown;
     newsRule?: unknown;
+    wake?: unknown;
   };
+  // Opt-in: briefly deploy a cold account to read a live position (a test
+  // affordance). Default stays read-only, so it never deploys on its own.
+  const wantWake = body.wake === true;
   const connectionId =
     typeof body.connectionId === 'string' ? body.connectionId : null;
   const accountId =
@@ -145,22 +152,45 @@ export async function POST(request: Request) {
   }
   const region = conn.region ?? DEFAULT_MT_REGION;
 
+  let undeployAfter = false;
   try {
-    // Read-only on deployment: this on-demand check NEVER deploys an account, so
-    // it can never change an account's deployment state or leave it billing.
-    // Live Guard reads a LIVE position, so the account must already be deployed
-    // and connected, which is exactly the always-on state a guarded account runs
-    // in under the worker.
+    // Default is READ-ONLY on deployment (never deploys, so it can never change
+    // an account's state or leave it billing). With { wake: true } the user opts
+    // into a one-off test that briefly deploys a cold account to read a live
+    // position, then undeploys it.
     const status = await getAccountStatus(conn.metaapi_account_id);
-    if (status.state !== 'DEPLOYED' || status.connectionStatus !== 'CONNECTED') {
-      return NextResponse.json(
-        {
-          error:
-            'This account is not live right now, so there is no open position to read. Foresight runs continuously on the accounts you enable it for; this on-demand check only works while the account is actively connected.',
-          code: 'not_live',
-        },
-        { status: 409 },
-      );
+    const live =
+      status.state === 'DEPLOYED' && status.connectionStatus === 'CONNECTED';
+    if (!live) {
+      if (!wantWake) {
+        return NextResponse.json(
+          {
+            error:
+              'This account is not live right now, so there is no open position to read. Foresight runs continuously on the accounts you enable it for; this on-demand check only works while the account is actively connected.',
+            code: 'not_live',
+          },
+          { status: 409 },
+        );
+      }
+      if (status.state !== 'DEPLOYED' && status.state !== 'DEPLOYING') {
+        await deployAccount(conn.metaapi_account_id);
+      }
+      const ok = await waitUntilConnected(conn.metaapi_account_id, {
+        timeoutMs: 35_000,
+      });
+      if (!ok) {
+        // Leave it deployed so it keeps connecting; the retry finds it live.
+        return NextResponse.json(
+          {
+            error:
+              'Waking your account. The first connect can take a minute; it stays warming up, so tap Wake and analyze again shortly.',
+            code: 'warming_up',
+          },
+          { status: 409 },
+        );
+      }
+      // A woken (non-guarded) account is undeployed again once we have read it.
+      undeployAfter = true;
     }
 
     const positions = await fetchOpenPositions(conn.metaapi_account_id, region);
@@ -294,5 +324,16 @@ export async function POST(request: Request) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Foresight failed.';
     return NextResponse.json({ error: msg }, { status: 502 });
+  } finally {
+    // Undeploy a test-woken account once we are done. The warming-up early
+    // return above leaves it deployed on purpose (undeployAfter is still false
+    // there), so the retry finds it connected.
+    if (undeployAfter) {
+      try {
+        await undeployAccount(conn.metaapi_account_id);
+      } catch {
+        // best-effort
+      }
+    }
   }
 }
