@@ -66,6 +66,25 @@ export type GuardContext = {
   executedTf: string | null;
   /** A setup they tagged this trade with, and its checklist criteria. */
   setup: { name: string; criteria: string[] } | null;
+  // Deeper context computed server-side (all optional, null when unavailable).
+  /** Other open positions: count, currencies shared with this pair, combined
+   *  risk if every stop hits. */
+  exposure: {
+    others: number;
+    sharedCurrencies: string[];
+    totalRiskPct: number | null;
+  } | null;
+  /** Labels of the trader's committed rules this trade looks like it breaks. */
+  committedRuleHits: string[];
+  /** Remaining prop drawdown room (money), to size this risk against. */
+  propBuffer: {
+    dailyRemaining: number | null;
+    overallRemaining: number | null;
+  } | null;
+  /** Their record on this exact pair. */
+  pairStats: { trades: number; winRatePct: number } | null;
+  /** The current session and whether it is historically their worst. */
+  session: { current: string; isWorst: boolean } | null;
 };
 
 export type GuardSeverity = 'info' | 'caution' | 'warning';
@@ -212,6 +231,34 @@ function describeTrend(d: 'up' | 'down' | 'flat'): string {
   return d === 'up' ? 'trending up' : d === 'down' ? 'trending down' : 'ranging';
 }
 
+/** Average true range over the last `period` candles, in price units. */
+export function atr(c: GuardCandle[], period = 14): number | null {
+  if (c.length < period + 1) return null;
+  const trs: number[] = [];
+  for (let i = 1; i < c.length; i++) {
+    trs.push(
+      Math.max(
+        c[i].h - c[i].l,
+        Math.abs(c[i].h - c[i - 1].c),
+        Math.abs(c[i].l - c[i - 1].c),
+      ),
+    );
+  }
+  const recent = trs.slice(-period);
+  return recent.reduce((s, x) => s + x, 0) / recent.length;
+}
+
+/** Nearest 50-pip round level to a price, and how many pips away it sits. */
+function nearestRound(
+  price: number,
+  pipSize: number,
+): { level: number; pips: number } | null {
+  if (!pipSize || pipSize <= 0) return null;
+  const step = pipSize * 50;
+  const level = Math.round(price / step) * step;
+  return { level, pips: Math.abs(price - level) / pipSize };
+}
+
 /** Build the full read for a trade: always the core context (trend, R:R, risk,
  *  structure) plus any flags, ordered worst-first then in reading order. */
 export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
@@ -303,8 +350,92 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
     });
   }
 
+  // 3b. Stop sizing vs current volatility (ATR).
+  if (primary && ctx.stopLoss != null && ctx.pipSize && ctx.pipSize > 0) {
+    const a = atr(primary.candles);
+    if (a && a > 0) {
+      const ratio = Math.abs(ctx.entry - ctx.stopLoss) / a;
+      const stopPips = Math.round(Math.abs(ctx.entry - ctx.stopLoss) / ctx.pipSize);
+      const atrPips = Math.round(a / ctx.pipSize);
+      const tight = ratio < 0.5;
+      out.push({
+        id: 'atr',
+        severity: tight ? 'caution' : 'info',
+        title: `Stop is ${ratio.toFixed(1)}x the ${primary.tf} ATR`,
+        detail: tight
+          ? `Your ${stopPips} pip stop is only ${ratio.toFixed(1)}x the ${primary.tf} ATR (${atrPips} pips), tight relative to how the pair is moving, so normal noise could clip it.`
+          : ratio < 1
+            ? `Your ${stopPips} pip stop is ${ratio.toFixed(1)}x the ${primary.tf} ATR (${atrPips} pips), so an average swing could still reach it.`
+            : `Your ${stopPips} pip stop is ${ratio.toFixed(1)}x the ${primary.tf} ATR (${atrPips} pips), comfortably outside typical noise.`,
+      });
+    }
+  }
+
+  // 3c. Open exposure across positions.
+  if (ctx.exposure && ctx.exposure.others > 0) {
+    const e = ctx.exposure;
+    const shared = e.sharedCurrencies.length
+      ? ` You already have ${e.sharedCurrencies.join(' and ')} exposure in another open trade, so this stacks it.`
+      : '';
+    const total =
+      e.totalRiskPct != null
+        ? ` Across your ${e.others + 1} open trades you risk about ${e.totalRiskPct.toFixed(1)}% if every stop hits.`
+        : '';
+    out.push({
+      id: 'exposure',
+      severity: e.sharedCurrencies.length ? 'caution' : 'info',
+      title: `${e.others} other open ${e.others === 1 ? 'trade' : 'trades'}`,
+      detail: `This is not your only position.${shared}${total}`,
+    });
+  }
+
+  // 3d. Risk against the prop drawdown buffer.
+  if (ctx.riskMoney != null && ctx.propBuffer) {
+    const b = ctx.propBuffer;
+    const bits: string[] = [];
+    let heavy = false;
+    if (b.dailyRemaining != null && b.dailyRemaining > 0) {
+      const p = ctx.riskMoney / b.dailyRemaining;
+      bits.push(`${Math.round(p * 100)}% of your remaining daily loss room`);
+      if (p >= 0.3) heavy = true;
+    }
+    if (b.overallRemaining != null && b.overallRemaining > 0) {
+      const p = ctx.riskMoney / b.overallRemaining;
+      bits.push(`${Math.round(p * 100)}% of your overall drawdown buffer`);
+      if (p >= 0.2) heavy = true;
+    }
+    if (bits.length) {
+      out.push({
+        id: 'prop-buffer',
+        severity: heavy ? 'caution' : 'info',
+        title: 'Against your prop buffer',
+        detail: `This stop is ${bits.join(' and ')}.`,
+      });
+    }
+  }
+
   // 4. Structure / stop-run zones (primary timeframe; always gives a read).
   if (primary) out.push(...levelSignals(ctx, primary.candles));
+
+  // 4b. Round-number proximity for the stop or target.
+  if (ctx.pipSize && ctx.pipSize > 0) {
+    for (const [label, price] of [
+      ['target', ctx.takeProfit],
+      ['stop', ctx.stopLoss],
+    ] as const) {
+      if (price == null) continue;
+      const r = nearestRound(price, ctx.pipSize);
+      if (r && r.pips <= 8) {
+        out.push({
+          id: `round-${label}`,
+          severity: 'info',
+          title: `Round number near your ${label}`,
+          detail: `Your ${label} at ${fmt(price)} sits about ${Math.round(r.pips)} pips from the round level ${fmt(r.level)}, where price often stalls or reacts.`,
+        });
+        break; // one round-number note is enough
+      }
+    }
+  }
 
   // 5. Spread (info when known, caution when unusually wide).
   if (ctx.spreadNow != null && ctx.pipSize && ctx.pipSize > 0) {
@@ -383,6 +514,38 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
       severity: 'caution',
       title: 'Bigger than your usual size',
       detail: `This is ${x.toFixed(1)}x your typical ${ctx.medianVolumeLots} lots. Sizing up after a wobble is a common way to turn a small day into a bad one.`,
+    });
+  }
+
+  // 8. Committed rules this trade looks like it breaks (their own rules).
+  ctx.committedRuleHits.forEach((label, i) => {
+    out.push({
+      id: `committed-${i}`,
+      severity: 'warning',
+      title: 'Breaks a rule you committed to',
+      detail: `${label} This is the exact pattern you committed to stopping.`,
+    });
+  });
+
+  // 9. Their record on this pair, and whether this is their worst session.
+  if (ctx.pairStats && ctx.pairStats.trades >= 5) {
+    out.push({
+      id: 'pair-stats',
+      severity: ctx.pairStats.winRatePct < 40 ? 'caution' : 'info',
+      title: `Your ${ctx.symbol} record is ${ctx.pairStats.winRatePct}%`,
+      detail: `You have won ${ctx.pairStats.winRatePct}% of your ${ctx.pairStats.trades} trades on ${ctx.symbol}.`,
+    });
+  }
+  if (ctx.session) {
+    out.push({
+      id: 'session',
+      severity: ctx.session.isWorst ? 'caution' : 'info',
+      title: ctx.session.isWorst
+        ? `${ctx.session.current} is your worst session`
+        : `${ctx.session.current} session`,
+      detail: ctx.session.isWorst
+        ? `You are trading the ${ctx.session.current} session, historically your worst by P&L.`
+        : `You are trading the ${ctx.session.current} session.`,
     });
   }
 

@@ -11,7 +11,12 @@ import {
   tfLabel,
   type Tf,
 } from '@/src/lib/analytics/timeframes';
-import { median } from '@/src/lib/analytics/hindsight';
+import { median, sessionOf, WEEKDAYS } from '@/src/lib/analytics/hindsight';
+import { ruleStatement, type RuleKind } from '@/src/lib/analytics/commitment';
+import {
+  computePropStatus,
+  type PropRules,
+} from '@/src/lib/analytics/propFirm';
 import {
   fetchHighImpactEvents,
   currenciesForPair,
@@ -250,49 +255,209 @@ export async function POST(request: Request) {
       riskMoney = ticks * price.lossTickValue * pos.volume;
     }
 
-    // Their per-trade risk rule (from the profile) and behavioural context.
-    const { data: profile } = await sb
-      .from('profiles')
-      .select('risk_per_trade_percent')
-      .eq('id', user.id)
-      .maybeSingle();
+    // Profile risk rule, the account (starting balance + prop rules), its
+    // trades, its balance events, and the user's committed rules.
+    const [
+      { data: profile },
+      { data: acct },
+      { data: tradeRows },
+      { data: balanceRows },
+      { data: ruleRows },
+    ] = await Promise.all([
+      sb
+        .from('profiles')
+        .select('risk_per_trade_percent')
+        .eq('id', user.id)
+        .maybeSingle(),
+      sb
+        .from('accounts')
+        .select('starting_balance, prop_rules')
+        .eq('id', conn.account_id)
+        .maybeSingle(),
+      sb
+        .from('trades')
+        .select(
+          'opened_at, closed_at, outcome, instrument, volume, net_pnl, pnl_amount, commission',
+        )
+        .eq('account_id', conn.account_id)
+        .order('opened_at', { ascending: false })
+        .limit(300),
+      sb
+        .from('account_balance_events')
+        .select('kind, amount, occurred_at')
+        .eq('account_id', conn.account_id),
+      sb.from('trading_rules').select('kind, subject, label').eq('status', 'active'),
+    ]);
+
     const riskRulePct =
       typeof (profile as { risk_per_trade_percent?: number } | null)
         ?.risk_per_trade_percent === 'number'
         ? (profile as { risk_per_trade_percent: number }).risk_per_trade_percent
         : null;
+    const propRules =
+      ((acct as { prop_rules?: unknown } | null)?.prop_rules as PropRules | null) ??
+      null;
+    const startingBalance = Number(
+      (acct as { starting_balance?: number | null } | null)?.starting_balance ?? 0,
+    );
 
-    const { data: recentTrades } = await sb
-      .from('trades')
-      .select('outcome, closed_at, volume')
-      .eq('account_id', conn.account_id)
-      .order('closed_at', { ascending: false })
-      .limit(60);
-    const trades = (recentTrades ?? []) as Array<{
-      outcome: string;
+    type TRow = {
+      opened_at: string;
       closed_at: string | null;
+      outcome: string;
+      instrument: string | null;
       volume: number | null;
-    }>;
-    const lastLoss = trades.find((t) => t.outcome === 'LOSS' && t.closed_at);
+      net_pnl: number | null;
+      pnl_amount: number | null;
+      commission: number | null;
+    };
+    const rows = (tradeRows ?? []) as TRow[];
+    const rowPnl = (t: TRow) =>
+      t.net_pnl != null
+        ? Number(t.net_pnl)
+        : Number(t.pnl_amount ?? 0) - Number(t.commission ?? 0);
+
+    // Behavioural: most recent loss + typical size.
+    const lastLoss = rows
+      .filter((t) => t.outcome === 'LOSS' && t.closed_at)
+      .sort((a, b) => (a.closed_at! < b.closed_at! ? 1 : -1))[0];
     const minutesSinceLastLoss = lastLoss?.closed_at
-      ? Math.max(
-          0,
-          (Date.now() - new Date(lastLoss.closed_at).getTime()) / 60_000,
-        )
+      ? Math.max(0, (Date.now() - new Date(lastLoss.closed_at).getTime()) / 60_000)
       : null;
-    const vols = trades
+    const vols = rows
       .map((t) => (typeof t.volume === 'number' ? t.volume : null))
       .filter((v): v is number => v != null && v > 0);
     const medianVolumeLots = vols.length ? median(vols) : null;
 
+    // Their record on this exact pair.
+    const pairRows = rows.filter(
+      (t) => (t.instrument ?? '').toUpperCase() === pos.symbol,
+    );
+    const pairStats =
+      pairRows.length >= 5
+        ? {
+            trades: pairRows.length,
+            winRatePct: Math.round(
+              (pairRows.filter((t) => t.outcome === 'WIN').length /
+                pairRows.length) *
+                100,
+            ),
+          }
+        : null;
+
+    // Worst session by P&L, and whether now falls in it.
+    const sessionPnl = new Map<string, number>();
+    for (const t of rows) {
+      if (!t.opened_at) continue;
+      const s = sessionOf(t.opened_at);
+      sessionPnl.set(s, (sessionPnl.get(s) ?? 0) + rowPnl(t));
+    }
+    let worst: string | null = null;
+    let worstPnl = Infinity;
+    for (const [s, p] of sessionPnl) {
+      if (p < worstPnl) {
+        worstPnl = p;
+        worst = s;
+      }
+    }
+    const currentSession = sessionOf(new Date().toISOString());
+    const session = {
+      current: currentSession,
+      isWorst: rows.length >= 10 && currentSession === worst && worstPnl < 0,
+    };
+
+    // Prop drawdown buffer.
+    let propBuffer: GuardContext['propBuffer'] = null;
+    if (
+      propRules &&
+      (propRules.maxDrawdownPct != null || propRules.dailyLossPct != null)
+    ) {
+      const propTrades = rows
+        .filter((t) => t.closed_at ?? t.opened_at)
+        .map((t) => ({ at: t.closed_at ?? t.opened_at, pnl: rowPnl(t) }));
+      const cashflows = (
+        (balanceRows ?? []) as Array<{
+          kind: string;
+          amount: number;
+          occurred_at: string;
+        }>
+      ).map((e) => ({
+        at: e.occurred_at,
+        amount: e.kind === 'DEPOSIT' ? Number(e.amount) : -Number(e.amount),
+      }));
+      const status = computePropStatus({
+        startingBalance,
+        rules: propRules,
+        trades: propTrades,
+        cashflows,
+      });
+      propBuffer = {
+        dailyRemaining: status.dailyRemainingToday,
+        overallRemaining: status.drawdownBufferAmount,
+      };
+    }
+
+    // Committed rules this trade looks like it breaks.
+    const committedRuleHits: string[] = [];
+    for (const r of (ruleRows ?? []) as Array<{
+      kind: string;
+      subject: string | null;
+      label: string | null;
+    }>) {
+      let hit = false;
+      if (r.kind === 'revenge')
+        hit = minutesSinceLastLoss != null && minutesSinceLastLoss < 60;
+      else if (r.kind === 'oversized')
+        hit =
+          medianVolumeLots != null &&
+          medianVolumeLots > 0 &&
+          pos.volume >= medianVolumeLots * 1.5;
+      else if (r.kind === 'session') hit = !!r.subject && currentSession === r.subject;
+      else if (r.kind === 'weekday')
+        hit = !!r.subject && WEEKDAYS[new Date().getUTCDay()] === r.subject;
+      if (hit)
+        committedRuleHits.push(r.label || ruleStatement(r.kind as RuleKind, r.subject));
+    }
+
+    // Open exposure across all positions.
+    const others = positions.filter((p) => p.id !== pos.id);
+    let exposure: GuardContext['exposure'] = null;
+    if (others.length > 0) {
+      const myCcys = new Set(currenciesForPair(pos.symbol));
+      const shared = new Set<string>();
+      for (const o of others) {
+        for (const c of currenciesForPair(o.symbol)) if (myCcys.has(c)) shared.add(c);
+      }
+      let totalRisk = riskMoney ?? 0;
+      let valued = riskMoney != null;
+      const valuable = others.filter((o) => o.stopLoss != null).slice(0, 8);
+      const specs = await Promise.all(
+        valuable.map(async (o) => {
+          const [p, ts] = await Promise.all([
+            fetchSymbolPrice(conn.metaapi_account_id, region, o.symbol),
+            fetchTickSize(conn.metaapi_account_id, region, o.symbol),
+          ]);
+          return { o, p, ts };
+        }),
+      );
+      for (const { o, p, ts } of specs) {
+        if (o.stopLoss != null && ts && ts > 0 && p?.lossTickValue != null) {
+          totalRisk +=
+            (Math.abs(o.openPrice - o.stopLoss) / ts) * p.lossTickValue * o.volume;
+          valued = true;
+        }
+      }
+      const bal = info?.balance ?? null;
+      exposure = {
+        others: others.length,
+        sharedCurrencies: [...shared],
+        totalRiskPct: valued && bal && bal > 0 ? (totalRisk / bal) * 100 : null,
+      };
+    }
+
     // News rule: an explicit body rule (test override) wins, else the account's
-    // saved prop news rule.
-    const { data: acctRow } = await sb
-      .from('accounts')
-      .select('prop_rules')
-      .eq('id', conn.account_id)
-      .maybeSingle();
-    const savedNews = (acctRow?.prop_rules as { news?: unknown } | null)?.news;
+    // saved prop news rule (already loaded with the account above).
+    const savedNews = (propRules as { news?: unknown } | null)?.news;
     const newsRule = bodyNewsRule ?? parseNewsRule(savedNews);
 
     // News context is ALWAYS included: the nearest high-impact event for the
@@ -383,6 +548,11 @@ export async function POST(request: Request) {
       analyzedTf: analyzedTf ? tfLabel(analyzedTf) : null,
       executedTf: executedTf ? tfLabel(executedTf) : null,
       setup,
+      exposure,
+      committedRuleHits,
+      propBuffer,
+      pairStats,
+      session,
     };
 
     const { signals, summary, usage } = await narrateGuard(ctx);

@@ -32,6 +32,27 @@ const SEV_STYLE: Record<Severity, { dot: string; label: string }> = {
   info: { dot: 'var(--text-muted)', label: 'Note' },
 };
 
+function readStoredCtx(): {
+  analyzedTf: Tf | '';
+  executedTf: Tf | '';
+  setupId: string;
+} {
+  if (typeof window === 'undefined')
+    return { analyzedTf: '', executedTf: '', setupId: '' };
+  try {
+    const c = JSON.parse(
+      window.localStorage.getItem('foresight_ctx') || '{}',
+    ) as { analyzedTf?: string; executedTf?: string; setupId?: string };
+    return {
+      analyzedTf: (c.analyzedTf as Tf) || '',
+      executedTf: (c.executedTf as Tf) || '',
+      setupId: c.setupId || '',
+    };
+  } catch {
+    return { analyzedTf: '', executedTf: '', setupId: '' };
+  }
+}
+
 export function LiveGuardPanel({ accountId }: { accountId?: string }) {
   const [checkNews, setCheckNews] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -46,10 +67,14 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
   const [selected, setSelected] = useState('');
 
   // Optional context: more given = sharper read.
-  const [analyzedTf, setAnalyzedTf] = useState<Tf | ''>('');
-  const [executedTf, setExecutedTf] = useState<Tf | ''>('');
+  const [analyzedTf, setAnalyzedTf] = useState<Tf | ''>(
+    () => readStoredCtx().analyzedTf,
+  );
+  const [executedTf, setExecutedTf] = useState<Tf | ''>(
+    () => readStoredCtx().executedTf,
+  );
   const [setups, setSetups] = useState<{ id: string; name: string }[]>([]);
-  const [setupId, setSetupId] = useState('');
+  const [setupId, setSetupId] = useState(() => readStoredCtx().setupId);
 
   const selectCls =
     'rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] px-2 py-1 text-sm text-[var(--text-primary)] outline-none';
@@ -68,6 +93,18 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
       cancelled = true;
     };
   }, []);
+
+  // Persist the trader's last context choices across runs.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        'foresight_ctx',
+        JSON.stringify({ analyzedTf, executedTf, setupId }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [analyzedTf, executedTf, setupId]);
 
   useEffect(() => {
     let cancelled = false;
