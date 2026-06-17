@@ -14,6 +14,7 @@ import {
 import { median } from '@/src/lib/analytics/hindsight';
 import {
   fetchHighImpactEvents,
+  currenciesForPair,
 } from '@/src/lib/integrations/forexFactory';
 import {
   evaluateNewsWindow,
@@ -294,17 +295,46 @@ export async function POST(request: Request) {
     const savedNews = (acctRow?.prop_rules as { news?: unknown } | null)?.news;
     const newsRule = bodyNewsRule ?? parseNewsRule(savedNews);
 
-    // Prop news window (only if a rule is enabled).
+    // News context is ALWAYS included: the nearest high-impact event for the
+    // pair (or explicit calm), plus the prop news-rule blackout when a rule is
+    // set. Skipped only when the calendar feed is unreachable (empty), so we
+    // never falsely claim calm.
     let news: GuardContext['news'] = null;
-    if (newsRule.enabled) {
-      const events = await fetchHighImpactEvents();
-      const win = evaluateNewsWindow({
-        now: Date.now(),
-        pair: pos.symbol,
-        events,
-        rule: newsRule,
-      });
-      news = { state: win.state, message: newsWindowMessage(win, newsRule) };
+    const events = await fetchHighImpactEvents();
+    if (events.length > 0) {
+      const currencies = currenciesForPair(pos.symbol);
+      const horizonHours = 4;
+      const nowMs = Date.now();
+      const upcoming = events
+        .filter(
+          (e) =>
+            currencies.includes(e.currency) &&
+            e.at > nowMs &&
+            e.at - nowMs <= horizonHours * 3_600_000,
+        )
+        .sort((a, b) => a.at - b.at)[0];
+      const nextEvent = upcoming
+        ? {
+            currency: upcoming.currency,
+            title: upcoming.title,
+            minutes: Math.round((upcoming.at - nowMs) / 60_000),
+          }
+        : null;
+
+      let ruleState: 'clear' | 'approaching' | 'blackout' = 'clear';
+      let ruleMessage: string | null = null;
+      if (newsRule.enabled) {
+        const win = evaluateNewsWindow({
+          now: nowMs,
+          pair: pos.symbol,
+          events,
+          rule: newsRule,
+        });
+        ruleState = win.state;
+        ruleMessage = newsWindowMessage(win, newsRule);
+      }
+
+      news = { ruleState, ruleMessage, nextEvent, horizonHours, currencies };
     }
 
     // Optional tagged setup, for criteria context.

@@ -345,6 +345,7 @@ ALWAYS give a substantive read, never a bare "looks fine". In 3 to 5 sentences, 
 - Reward-to-risk and what win rate it implies (use the R:R signal's numbers).
 - Risk size in money and percent.
 - Any level sitting in front of the stop or target (or that the path is clear).
+- News: any high-impact event near the trade and roughly when, or that the calendar is clear and conditions are calm if there is none.
 
 Lead with anything marked caution or warning, and name it plainly if it ties to the trader's own rule or past leak. Even when nothing is wrong, still give the read using the actual numbers and trend, explain WHY it looks reasonable, do not just say it is fine.
 

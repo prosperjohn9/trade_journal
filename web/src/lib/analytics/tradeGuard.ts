@@ -21,8 +21,15 @@ export type GuardSide = 'BUY' | 'SELL';
 export type GuardCandle = { o: number; h: number; l: number; c: number };
 
 export type GuardNews = {
-  state: 'clear' | 'approaching' | 'blackout';
-  message: string | null;
+  /** Rule-based status when a prop news rule is set; 'clear' otherwise. */
+  ruleState: 'clear' | 'approaching' | 'blackout';
+  /** Rule-based countdown/penalty message, when in or near a rule window. */
+  ruleMessage: string | null;
+  /** Nearest upcoming high-impact event for the pair within the horizon. */
+  nextEvent: { currency: string; title: string; minutes: number } | null;
+  /** How far ahead we looked, and which currencies we checked. */
+  horizonHours: number;
+  currencies: string[];
 };
 
 export type GuardTimeframe = { tf: string; candles: GuardCandle[] };
@@ -316,17 +323,40 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
     });
   }
 
-  // 6. Prop news rule (from the news-rule engine).
-  if (ctx.news && ctx.news.state !== 'clear' && ctx.news.message) {
-    out.push({
-      id: 'news',
-      severity: ctx.news.state === 'blackout' ? 'warning' : 'caution',
-      title:
-        ctx.news.state === 'blackout'
-          ? 'Inside a news no-go window'
-          : 'High-impact news approaching',
-      detail: ctx.news.message,
-    });
+  // 6. News (ALWAYS, when the calendar was reachable): a prop-rule blackout if
+  //    one applies, else the nearest high-impact event, else explicit calm.
+  if (ctx.news) {
+    const n = ctx.news;
+    if (n.ruleState === 'blackout' && n.ruleMessage) {
+      out.push({
+        id: 'news',
+        severity: 'warning',
+        title: 'Inside a news no-go window',
+        detail: n.ruleMessage,
+      });
+    } else if (n.ruleState === 'approaching' && n.ruleMessage) {
+      out.push({
+        id: 'news',
+        severity: 'caution',
+        title: 'High-impact news approaching',
+        detail: n.ruleMessage,
+      });
+    } else if (n.nextEvent) {
+      out.push({
+        id: 'news',
+        severity: 'info',
+        title: `High-impact news in ${n.nextEvent.minutes}m`,
+        detail: `${n.nextEvent.currency} ${n.nextEvent.title} (high impact) is about ${n.nextEvent.minutes} minutes away, expect a volatility spike around it.`,
+      });
+    } else {
+      const ccy = n.currencies.length ? n.currencies.join(' or ') : 'this pair';
+      out.push({
+        id: 'news',
+        severity: 'info',
+        title: 'News calendar is clear',
+        detail: `No high-impact news on ${ccy} in the next ${n.horizonHours} hours, so conditions look calm.`,
+      });
+    }
   }
 
   // 7. The trader's own leaks (their history, not generic advice).
