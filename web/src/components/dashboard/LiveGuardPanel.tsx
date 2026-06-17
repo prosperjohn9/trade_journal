@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiPost } from '@/src/lib/api/fetcher';
+import { supabase } from '@/src/lib/supabase/client';
 
 // On-demand Live Guard. Reads a live open position on the connected MetaTrader
 // account and returns a grounded second opinion (signals + an AI heads-up). The
@@ -35,13 +36,55 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [res, setRes] = useState<Result | null>(null);
 
+  // The connected MetaTrader accounts the user can analyze, with a picker, so
+  // they target the right account regardless of the dashboard's top filter.
+  const [accounts, setAccounts] = useState<{ accountId: string; name: string }[]>(
+    [],
+  );
+  const [selected, setSelected] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    void supabase
+      .from('mt_connections')
+      .select('account_id, state, account:accounts(name)')
+      .neq('state', 'breached')
+      .neq('state', 'over_limit')
+      .then(({ data }) => {
+        if (cancelled) return;
+        const rows = (data ?? []) as Array<{
+          account_id: string;
+          account: { name: string } | { name: string }[] | null;
+        }>;
+        const list = rows.map((r) => ({
+          accountId: r.account_id,
+          name: Array.isArray(r.account)
+            ? (r.account[0]?.name ?? 'Account')
+            : (r.account?.name ?? 'Account'),
+        }));
+        setAccounts(list);
+        setSelected(
+          (prev) =>
+            prev ||
+            (accountId &&
+            accountId !== 'all' &&
+            list.some((a) => a.accountId === accountId)
+              ? accountId
+              : (list[0]?.accountId ?? '')),
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
+
   async function run(wake = false) {
     setBusy(true);
     setErr(null);
     try {
       const body: Record<string, unknown> = {};
       if (wake) body.wake = true;
-      if (accountId && accountId !== 'all') body.accountId = accountId;
+      if (selected) body.accountId = selected;
       if (checkNews) {
         body.newsRule = {
           enabled: true,
@@ -90,6 +133,27 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
           </button>
         </div>
       </div>
+
+      {accounts.length > 0 ? (
+        <div className='mt-3 flex items-center gap-2'>
+          <label className='text-xs text-[var(--text-muted)]'>Account</label>
+          <select
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+            className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] px-2 py-1 text-sm text-[var(--text-primary)] outline-none'>
+            {accounts.map((a) => (
+              <option key={a.accountId} value={a.accountId}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <p className='mt-3 text-xs text-[var(--text-muted)]'>
+          No MetaTrader account connected yet. Connect one in Settings to use
+          Foresight.
+        </p>
+      )}
 
       <label className='mt-3 flex w-fit items-center gap-2 text-xs text-[var(--text-secondary)]'>
         <input
