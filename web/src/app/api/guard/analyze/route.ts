@@ -107,14 +107,20 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => ({}))) as {
     connectionId?: unknown;
+    accountId?: unknown;
     positionId?: unknown;
     newsRule?: unknown;
   };
   const connectionId =
     typeof body.connectionId === 'string' ? body.connectionId : null;
+  const accountId =
+    typeof body.accountId === 'string' && body.accountId !== 'all'
+      ? body.accountId
+      : null;
   const wantPositionId =
     typeof body.positionId === 'string' ? body.positionId : null;
-  const newsRule = parseNewsRule(body.newsRule);
+  const bodyNewsRule =
+    body.newsRule != null ? parseNewsRule(body.newsRule) : null;
 
   // Resolve a connected MetaTrader account (RLS-scoped). Skip dead ones.
   let q = sb
@@ -124,6 +130,7 @@ export async function POST(request: Request) {
     .neq('state', 'breached')
     .neq('state', 'over_limit');
   if (connectionId) q = q.eq('id', connectionId);
+  else if (accountId) q = q.eq('account_id', accountId);
   const { data: conns } = await q.order('created_at', { ascending: true });
   const conn = (conns ?? [])[0] as
     | {
@@ -233,7 +240,17 @@ export async function POST(request: Request) {
       .filter((v): v is number => v != null && v > 0);
     const medianVolumeLots = vols.length ? median(vols) : null;
 
-    // Prop news window (only if a rule was supplied/enabled).
+    // News rule: an explicit body rule (test override) wins, else the account's
+    // saved prop news rule.
+    const { data: acctRow } = await sb
+      .from('accounts')
+      .select('prop_rules')
+      .eq('id', conn.account_id)
+      .maybeSingle();
+    const savedNews = (acctRow?.prop_rules as { news?: unknown } | null)?.news;
+    const newsRule = bodyNewsRule ?? parseNewsRule(savedNews);
+
+    // Prop news window (only if a rule is enabled).
     let news: GuardContext['news'] = null;
     if (newsRule.enabled) {
       const events = await fetchHighImpactEvents();

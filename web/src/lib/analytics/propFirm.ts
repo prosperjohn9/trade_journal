@@ -6,6 +6,8 @@
 // v1 assumes a STATIC max drawdown (floor fixed at start) and groups days in
 // UTC. Trailing drawdown and broker-specific daily reset times are future work.
 
+import type { NewsRule } from './newsRule';
+
 export type PropRules = {
   firm?: string;
   accountSize?: number; // defaults to the account's starting balance
@@ -16,6 +18,7 @@ export type PropRules = {
   dailyLossPct?: number; // % of account size (single-day loss limit)
   minTradingDays?: number;
   dailyResetHourUtc?: number; // 0-23; UTC hour the trading day resets (default 0)
+  news?: NewsRule; // high-impact news trading rule (used by Live Guard)
 };
 
 export type PropTrade = { at: string; pnl: number };

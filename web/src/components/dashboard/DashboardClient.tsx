@@ -375,7 +375,7 @@ export default function DashboardClient() {
             <PropChallengeWidget accountId={s.accountId} />
 
             {/* Live Guard: on-demand second opinion on an open position */}
-            <LiveGuardPanel />
+            <LiveGuardPanel accountId={s.accountId} />
 
             {/* Prop career ROI (renders nothing for non-prop users) */}
             <PropCareerCard />

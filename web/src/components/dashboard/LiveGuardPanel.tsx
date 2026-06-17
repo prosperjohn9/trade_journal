@@ -29,7 +29,7 @@ const SEV_STYLE: Record<Severity, { dot: string; label: string }> = {
   info: { dot: 'var(--text-muted)', label: 'Note' },
 };
 
-export function LiveGuardPanel() {
+export function LiveGuardPanel({ accountId }: { accountId?: string }) {
   const [checkNews, setCheckNews] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -39,16 +39,16 @@ export function LiveGuardPanel() {
     setBusy(true);
     setErr(null);
     try {
-      const body = checkNews
-        ? {
-            newsRule: {
-              enabled: true,
-              minutesBefore: 5,
-              minutesAfter: 5,
-              penalty: { kind: 'breach' },
-            },
-          }
-        : {};
+      const body: Record<string, unknown> = {};
+      if (accountId && accountId !== 'all') body.accountId = accountId;
+      if (checkNews) {
+        body.newsRule = {
+          enabled: true,
+          minutesBefore: 5,
+          minutesAfter: 5,
+          penalty: { kind: 'breach' },
+        };
+      }
       const r = await apiPost<Result>('/api/guard/analyze', body);
       setRes(r);
     } catch (e) {

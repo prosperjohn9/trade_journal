@@ -8,6 +8,11 @@ import {
   type PropRules,
   type PropStatus,
 } from '@/src/lib/analytics/propFirm';
+import {
+  penaltyLabel,
+  type NewsRule,
+  type NewsPenaltyKind,
+} from '@/src/lib/analytics/newsRule';
 
 const inputClass =
   'w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]';
@@ -112,6 +117,13 @@ export function PropRulesButton({
   );
   const [dailyResetHourUtc, setDailyResetHourUtc] = useState('');
 
+  // High-impact news rule (drives Live Guard's news warnings + countdown).
+  const [newsEnabled, setNewsEnabled] = useState(false);
+  const [newsBefore, setNewsBefore] = useState('5');
+  const [newsAfter, setNewsAfter] = useState('5');
+  const [newsPenalty, setNewsPenalty] = useState<NewsPenaltyKind>('breach');
+  const [newsHaircut, setNewsHaircut] = useState('');
+
   function fillForm(r: PropRules) {
     setFirm(r.firm ?? '');
     setAccountSize(r.accountSize != null ? String(r.accountSize) : '');
@@ -124,6 +136,22 @@ export function PropRulesButton({
     setDailyResetHourUtc(
       r.dailyResetHourUtc != null ? String(r.dailyResetHourUtc) : '',
     );
+    const n = r.news;
+    setNewsEnabled(!!n?.enabled);
+    setNewsBefore(n?.minutesBefore != null ? String(n.minutesBefore) : '5');
+    setNewsAfter(n?.minutesAfter != null ? String(n.minutesAfter) : '5');
+    setNewsPenalty(n?.penalty?.kind ?? 'breach');
+    setNewsHaircut(
+      n?.penalty?.haircutPct != null ? String(n.penalty.haircutPct) : '',
+    );
+  }
+
+  function resetNews() {
+    setNewsEnabled(false);
+    setNewsBefore('5');
+    setNewsAfter('5');
+    setNewsPenalty('breach');
+    setNewsHaircut('');
   }
 
   // One-click starting templates for the most common two-step challenges.
@@ -151,6 +179,7 @@ export function PropRulesButton({
     setMaxDrawdownType('static');
     setMinTradingDays('');
     setDailyResetHourUtc('');
+    resetNews();
   }
 
   // Sensible starting point (FundingPips/FTMO two-step) so the form is never
@@ -165,6 +194,7 @@ export function PropRulesButton({
     setMinTradingDays('');
     setMaxDrawdownType('static');
     setDailyResetHourUtc('');
+    resetNews();
   }
 
   async function loadAll() {
@@ -245,6 +275,20 @@ export function PropRulesButton({
     setMsg(null);
     setBusy(true);
     try {
+      const news: NewsRule | undefined = newsEnabled
+        ? {
+            enabled: true,
+            minutesBefore: numOrUndef(newsBefore) ?? 5,
+            minutesAfter: numOrUndef(newsAfter) ?? 5,
+            penalty: {
+              kind: newsPenalty,
+              haircutPct:
+                newsPenalty === 'profit_haircut'
+                  ? (numOrUndef(newsHaircut) ?? null)
+                  : null,
+            },
+          }
+        : undefined;
       const next: PropRules = {
         firm: firm.trim() || undefined,
         accountSize: numOrUndef(accountSize),
@@ -255,6 +299,7 @@ export function PropRulesButton({
         minTradingDays: numOrUndef(minTradingDays),
         maxDrawdownType,
         dailyResetHourUtc: numOrUndef(dailyResetHourUtc),
+        news,
       };
       const { error } = await supabase
         .from('accounts')
@@ -418,6 +463,14 @@ export function PropRulesButton({
 
                   {renderObjectives(status, rules)}
 
+                  {rules.news?.enabled ? (
+                    <div className='text-xs text-[var(--text-muted)]'>
+                      News rule: no trades {rules.news.minutesBefore}m before to{' '}
+                      {rules.news.minutesAfter}m after high-impact news (
+                      {penaltyLabel(rules.news.penalty)}).
+                    </div>
+                  ) : null}
+
                   <button
                     className='text-xs text-[var(--accent)] hover:opacity-80'
                     onClick={() => setEditing(true)}>
@@ -531,6 +584,72 @@ export function PropRulesButton({
                       />
                     </Field>
                   </div>
+
+                  <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
+                    <label className='flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]'>
+                      <input
+                        type='checkbox'
+                        checked={newsEnabled}
+                        onChange={(e) => setNewsEnabled(e.target.checked)}
+                      />
+                      High-impact news rule
+                    </label>
+                    <p className='mt-1 text-[11px] text-[var(--text-muted)]'>
+                      No trading around red-folder news (Forex Factory). Live
+                      Guard warns you and counts down to the window.
+                    </p>
+                    {newsEnabled ? (
+                      <div className='mt-3 grid grid-cols-2 gap-3'>
+                        <Field label='Minutes before'>
+                          <input
+                            className={inputClass}
+                            value={newsBefore}
+                            onChange={(e) => setNewsBefore(e.target.value)}
+                            inputMode='numeric'
+                            placeholder='5'
+                          />
+                        </Field>
+                        <Field label='Minutes after'>
+                          <input
+                            className={inputClass}
+                            value={newsAfter}
+                            onChange={(e) => setNewsAfter(e.target.value)}
+                            inputMode='numeric'
+                            placeholder='5'
+                          />
+                        </Field>
+                        <Field label='If broken'>
+                          <select
+                            className={inputClass}
+                            value={newsPenalty}
+                            onChange={(e) =>
+                              setNewsPenalty(e.target.value as NewsPenaltyKind)
+                            }>
+                            <option value='breach'>Account breach</option>
+                            <option value='void_trade'>Trade voided</option>
+                            <option value='lose_all_profit'>
+                              Lose all profit
+                            </option>
+                            <option value='profit_haircut'>
+                              Lose % of profit
+                            </option>
+                          </select>
+                        </Field>
+                        {newsPenalty === 'profit_haircut' ? (
+                          <Field label='Profit lost %'>
+                            <input
+                              className={inputClass}
+                              value={newsHaircut}
+                              onChange={(e) => setNewsHaircut(e.target.value)}
+                              inputMode='numeric'
+                              placeholder='40'
+                            />
+                          </Field>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+
                   <p className='text-[11px] text-[var(--text-muted)]'>
                     Drawdown defaults to static. Daily reset is the UTC hour your
                     firm starts a new day: 0 is UTC midnight, around 22 is typical
