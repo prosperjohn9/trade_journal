@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiPost } from '@/src/lib/api/fetcher';
 import { supabase } from '@/src/lib/supabase/client';
+import { TF_VALUES, tfLabel, type Tf } from '@/src/lib/analytics/timeframes';
 
 // On-demand Live Guard. Reads a live open position on the connected MetaTrader
 // account and returns a grounded second opinion (signals + an AI heads-up). The
@@ -42,6 +43,30 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
     [],
   );
   const [selected, setSelected] = useState('');
+
+  // Optional context: more given = sharper read.
+  const [analyzedTf, setAnalyzedTf] = useState<Tf | ''>('');
+  const [executedTf, setExecutedTf] = useState<Tf | ''>('');
+  const [setups, setSetups] = useState<{ id: string; name: string }[]>([]);
+  const [setupId, setSetupId] = useState('');
+
+  const selectCls =
+    'rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] px-2 py-1 text-sm text-[var(--text-primary)] outline-none';
+
+  useEffect(() => {
+    let cancelled = false;
+    void supabase
+      .from('setup_templates')
+      .select('id, name')
+      .then(({ data }) => {
+        if (!cancelled) {
+          setSetups((data ?? []) as { id: string; name: string }[]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,6 +119,9 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
       const body: Record<string, unknown> = {};
       if (wake) body.wake = true;
       if (selected) body.accountId = selected;
+      if (analyzedTf) body.analyzedTf = analyzedTf;
+      if (executedTf) body.executedTf = executedTf;
+      if (setupId) body.setupId = setupId;
       if (checkNews) {
         body.newsRule = {
           enabled: true,
@@ -170,6 +198,57 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
           then Connect MetaTrader with the investor password).
         </p>
       )}
+
+      <div className='mt-3 flex flex-wrap items-center gap-x-4 gap-y-2'>
+        <label className='flex items-center gap-2 text-xs text-[var(--text-muted)]'>
+          Analyzed
+          <select
+            value={analyzedTf}
+            onChange={(e) => setAnalyzedTf(e.target.value as Tf | '')}
+            className={selectCls}>
+            <option value=''>Day trader (1H + 4H)</option>
+            {TF_VALUES.map((t) => (
+              <option key={t} value={t}>
+                {tfLabel(t)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className='flex items-center gap-2 text-xs text-[var(--text-muted)]'>
+          Executed
+          <select
+            value={executedTf}
+            onChange={(e) => setExecutedTf(e.target.value as Tf | '')}
+            className={selectCls}>
+            <option value=''>Not set</option>
+            {TF_VALUES.map((t) => (
+              <option key={t} value={t}>
+                {tfLabel(t)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {setups.length > 0 ? (
+          <label className='flex items-center gap-2 text-xs text-[var(--text-muted)]'>
+            Setup
+            <select
+              value={setupId}
+              onChange={(e) => setSetupId(e.target.value)}
+              className={selectCls}>
+              <option value=''>No setup</option>
+              {setups.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
+      <p className='mt-1 text-[11px] text-[var(--text-muted)]'>
+        Optional. The more you tell Foresight (timeframe, setup), the sharper the
+        read.
+      </p>
 
       <label className='mt-3 flex w-fit items-center gap-2 text-xs text-[var(--text-secondary)]'>
         <input

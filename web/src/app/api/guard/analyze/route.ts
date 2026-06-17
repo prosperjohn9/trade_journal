@@ -5,6 +5,12 @@ import { AI_MODEL, isAiConfigured } from '@/src/lib/ai/client';
 import { isOverDailyCap, logUsage, monthlyUsageCount } from '@/src/lib/ai/usage';
 import { narrateGuard } from '@/src/lib/ai/guard';
 import type { GuardContext } from '@/src/lib/analytics/tradeGuard';
+import {
+  analysisTimeframes,
+  isTf,
+  tfLabel,
+  type Tf,
+} from '@/src/lib/analytics/timeframes';
 import { median } from '@/src/lib/analytics/hindsight';
 import {
   fetchHighImpactEvents,
@@ -111,7 +117,13 @@ export async function POST(request: Request) {
     positionId?: unknown;
     newsRule?: unknown;
     wake?: unknown;
+    analyzedTf?: unknown;
+    executedTf?: unknown;
+    setupId?: unknown;
   };
+  const analyzedTf: Tf | null = isTf(body.analyzedTf) ? body.analyzedTf : null;
+  const executedTf: Tf | null = isTf(body.executedTf) ? body.executedTf : null;
+  const setupId = typeof body.setupId === 'string' ? body.setupId : null;
   // Opt-in: briefly deploy a cold account to read a live position (a test
   // affordance). Default stays read-only, so it never deploys on its own.
   const wantWake = body.wake === true;
@@ -203,20 +215,23 @@ export async function POST(request: Request) {
       (wantPositionId && positions.find((p) => p.id === wantPositionId)) ||
       positions[0];
 
-    // Market + account context (each best-effort). Two timeframes so Foresight
-    // can speak to short- and higher-timeframe trend.
-    const [price, tickSize, h1, h4, info] = await Promise.all([
+    // Market + account context (each best-effort). The timeframes to read come
+    // from what the trader analyzed on (plus a higher context), or the
+    // day-trader default (1H + 4H).
+    const tfs = analysisTimeframes(analyzedTf);
+    const [price, tickSize, info] = await Promise.all([
       fetchSymbolPrice(conn.metaapi_account_id, region, pos.symbol),
       fetchTickSize(conn.metaapi_account_id, region, pos.symbol),
-      fetchCandles(conn.metaapi_account_id, region, pos.symbol, '1h', 120),
-      fetchCandles(conn.metaapi_account_id, region, pos.symbol, '4h', 120),
       fetchAccountInformation(conn.metaapi_account_id, region),
     ]);
-
-    const timeframes = [
-      { tf: '1H', candles: h1 },
-      { tf: '4H', candles: h4 },
-    ].filter((t) => t.candles.length >= 6);
+    const candleSets = await Promise.all(
+      tfs.map((t) =>
+        fetchCandles(conn.metaapi_account_id, region, pos.symbol, t.code, 120),
+      ),
+    );
+    const timeframes = tfs
+      .map((t, i) => ({ tf: t.tf, candles: candleSets[i] }))
+      .filter((t) => t.candles.length >= 6);
     const pipSize = tickSize && tickSize > 0 ? tickSize * 10 : null;
 
     const spreadNow =
@@ -292,6 +307,31 @@ export async function POST(request: Request) {
       news = { state: win.state, message: newsWindowMessage(win, newsRule) };
     }
 
+    // Optional tagged setup, for criteria context.
+    let setup: { name: string; criteria: string[] } | null = null;
+    if (setupId) {
+      const { data: tpl } = await sb
+        .from('setup_templates')
+        .select('name')
+        .eq('id', setupId)
+        .maybeSingle();
+      if (tpl) {
+        const { data: items } = await sb
+          .from('setup_template_items')
+          .select('label, is_active')
+          .eq('template_id', setupId)
+          .order('sort_order', { ascending: true });
+        setup = {
+          name: (tpl as { name: string }).name,
+          criteria: (
+            (items ?? []) as Array<{ label: string; is_active: boolean }>
+          )
+            .filter((i) => i.is_active !== false)
+            .map((i) => i.label),
+        };
+      }
+    }
+
     const ctx: GuardContext = {
       symbol: pos.symbol,
       side: pos.side,
@@ -310,6 +350,9 @@ export async function POST(request: Request) {
       news,
       minutesSinceLastLoss,
       medianVolumeLots,
+      analyzedTf: analyzedTf ? tfLabel(analyzedTf) : null,
+      executedTf: executedTf ? tfLabel(executedTf) : null,
+      setup,
     };
 
     const { signals, summary, usage } = await narrateGuard(ctx);
@@ -328,6 +371,11 @@ export async function POST(request: Request) {
       signals,
       summary,
       model: AI_MODEL,
+      // How many candles each timeframe returned, to confirm the read had data.
+      timeframesRead: timeframes.map((t) => ({
+        tf: t.tf,
+        candles: t.candles.length,
+      })),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Foresight failed.';

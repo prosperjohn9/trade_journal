@@ -348,6 +348,11 @@ ALWAYS give a substantive read, never a bare "looks fine". In 3 to 5 sentences, 
 
 Lead with anything marked caution or warning, and name it plainly if it ties to the trader's own rule or past leak. Even when nothing is wrong, still give the read using the actual numbers and trend, explain WHY it looks reasonable, do not just say it is fine.
 
+Timeframes and setup:
+- The input tells you which timeframes you read. If no analysis timeframe was given, you read the 1H and 4H, briefly say you are reading the 1H and 4H as a day-trader default so they know to set their timeframe for a sharper read.
+- If a setup is tagged, weave its name and criteria in as a quick checklist reminder ("your X setup calls for ...").
+- If NO setup is given, do not mention setups at all and never speculate that it might be a random or unplanned trade. Just read the trade.
+
 Hard rules:
 - No directional advice or calls. Do not say buy, sell, hold, exit, add, take profit, or "this will". You give context and their own rules; the decision is theirs.
 - Use ONLY the signals provided. Never invent trend, levels, news, or numbers.
@@ -371,11 +376,31 @@ export function buildGuardInput(
       `${ctx.stopLoss != null ? `, stop ${ctx.stopLoss}` : ', no stop'}` +
       `${ctx.takeProfit != null ? `, target ${ctx.takeProfit}` : ''}.`,
   );
+
+  // Timeframe context.
+  const tfRead = ctx.timeframes.map((t) => t.tf).join(' and ');
+  if (ctx.analyzedTf) {
+    lines.push(
+      `Trader analyzed on the ${ctx.analyzedTf}${ctx.executedTf ? ` and executed on the ${ctx.executedTf}` : ''}. Timeframes I read: ${tfRead || 'none available'}.`,
+    );
+  } else {
+    lines.push(
+      `No analysis timeframe given, so assume a day trader. Timeframes I read: ${tfRead || 'none available'}.`,
+    );
+  }
+
+  // Setup context (only when provided).
+  if (ctx.setup) {
+    lines.push(
+      `Tagged setup: ${ctx.setup.name}.${ctx.setup.criteria.length ? ` Its criteria: ${ctx.setup.criteria.join('; ')}.` : ''}`,
+    );
+  }
+
   if (signals.length === 0) {
-    lines.push('Signals that fired: none. Nothing notable flagged.');
+    lines.push('Signals: none notable, give the read from the trade and timeframe context above.');
     return lines.join('\n');
   }
-  lines.push('Signals that fired (most serious first):');
+  lines.push('Signals (most serious first):');
   for (const s of signals) {
     lines.push(`- [${s.severity}] ${s.title}: ${s.detail}`);
   }

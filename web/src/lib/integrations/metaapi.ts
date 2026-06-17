@@ -364,7 +364,8 @@ export async function fetchTickSize(
 
 export type LiveCandle = { o: number; h: number; l: number; c: number };
 
-/** Recent OHLC candles for a symbol, oldest to newest. */
+/** Recent OHLC candles for a symbol, oldest to newest. MetaApi loads candles
+ *  backward from startTime, so we pass "now" to get the most recent ones. */
 export async function fetchCandles(
   metaApiAccountId: string,
   region: string,
@@ -372,10 +373,11 @@ export async function fetchCandles(
   timeframe = '1h',
   limit = 100,
 ): Promise<LiveCandle[]> {
+  const startTime = encodeURIComponent(new Date().toISOString());
   const body = (await clientGet(
     region,
     metaApiAccountId,
-    `/historical-market-data/symbols/${encodeURIComponent(symbol)}/timeframes/${encodeURIComponent(timeframe)}/candles?limit=${limit}`,
+    `/historical-market-data/symbols/${encodeURIComponent(symbol)}/timeframes/${encodeURIComponent(timeframe)}/candles?startTime=${startTime}&limit=${limit}`,
     'candles',
   )) as Array<Record<string, unknown>> | null;
   if (!Array.isArray(body)) return [];

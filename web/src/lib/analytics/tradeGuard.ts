@@ -52,6 +52,13 @@ export type GuardContext = {
   minutesSinceLastLoss: number | null;
   /** Their typical position size, for oversize detection. */
   medianVolumeLots: number | null;
+  // Optional context the trader can supply (more context = sharper read).
+  /** Timeframe they analyzed on; null means none given (day-trader default). */
+  analyzedTf: string | null;
+  /** Timeframe they executed on, for context only (not analyzed). */
+  executedTf: string | null;
+  /** A setup they tagged this trade with, and its checklist criteria. */
+  setup: { name: string; criteria: string[] } | null;
 };
 
 export type GuardSeverity = 'info' | 'caution' | 'warning';
