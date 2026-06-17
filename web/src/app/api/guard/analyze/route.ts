@@ -16,9 +16,6 @@ import {
 } from '@/src/lib/analytics/newsRule';
 import {
   getAccountStatus,
-  deployAccount,
-  undeployAccount,
-  waitUntilConnected,
   fetchOpenPositions,
   fetchSymbolPrice,
   fetchTickSize,
@@ -148,27 +145,22 @@ export async function POST(request: Request) {
   }
   const region = conn.region ?? DEFAULT_MT_REGION;
 
-  let weDeployed = false;
   try {
-    // Deploy-on-demand so we can read live positions.
+    // Read-only on deployment: this on-demand check NEVER deploys an account, so
+    // it can never change an account's deployment state or leave it billing.
+    // Live Guard reads a LIVE position, so the account must already be deployed
+    // and connected, which is exactly the always-on state a guarded account runs
+    // in under the worker.
     const status = await getAccountStatus(conn.metaapi_account_id);
-    if (status.state !== 'DEPLOYED' && status.state !== 'DEPLOYING') {
-      await deployAccount(conn.metaapi_account_id);
-      weDeployed = true;
-    }
-    if (status.connectionStatus !== 'CONNECTED') {
-      const ok = await waitUntilConnected(conn.metaapi_account_id, {
-        timeoutMs: 45_000,
-      });
-      if (!ok) {
-        return NextResponse.json(
-          {
-            error:
-              'Your account is still connecting to the broker. Give it a moment, then try again.',
-          },
-          { status: 503 },
-        );
-      }
+    if (status.state !== 'DEPLOYED' || status.connectionStatus !== 'CONNECTED') {
+      return NextResponse.json(
+        {
+          error:
+            'This account is not live right now, so there is no open position to read. Live Guard runs continuously on the accounts you enable it for; this on-demand check only works while the account is actively connected.',
+          code: 'not_live',
+        },
+        { status: 409 },
+      );
     }
 
     const positions = await fetchOpenPositions(conn.metaapi_account_id, region);
@@ -302,15 +294,5 @@ export async function POST(request: Request) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Live Guard failed.';
     return NextResponse.json({ error: msg }, { status: 502 });
-  } finally {
-    // Only undeploy if we were the ones who deployed it (cost control). An
-    // account left deployed by sync or the worker stays as-is.
-    if (weDeployed) {
-      try {
-        await undeployAccount(conn.metaapi_account_id);
-      } catch {
-        // best-effort
-      }
-    }
   }
 }

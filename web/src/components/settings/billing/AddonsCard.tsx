@@ -48,7 +48,42 @@ export function AddonsCard({ entitled }: { entitled: boolean }) {
     };
   }, [entitled]);
 
-  if (!entitled) return null;
+  // Free / lapsed users still see what add-ons exist (a selling point), greyed
+  // out, with a nudge to start a plan. Add-ons require a base plan to buy.
+  if (!entitled) {
+    return (
+      <section className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
+        <h2 className='text-lg font-semibold'>Add-ons</h2>
+        <p className='mt-1 text-xs text-[var(--text-muted)]'>
+          Available on any plan. Start a plan to unlock these.
+        </p>
+        <div className='mt-4 space-y-2 opacity-70'>
+          <div className='flex items-center justify-between rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
+            <div>
+              <div className='text-sm font-medium text-[var(--text-secondary)]'>
+                Extra MetaTrader auto-sync
+              </div>
+              <div className='text-xs text-[var(--text-muted)]'>
+                ${EXTRA_SYNC_PRICE_MONTHLY}/account/month
+              </div>
+            </div>
+            <span className='text-xs text-[var(--text-muted)]'>Plan required</span>
+          </div>
+          <div className='flex items-center justify-between rounded-lg border border-dashed border-[var(--border-default)] p-3'>
+            <div>
+              <div className='text-sm font-medium text-[var(--text-secondary)]'>
+                Live Guard (real-time AI second opinion)
+              </div>
+              <div className='text-xs text-[var(--text-muted)]'>
+                ${GUARDRAIL_PRICE_MONTHLY}/MetaTrader account, free on cTrader
+              </div>
+            </div>
+            <span className='text-xs text-[var(--text-muted)]'>Coming soon</span>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   const unit = EXTRA_SYNC_PRICE_MONTHLY * (cycle === 'yearly' ? 10 : 1);
   const total = unit * qty;
