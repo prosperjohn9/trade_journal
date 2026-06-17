@@ -25,6 +25,8 @@ export type GuardNews = {
   message: string | null;
 };
 
+export type GuardTimeframe = { tf: string; candles: GuardCandle[] };
+
 export type GuardContext = {
   symbol: string;
   side: GuardSide;
@@ -38,8 +40,11 @@ export type GuardContext = {
   riskMoney: number | null;
   /** Their max risk per trade (firm or committed rule), in percent. */
   riskRulePct: number | null;
-  /** Recent higher-timeframe candles, oldest to newest. */
-  candles: GuardCandle[];
+  /** Recent candles per timeframe, primary first (e.g. 1H then 4H), oldest to
+   *  newest. The first is used for structure/levels; all are used for trend. */
+  timeframes: GuardTimeframe[];
+  /** Price size of one pip, for expressing distances in pips. */
+  pipSize: number | null;
   spreadNow: number | null;
   spreadAvg: number | null;
   news: GuardNews | null;
@@ -131,14 +136,15 @@ export function swingPoints(
   return { highs: cluster(highs, tol), lows: cluster(lows, tol) };
 }
 
-function levelSignals(ctx: GuardContext): GuardSignal[] {
+function levelSignals(ctx: GuardContext, candles: GuardCandle[]): GuardSignal[] {
   const out: GuardSignal[] = [];
-  const span = priceSpan(ctx.candles);
+  const span = priceSpan(candles);
   if (span <= 0) return out;
-  const { highs, lows } = swingPoints(ctx.candles);
+  const { highs, lows } = swingPoints(candles);
   const near = span * 0.08; // "just beyond" buffer
 
   // A tested level sitting between price and the take-profit.
+  let blockedTp = false;
   if (ctx.takeProfit != null) {
     const between =
       ctx.side === 'BUY'
@@ -146,11 +152,12 @@ function levelSignals(ctx: GuardContext): GuardSignal[] {
         : lows.filter((l) => l.price < ctx.entry && l.price > ctx.takeProfit!);
     const strong = between.find((l) => l.touches >= 2);
     if (strong) {
+      blockedTp = true;
       out.push({
         id: 'tp-level',
         severity: 'caution',
         title: 'Level in front of your target',
-        detail: `A ${ctx.side === 'BUY' ? 'resistance' : 'support'} around ${fmt(strong.price)} sits between price and your take-profit and has been tested ${strong.touches} times. Price can reverse there before reaching your target.`,
+        detail: `A ${ctx.side === 'BUY' ? 'resistance' : 'support'} around ${fmt(strong.price)} sits between price and your target and has been tested ${strong.touches} times. Price can stall or reverse there before reaching your target.`,
       });
     }
   }
@@ -174,86 +181,132 @@ function levelSignals(ctx: GuardContext): GuardSignal[] {
       });
     }
   }
+
+  // Always give the target-path read, even when it is clear.
+  if (ctx.takeProfit != null && !blockedTp) {
+    out.push({
+      id: 'tp-clear',
+      severity: 'info',
+      title: 'Clear path to target',
+      detail: `No tested ${ctx.side === 'BUY' ? 'resistance' : 'support'} sits between price and your target on the structure I read.`,
+    });
+  }
   return out;
 }
 
-/** Run every grounded check and return the signals that fired, worst first. */
+function describeTrend(d: 'up' | 'down' | 'flat'): string {
+  return d === 'up' ? 'trending up' : d === 'down' ? 'trending down' : 'ranging';
+}
+
+/** Build the full read for a trade: always the core context (trend, R:R, risk,
+ *  structure) plus any flags, ordered worst-first then in reading order. */
 export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
   const out: GuardSignal[] = [];
   const dir = ctx.side === 'BUY' ? 'long' : 'short';
+  const primary =
+    ctx.timeframes.find((t) => t.candles.length >= 6) ?? ctx.timeframes[0];
 
-  // 1. Trend conflict.
-  const trend = trendOf(ctx.candles);
-  if (
-    (ctx.side === 'BUY' && trend === 'down') ||
-    (ctx.side === 'SELL' && trend === 'up')
-  ) {
+  // 1. Trend across timeframes (ALWAYS, with the timeframes I read).
+  const reads = ctx.timeframes
+    .filter((t) => t.candles.length >= 6)
+    .map((t) => ({ tf: t.tf, dir: trendOf(t.candles) }));
+  if (reads.length) {
+    const primaryDir = reads[0].dir;
+    const against =
+      (ctx.side === 'BUY' && primaryDir === 'down') ||
+      (ctx.side === 'SELL' && primaryDir === 'up');
+    const withTrend =
+      (ctx.side === 'BUY' && primaryDir === 'up') ||
+      (ctx.side === 'SELL' && primaryDir === 'down');
+    const phrase = reads.map((r) => `${r.tf} ${describeTrend(r.dir)}`).join(', ');
     out.push({
       id: 'trend',
-      severity: 'caution',
-      title: 'Counter-trend entry',
-      detail: `Recent ${ctx.symbol} structure is ${trend === 'up' ? 'rising (higher highs and lows)' : 'falling (lower highs and lows)'}, but you are ${dir}. Counter-trend trades need tighter management.`,
+      severity: against ? 'caution' : 'info',
+      title: against
+        ? 'Counter-trend entry'
+        : withTrend
+          ? 'With the trend'
+          : 'Trend not clearly behind it',
+      detail: against
+        ? `You are ${dir}, but ${phrase}. Counter-trend entries need tighter management and usually a quicker exit.`
+        : withTrend
+          ? `You are ${dir} and ${phrase}, so this is with the trend.`
+          : `You are ${dir}; ${phrase}. The trend is not clearly behind this, so treat it as a range play.`,
     });
   }
 
-  // 2. Risk vs the rule.
-  if (ctx.riskMoney != null && ctx.balance && ctx.balance > 0) {
-    const pct = (ctx.riskMoney / ctx.balance) * 100;
-    if (ctx.riskRulePct != null && pct > ctx.riskRulePct + 0.05) {
-      out.push({
-        id: 'risk',
-        severity: 'warning',
-        title: 'Over your risk rule',
-        detail: `This risks ${money(ctx.riskMoney, ctx.currency)} (${pct.toFixed(1)}% of balance), above your ${ctx.riskRulePct}% limit.`,
-      });
-    } else if (pct >= 2) {
-      out.push({
-        id: 'risk',
-        severity: 'caution',
-        title: 'Sizeable risk',
-        detail: `This risks ${money(ctx.riskMoney, ctx.currency)} (${pct.toFixed(1)}% of balance) if the stop is hit.`,
-      });
-    }
-  }
-
-  // 3. Reward-to-risk, or a missing stop.
+  // 2. Reward-to-risk (ALWAYS when SL+TP set), or a missing stop.
   if (ctx.stopLoss != null && ctx.takeProfit != null) {
     const rDist = Math.abs(ctx.entry - ctx.stopLoss);
     const tDist = Math.abs(ctx.takeProfit - ctx.entry);
     if (rDist > 0) {
       const rr = tDist / rDist;
-      if (rr < 1) {
-        out.push({
-          id: 'rr',
-          severity: rr < 0.5 ? 'warning' : 'caution',
-          title: 'Reward below risk',
-          detail: `Your take-profit is ${rr.toFixed(2)}R. You are risking more than you stand to make on this trade.`,
-        });
-      }
+      const pipTxt =
+        ctx.pipSize && ctx.pipSize > 0
+          ? ` Stop ${Math.round(rDist / ctx.pipSize)} pips, target ${Math.round(tDist / ctx.pipSize)} pips.`
+          : '';
+      const breakeven = Math.round((1 / (1 + rr)) * 100);
+      out.push({
+        id: 'rr',
+        severity: rr < 0.8 ? 'warning' : rr < 1 ? 'caution' : 'info',
+        title: `Reward-to-risk ${rr.toFixed(2)}R`,
+        detail:
+          rr < 1
+            ? `You stand to make less than you are risking (${rr.toFixed(2)}R).${pipTxt} You would need to win about ${breakeven}% of trades just to break even at this ratio.`
+            : `You are risking 1 to make ${rr.toFixed(2)}.${pipTxt} At this ratio you need to win more than ${breakeven}% of the time to come out ahead.`,
+      });
     }
   } else if (ctx.stopLoss == null) {
     out.push({
       id: 'no-sl',
       severity: 'warning',
       title: 'No stop-loss set',
-      detail: 'This position has no stop. One fast move or news spike can run it well past any planned loss.',
+      detail:
+        'This position has no stop. One fast move or news spike can run it well past any planned loss.',
     });
   }
 
-  // 4. Structure / stop-run zones (the grounded "liquidity" read).
-  out.push(...levelSignals(ctx));
+  // 3. Risk size (ALWAYS when known).
+  if (ctx.riskMoney != null && ctx.balance && ctx.balance > 0) {
+    const pct = (ctx.riskMoney / ctx.balance) * 100;
+    const sev: GuardSeverity =
+      ctx.riskRulePct != null && pct > ctx.riskRulePct + 0.05
+        ? 'warning'
+        : pct >= 2
+          ? 'caution'
+          : 'info';
+    const ruleTail =
+      ctx.riskRulePct != null
+        ? sev === 'warning'
+          ? ` That is over your ${ctx.riskRulePct}% limit.`
+          : ` Your limit is ${ctx.riskRulePct}%.`
+        : '';
+    out.push({
+      id: 'risk',
+      severity: sev,
+      title: `Risk ${money(ctx.riskMoney, ctx.currency)} (${pct.toFixed(2)}%)`,
+      detail: `If the stop is hit you lose ${money(ctx.riskMoney, ctx.currency)}, about ${pct.toFixed(2)}% of the account.${ruleTail}`,
+    });
+  }
 
-  // 5. Spread right now.
-  if (ctx.spreadNow != null && ctx.spreadAvg != null && ctx.spreadAvg > 0) {
-    const x = ctx.spreadNow / ctx.spreadAvg;
-    if (x >= 2) {
-      out.push({
-        id: 'spread',
-        severity: 'caution',
-        title: 'Spread is wide right now',
-        detail: `Spread is ${x.toFixed(1)}x its usual level, an expensive moment to enter.`,
-      });
-    }
+  // 4. Structure / stop-run zones (primary timeframe; always gives a read).
+  if (primary) out.push(...levelSignals(ctx, primary.candles));
+
+  // 5. Spread (info when known, caution when unusually wide).
+  if (ctx.spreadNow != null && ctx.pipSize && ctx.pipSize > 0) {
+    const wide =
+      ctx.spreadAvg != null &&
+      ctx.spreadAvg > 0 &&
+      ctx.spreadNow / ctx.spreadAvg >= 2;
+    const pips = ctx.spreadNow / ctx.pipSize;
+    out.push({
+      id: 'spread',
+      severity: wide ? 'caution' : 'info',
+      title: wide ? 'Spread is wide right now' : `Spread ${pips.toFixed(1)} pips`,
+      detail: wide
+        ? `Spread is ${(ctx.spreadNow / (ctx.spreadAvg as number)).toFixed(1)}x its usual level, an expensive moment to enter.`
+        : `Current spread is ${pips.toFixed(1)} pips.`,
+    });
   }
 
   // 6. Prop news rule (from the news-rule engine).
@@ -296,6 +349,11 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
     });
   }
 
+  // Worst-first, but stable within a severity so the read flows (trend, R:R,
+  // risk, structure, ...).
   const rank: Record<GuardSeverity, number> = { warning: 0, caution: 1, info: 2 };
-  return out.sort((a, b) => rank[a.severity] - rank[b.severity]);
+  return out
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => rank[a.s.severity] - rank[b.s.severity] || a.i - b.i)
+    .map((x) => x.s);
 }

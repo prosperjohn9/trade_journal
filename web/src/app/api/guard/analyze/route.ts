@@ -203,13 +203,21 @@ export async function POST(request: Request) {
       (wantPositionId && positions.find((p) => p.id === wantPositionId)) ||
       positions[0];
 
-    // Market + account context (each best-effort).
-    const [price, tickSize, candles, info] = await Promise.all([
+    // Market + account context (each best-effort). Two timeframes so Foresight
+    // can speak to short- and higher-timeframe trend.
+    const [price, tickSize, h1, h4, info] = await Promise.all([
       fetchSymbolPrice(conn.metaapi_account_id, region, pos.symbol),
       fetchTickSize(conn.metaapi_account_id, region, pos.symbol),
-      fetchCandles(conn.metaapi_account_id, region, pos.symbol),
+      fetchCandles(conn.metaapi_account_id, region, pos.symbol, '1h', 120),
+      fetchCandles(conn.metaapi_account_id, region, pos.symbol, '4h', 120),
       fetchAccountInformation(conn.metaapi_account_id, region),
     ]);
+
+    const timeframes = [
+      { tf: '1H', candles: h1 },
+      { tf: '4H', candles: h4 },
+    ].filter((t) => t.candles.length >= 6);
+    const pipSize = tickSize && tickSize > 0 ? tickSize * 10 : null;
 
     const spreadNow =
       price?.ask != null && price?.bid != null ? price.ask - price.bid : null;
@@ -295,7 +303,8 @@ export async function POST(request: Request) {
       currency: info?.currency ?? 'USD',
       riskMoney,
       riskRulePct,
-      candles,
+      timeframes,
+      pipSize,
       spreadNow,
       spreadAvg: null, // a rolling spread average lands with the worker
       news,
