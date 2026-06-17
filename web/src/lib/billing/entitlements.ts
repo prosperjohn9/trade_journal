@@ -126,6 +126,26 @@ export function resolveEntitlements(
   };
 }
 
+/** Full-access entitlements for the owner/admin: unlimited synced accounts and
+ *  every feature, no subscription required. Kept here so the cap math, gating,
+ *  and quota checks all read from one definition. */
+export function adminEntitlements(): Entitlements {
+  return {
+    entitled: true,
+    status: 'active',
+    plan: 'master',
+    currentPeriodEnd: null,
+    daysLeft: null,
+    limits: {
+      syncedAccounts: 999,
+      syncIntervalHours: PLANS.master.syncIntervalHours,
+      manualRefreshesPerMonth: 99_999,
+      aiActionsPerMonth: 99_999,
+    },
+    features: { ...ALL_FEATURES },
+  };
+}
+
 /** Columns to select for entitlement resolution. */
 export const SUBSCRIPTION_SELECT =
   'plan, status, billing_cycle, extra_synced_accounts, current_period_end, cancel_at_period_end';
