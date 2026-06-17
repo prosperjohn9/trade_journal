@@ -13,6 +13,7 @@ type MtConnection = {
   last_error: string | null;
   login: string;
   server: string;
+  guard_enabled: boolean;
 };
 
 type SyncResult = {
@@ -25,7 +26,8 @@ type SyncResult = {
   }>;
 };
 
-const CONN_COLS = 'id, state, last_synced_at, last_error, login, server';
+const CONN_COLS =
+  'id, state, last_synced_at, last_error, login, server, guard_enabled';
 
 function relativeTime(iso: string | null): string {
   if (!iso) return 'never';
@@ -181,6 +183,29 @@ export function MetaTraderConnect({
     }
   }
 
+  async function toggleGuard(on: boolean) {
+    if (!conn) return;
+    setMsg(null);
+    setSyncing(true);
+    try {
+      const { error } = await supabase
+        .from('mt_connections')
+        .update({ guard_enabled: on })
+        .eq('id', conn.id);
+      if (error) throw error;
+      await refresh();
+      setMsg(
+        on
+          ? 'Real-time Foresight enabled. It starts watching once the worker is live.'
+          : 'Real-time Foresight turned off for this account.',
+      );
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Could not update Foresight.');
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   const closeIfIdle = () => {
     if (!busy && !syncing) setOpen(false);
   };
@@ -225,6 +250,26 @@ export function MetaTraderConnect({
                   (login {conn.login}). Last synced{' '}
                   {relativeTime(conn.last_synced_at)}.
                 </p>
+
+                <label className='flex items-center justify-between gap-3 rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] px-3 py-2'>
+                  <span>
+                    <span className='font-medium text-[var(--text-primary)]'>
+                      Real-time Foresight
+                    </span>
+                    <span className='mt-0.5 block text-[11px] text-[var(--text-muted)]'>
+                      Watch this account 24/7 and alert you the instant you open
+                      a trade. Keeps the account live (the $18 guardrail).
+                    </span>
+                  </span>
+                  <input
+                    type='checkbox'
+                    className='h-4 w-4 shrink-0'
+                    checked={!!conn.guard_enabled}
+                    onChange={(e) => void toggleGuard(e.target.checked)}
+                    disabled={syncing}
+                  />
+                </label>
+
                 {conn.state === 'breached' ? (
                   <p className='rounded-lg border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-xs text-[var(--text-secondary)]'>
                     <span className='font-semibold text-[var(--text-primary)]'>
