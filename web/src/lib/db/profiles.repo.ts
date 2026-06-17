@@ -1,6 +1,7 @@
 import { supabase } from '@/src/lib/supabase/client';
 import type { Profile, UpdateProfilePatch } from '@/src/domain/profile';
 import { requireUser } from '@/src/lib/supabase/auth';
+import { nameFromAuthUser } from '@/src/lib/auth/profileName';
 
 const NO_ROW_CODE = 'PGRST116';
 
@@ -48,7 +49,7 @@ export async function getOrCreateProfile(): Promise<{
   if (selErr && getErrCode(selErr) === NO_ROW_CODE) {
     const insertRow: CreateProfileRow = {
       id: user.id,
-      display_name: null,
+      display_name: nameFromAuthUser(user),
       starting_balance: null,
       base_currency: 'USD',
       timezone: 'Africa/Lagos',

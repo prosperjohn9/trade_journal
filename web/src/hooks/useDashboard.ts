@@ -322,8 +322,10 @@ export function useDashboard() {
   const equity =
     monthStartingBalance === null ? null : monthStartingBalance + stats.pnlDollar;
 
+  // A name the user explicitly set wins; otherwise the server already resolved
+  // a sensible greeting (auth-metadata name, else email local-part).
   const displayName =
-    profile?.display_name?.trim() || profile?.display_name || 'Trader';
+    profile?.display_name?.trim() || dashData?.displayName?.trim() || 'Trader';
 
   async function saveProfile() {
     setSavingProfile(true);

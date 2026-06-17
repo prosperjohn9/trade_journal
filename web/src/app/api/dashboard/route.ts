@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { createSupabaseWithToken, getToken } from '@/src/lib/supabase/server';
 import { toNumberSafe } from '@/src/lib/utils/number';
 import { monthToRange } from '@/src/lib/analytics/core';
+import {
+  nameFromAuthUser,
+  resolveGreetingName,
+} from '@/src/lib/auth/profileName';
 
 const PROFILE_SELECT =
   'id, display_name, starting_balance, base_currency, timezone, risk_per_trade_percent, rr_win, created_at';
@@ -36,7 +40,10 @@ export async function GET(request: Request) {
       .from('profiles')
       .insert({
         id: user.id,
-        display_name: null,
+        // Seed the name from the auth identity (the name typed at email
+        // sign-up, or the name Google handed us) so the dashboard greets the
+        // user instead of saying "Trader".
+        display_name: nameFromAuthUser(user),
         base_currency: 'USD',
         timezone: 'Africa/Lagos',
         risk_per_trade_percent: 1,
@@ -89,10 +96,18 @@ export async function GET(request: Request) {
     return acc + gross - toNumberSafe(row.commission, 0);
   }, 0);
 
+  const displayName = resolveGreetingName({
+    profileName: (profile as { display_name?: string | null } | null)
+      ?.display_name,
+    authName: nameFromAuthUser(user),
+    email: user.email,
+  });
+
   return NextResponse.json(
     {
       userId: user.id,
       profile,
+      displayName,
       accounts: accountsRes.data ?? [],
       trades: monthTradesRes.data ?? [],
       priorPnlDollar,

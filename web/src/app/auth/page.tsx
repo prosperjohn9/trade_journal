@@ -118,6 +118,7 @@ function AuthForm() {
   const [mode, setMode] = useState<Mode>(
     searchParams.get('mode') === 'signup' ? 'signup' : 'signin',
   );
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -174,6 +175,10 @@ function AuthForm() {
       note('Enter your email.', 'error');
       return;
     }
+    if (mode === 'signup' && !name.trim()) {
+      note('Enter your first name.', 'error');
+      return;
+    }
     if (password.length < 8) {
       note('Password must be at least 8 characters.', 'error');
       return;
@@ -210,7 +215,12 @@ function AuthForm() {
       const { data, error } = await supabase.auth.signUp({
         email: mail,
         password,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        options: {
+          // Stored on the auth user and read back when we seed the profile, so
+          // the dashboard greets them by name.
+          data: { display_name: name.trim() },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
       });
       if (error) {
         if (/already registered|already exists/i.test(error.message)) {
@@ -325,6 +335,18 @@ function AuthForm() {
           </div>
 
           <form onSubmit={handleSubmit} className='space-y-3'>
+            {!signingIn && (
+              <input
+                className={inputClass}
+                placeholder='First name'
+                aria-label='First name'
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                type='text'
+                autoComplete='given-name'
+                required
+              />
+            )}
             <input
               className={inputClass}
               placeholder='Email address'

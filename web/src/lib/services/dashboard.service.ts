@@ -52,6 +52,7 @@ export async function loadDashboard(params: {
 }): Promise<{
   userId: string;
   profile: Profile;
+  displayName: string;
   accounts: AccountDisplay[];
   trades: TradeDisplay[];
   priorPnlDollar: number;
@@ -60,6 +61,7 @@ export async function loadDashboard(params: {
   const raw = await apiFetch<{
     userId: string;
     profile: Profile;
+    displayName: string;
     accounts: AccountDisplay[];
     trades: Array<Record<string, unknown>>;
     priorPnlDollar: number;
