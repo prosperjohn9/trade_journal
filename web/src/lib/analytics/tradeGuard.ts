@@ -557,3 +557,15 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
     .sort((a, b) => rank[a.s.severity] - rank[b.s.severity] || a.i - b.i)
     .map((x) => x.s);
 }
+
+/** A one-line headline of the flags (warnings + cautions) for a glance and for
+ *  the Telegram alert. Worst-first, so it leads with what matters. */
+export function flagHeadline(signals: GuardSignal[]): string {
+  const flags = signals.filter(
+    (s) => s.severity === 'warning' || s.severity === 'caution',
+  );
+  if (!flags.length) return 'Clean read, nothing flags on this one.';
+  const titles = flags.slice(0, 3).map((s) => s.title);
+  const more = flags.length - titles.length;
+  return `${titles.join(', ')}${more > 0 ? `, +${more} more` : ''}. ${flags.length} flag${flags.length === 1 ? '' : 's'} to weigh.`;
+}

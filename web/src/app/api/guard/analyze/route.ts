@@ -4,7 +4,7 @@ import { getServerEntitlements } from '@/src/lib/billing/server';
 import { AI_MODEL, isAiConfigured } from '@/src/lib/ai/client';
 import { isOverDailyCap, logUsage, monthlyUsageCount } from '@/src/lib/ai/usage';
 import { narrateGuard } from '@/src/lib/ai/guard';
-import type { GuardContext } from '@/src/lib/analytics/tradeGuard';
+import { flagHeadline, type GuardContext } from '@/src/lib/analytics/tradeGuard';
 import {
   analysisTimeframes,
   isTf,
@@ -558,6 +558,33 @@ export async function POST(request: Request) {
     const { signals, summary, usage } = await narrateGuard(ctx);
     await logUsage(sb, user.id, 'guard', AI_MODEL, usage);
 
+    const tldr = flagHeadline(signals);
+
+    // Log the read (best-effort) so the trader can review it and the worker can
+    // close the loop on outcome later.
+    void sb
+      .from('foresight_reads')
+      .insert({
+        user_id: user.id,
+        account_id: conn.account_id,
+        position_id: pos.id,
+        symbol: pos.symbol,
+        side: pos.side,
+        entry: pos.openPrice,
+        stop_loss: pos.stopLoss,
+        take_profit: pos.takeProfit,
+        volume: pos.volume,
+        warnings: signals.filter((s) => s.severity === 'warning').length,
+        cautions: signals.filter((s) => s.severity === 'caution').length,
+        tldr,
+        summary,
+        signals,
+      })
+      .then(
+        () => {},
+        () => {},
+      );
+
     return NextResponse.json({
       position: {
         id: pos.id,
@@ -568,6 +595,7 @@ export async function POST(request: Request) {
         takeProfit: pos.takeProfit,
         volume: pos.volume,
       },
+      tldr,
       signals,
       summary,
       model: AI_MODEL,

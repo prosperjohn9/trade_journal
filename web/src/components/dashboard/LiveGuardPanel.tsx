@@ -21,6 +21,7 @@ type Result = {
     takeProfit: number | null;
     volume: number;
   };
+  tldr?: string;
   signals: Sig[];
   summary: string;
   timeframesRead?: { tf: string; candles: number; status: string }[];
@@ -324,6 +325,12 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
               ? `, target ${res.position.takeProfit}`
               : ''}
           </div>
+
+          {res.tldr ? (
+            <p className='text-sm font-semibold text-[var(--text-primary)]'>
+              {res.tldr}
+            </p>
+          ) : null}
 
           <p className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-app)] p-4 text-sm leading-relaxed text-[var(--text-primary)]'>
             {res.summary}
