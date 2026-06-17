@@ -100,7 +100,6 @@ export async function GET(request: Request) {
     profileName: (profile as { display_name?: string | null } | null)
       ?.display_name,
     authName: nameFromAuthUser(user),
-    email: user.email,
   });
 
   return NextResponse.json(

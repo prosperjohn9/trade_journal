@@ -175,10 +175,6 @@ function AuthForm() {
       note('Enter your email.', 'error');
       return;
     }
-    if (mode === 'signup' && !name.trim()) {
-      note('Enter your first name.', 'error');
-      return;
-    }
     if (password.length < 8) {
       note('Password must be at least 8 characters.', 'error');
       return;
@@ -216,9 +212,9 @@ function AuthForm() {
         email: mail,
         password,
         options: {
-          // Stored on the auth user and read back when we seed the profile, so
-          // the dashboard greets them by name.
-          data: { display_name: name.trim() },
+          // Optional: only stored when given, and read back when we seed the
+          // profile so the dashboard greets them by the name they chose.
+          data: name.trim() ? { display_name: name.trim() } : undefined,
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       });
@@ -338,13 +334,13 @@ function AuthForm() {
             {!signingIn && (
               <input
                 className={inputClass}
-                placeholder='First name'
-                aria-label='First name'
+                placeholder='Display name (optional)'
+                aria-label='Display name'
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 type='text'
-                autoComplete='given-name'
-                required
+                autoComplete='nickname'
+                maxLength={40}
               />
             )}
             <input
