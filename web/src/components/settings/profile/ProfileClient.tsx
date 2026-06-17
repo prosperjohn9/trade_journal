@@ -6,6 +6,7 @@ import { supabase } from '@/src/lib/supabase/client';
 import { getOrCreateProfile, updateProfile } from '@/src/lib/db/profiles.repo';
 import { DeleteAccountModal } from './DeleteAccountModal';
 import { ExportTradesButton } from './ExportTradesButton';
+import { ConnectTelegram } from './ConnectTelegram';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -175,6 +176,9 @@ export function ProfileClient() {
             </div>
           </form>
         </section>
+
+        {/* Telegram alerts for Foresight. */}
+        <ConnectTelegram />
 
         {/* Your data — portability, as promised in the privacy policy. */}
         <section className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
