@@ -12,6 +12,7 @@ import {
   type SubscriptionRow,
 } from '@/src/lib/billing/entitlements';
 import { reconcileAddons } from '@/src/lib/billing/addons';
+import { adminUserIdSet } from '@/src/lib/auth/admin';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -79,6 +80,9 @@ export async function POST(request: Request) {
   for (const s of (subs ?? []) as Array<SubscriptionRow & { user_id: string }>) {
     if (resolveEntitlements(s).entitled) entitledUsers.add(s.user_id);
   }
+  // The owner/admin auto-syncs (deploy-on-demand, normal cost) regardless of
+  // subscription. This never makes an account always-deployed.
+  for (const id of await adminUserIdSet(admin)) entitledUsers.add(id);
 
   const conns = ((connections ?? []) as DueConnection[]).filter((c) =>
     entitledUsers.has(c.user_id),

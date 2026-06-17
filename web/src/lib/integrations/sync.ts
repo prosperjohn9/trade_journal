@@ -18,7 +18,7 @@ import {
   SUBSCRIPTION_SELECT,
   type SubscriptionRow,
 } from '@/src/lib/billing/entitlements';
-import { adminEmails } from '@/src/lib/auth/admin';
+import { adminUserIdSet } from '@/src/lib/auth/admin';
 
 const DAY_MS = 86_400_000;
 
@@ -207,23 +207,7 @@ export async function enforceSyncCaps(sb: SupabaseClient): Promise<number> {
     }
 
     // The owner/admin is exempt from the cap (unlimited synced accounts).
-    const allowedAdmins = adminEmails();
-    const adminIds = new Set<string>();
-    if (allowedAdmins.length) {
-      try {
-        const { data: users } = await sb.auth.admin.listUsers({
-          page: 1,
-          perPage: 1000,
-        });
-        for (const u of users?.users ?? []) {
-          if (u.email && allowedAdmins.includes(u.email.toLowerCase())) {
-            adminIds.add(u.id);
-          }
-        }
-      } catch {
-        // best-effort; if we cannot list users, normal caps still apply
-      }
-    }
+    const adminIds = await adminUserIdSet(sb);
 
     for (const [userId, conns] of byUser) {
       if (adminIds.has(userId)) continue; // owner accounts are never capped
