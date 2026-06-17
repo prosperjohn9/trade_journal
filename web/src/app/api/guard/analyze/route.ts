@@ -126,24 +126,23 @@ export async function POST(request: Request) {
   const bodyNewsRule =
     body.newsRule != null ? parseNewsRule(body.newsRule) : null;
 
-  // Resolve a connected MetaTrader account (RLS-scoped). Skip dead ones.
+  // Resolve a connected MetaTrader account (RLS-scoped). Filter the dead states
+  // in JS so a NULL state is kept (a Postgres .neq would silently drop it).
   let q = sb
     .from('mt_connections')
     .select('id, account_id, metaapi_account_id, region, state')
-    .eq('user_id', user.id)
-    .neq('state', 'breached')
-    .neq('state', 'over_limit');
+    .eq('user_id', user.id);
   if (connectionId) q = q.eq('id', connectionId);
   else if (accountId) q = q.eq('account_id', accountId);
-  const { data: conns } = await q.order('created_at', { ascending: true });
-  const conn = (conns ?? [])[0] as
-    | {
-        id: string;
-        account_id: string;
-        metaapi_account_id: string;
-        region: string | null;
-      }
-    | undefined;
+  const { data: rawConns } = await q.order('created_at', { ascending: true });
+  const dead = new Set(['breached', 'over_limit']);
+  const conn = ((rawConns ?? []) as Array<{
+    id: string;
+    account_id: string;
+    metaapi_account_id: string;
+    region: string | null;
+    state: string | null;
+  }>).find((c) => !dead.has(c.state ?? ''));
   if (!conn) {
     return NextResponse.json(
       { error: 'Connect a MetaTrader account first.' },

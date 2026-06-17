@@ -48,20 +48,29 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
     void supabase
       .from('mt_connections')
       .select('account_id, state, account:accounts(name)')
-      .neq('state', 'breached')
-      .neq('state', 'over_limit')
       .then(({ data }) => {
         if (cancelled) return;
         const rows = (data ?? []) as Array<{
           account_id: string;
+          state: string | null;
           account: { name: string } | { name: string }[] | null;
         }>;
-        const list = rows.map((r) => ({
-          accountId: r.account_id,
-          name: Array.isArray(r.account)
-            ? (r.account[0]?.name ?? 'Account')
-            : (r.account?.name ?? 'Account'),
-        }));
+        // Filter in JS so a NULL state is kept (a Postgres .neq would drop it).
+        // Exclude only the genuinely dead states, and dedupe by account.
+        const dead = new Set(['breached', 'over_limit']);
+        const seen = new Set<string>();
+        const list: { accountId: string; name: string }[] = [];
+        for (const r of rows) {
+          if (dead.has(r.state ?? '')) continue;
+          if (seen.has(r.account_id)) continue;
+          seen.add(r.account_id);
+          list.push({
+            accountId: r.account_id,
+            name: Array.isArray(r.account)
+              ? (r.account[0]?.name ?? 'Account')
+              : (r.account?.name ?? 'Account'),
+          });
+        }
         setAccounts(list);
         setSelected(
           (prev) =>
