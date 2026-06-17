@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseWithToken, getToken } from '@/src/lib/supabase/server';
+import { createServiceClient } from '@/src/lib/supabase/admin';
 import { getServerEntitlements } from '@/src/lib/billing/server';
 import { AI_MODEL, isAiConfigured } from '@/src/lib/ai/client';
 import { isOverDailyCap, logUsage, monthlyUsageCount } from '@/src/lib/ai/usage';
@@ -73,48 +75,61 @@ function parseNewsRule(v: unknown): NewsRule {
 }
 
 export async function POST(request: Request) {
-  const token = getToken(request);
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Two auth modes: a trusted worker (shared WORKER_SECRET; operates on behalf
+  // of a connection's owner, no quota gates) or a logged-in user (token + RLS +
+  // entitlement/quota gates).
+  const workerSecret = process.env.WORKER_SECRET;
+  const isWorker =
+    !!workerSecret && request.headers.get('x-worker-secret') === workerSecret;
 
-  const sb = createSupabaseWithToken(token);
-  const {
-    data: { user },
-    error: authErr,
-  } = await sb.auth.getUser();
-  if (authErr || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  let sb: SupabaseClient;
+  let userId = '';
+
+  if (isWorker) {
+    sb = createServiceClient();
+  } else {
+    const token = getToken(request);
+    if (!token)
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    sb = createSupabaseWithToken(token);
+    const {
+      data: { user },
+      error: authErr,
+    } = await sb.auth.getUser();
+    if (authErr || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    userId = user.id;
+
+    const entitlements = await getServerEntitlements(sb);
+    if (!entitlements.features.ai) {
+      return NextResponse.json(
+        { error: 'Foresight requires an active plan.', code: 'upgrade_required' },
+        { status: 403 },
+      );
+    }
+    if (await isOverDailyCap(sb, userId)) {
+      return NextResponse.json(
+        { error: 'You have reached your daily AI limit. Try again tomorrow.' },
+        { status: 429 },
+      );
+    }
+    if (
+      (await monthlyUsageCount(sb, userId)) >=
+      entitlements.limits.aiActionsPerMonth
+    ) {
+      return NextResponse.json(
+        {
+          error: `You have used all ${entitlements.limits.aiActionsPerMonth} AI actions this month.`,
+          code: 'quota_reached',
+        },
+        { status: 429 },
+      );
+    }
   }
 
-  const entitlements = await getServerEntitlements(sb);
-  if (!entitlements.features.ai) {
-    return NextResponse.json(
-      { error: 'Foresight requires an active plan.', code: 'upgrade_required' },
-      { status: 403 },
-    );
-  }
   if (!isAiConfigured()) {
-    return NextResponse.json(
-      { error: 'AI is not configured yet.' },
-      { status: 503 },
-    );
-  }
-  if (await isOverDailyCap(sb, user.id)) {
-    return NextResponse.json(
-      { error: 'You have reached your daily AI limit. Try again tomorrow.' },
-      { status: 429 },
-    );
-  }
-  if (
-    (await monthlyUsageCount(sb, user.id)) >=
-    entitlements.limits.aiActionsPerMonth
-  ) {
-    return NextResponse.json(
-      {
-        error: `You have used all ${entitlements.limits.aiActionsPerMonth} AI actions this month.`,
-        code: 'quota_reached',
-      },
-      { status: 429 },
-    );
+    return NextResponse.json({ error: 'AI is not configured yet.' }, { status: 503 });
   }
 
   const body = (await request.json().catch(() => ({}))) as {
@@ -144,12 +159,20 @@ export async function POST(request: Request) {
   const bodyNewsRule =
     body.newsRule != null ? parseNewsRule(body.newsRule) : null;
 
-  // Resolve a connected MetaTrader account (RLS-scoped). Filter the dead states
-  // in JS so a NULL state is kept (a Postgres .neq would silently drop it).
+  // A worker call must name the account; a user call is scoped by RLS / user id.
+  if (isWorker && !connectionId && !accountId) {
+    return NextResponse.json(
+      { error: 'accountId or connectionId is required.' },
+      { status: 400 },
+    );
+  }
+
+  // Resolve a connected MetaTrader account. Filter the dead states in JS so a
+  // NULL state is kept (a Postgres .neq would silently drop it).
   let q = sb
     .from('mt_connections')
-    .select('id, account_id, metaapi_account_id, region, state')
-    .eq('user_id', user.id);
+    .select('id, account_id, metaapi_account_id, region, state, user_id');
+  if (!isWorker) q = q.eq('user_id', userId);
   if (connectionId) q = q.eq('id', connectionId);
   else if (accountId) q = q.eq('account_id', accountId);
   const { data: rawConns } = await q.order('created_at', { ascending: true });
@@ -160,6 +183,7 @@ export async function POST(request: Request) {
     metaapi_account_id: string;
     region: string | null;
     state: string | null;
+    user_id: string;
   }>).find((c) => !dead.has(c.state ?? ''));
   if (!conn) {
     return NextResponse.json(
@@ -167,6 +191,8 @@ export async function POST(request: Request) {
       { status: 404 },
     );
   }
+  // In worker mode we now know the owner; the rest scopes everything to them.
+  if (isWorker) userId = conn.user_id;
   const region = conn.region ?? DEFAULT_MT_REGION;
 
   let undeployAfter = false;
@@ -267,7 +293,7 @@ export async function POST(request: Request) {
       sb
         .from('profiles')
         .select('risk_per_trade_percent')
-        .eq('id', user.id)
+        .eq('id', userId)
         .maybeSingle(),
       sb
         .from('accounts')
@@ -286,7 +312,11 @@ export async function POST(request: Request) {
         .from('account_balance_events')
         .select('kind, amount, occurred_at')
         .eq('account_id', conn.account_id),
-      sb.from('trading_rules').select('kind, subject, label').eq('status', 'active'),
+      sb
+        .from('trading_rules')
+        .select('kind, subject, label')
+        .eq('status', 'active')
+        .eq('user_id', userId),
     ]);
 
     const riskRulePct =
@@ -556,7 +586,7 @@ export async function POST(request: Request) {
     };
 
     const { signals, summary, usage } = await narrateGuard(ctx);
-    await logUsage(sb, user.id, 'guard', AI_MODEL, usage);
+    await logUsage(sb, userId, 'guard', AI_MODEL, usage);
 
     const tldr = flagHeadline(signals);
 
@@ -565,7 +595,7 @@ export async function POST(request: Request) {
     void sb
       .from('foresight_reads')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         account_id: conn.account_id,
         position_id: pos.id,
         symbol: pos.symbol,
