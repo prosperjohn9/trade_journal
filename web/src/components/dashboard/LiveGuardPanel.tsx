@@ -23,6 +23,7 @@ type Result = {
   };
   signals: Sig[];
   summary: string;
+  timeframesRead?: { tf: string; candles: number; status: string }[];
 };
 
 const SEV_STYLE: Record<Severity, { dot: string; label: string }> = {
@@ -317,6 +318,15 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
               Nothing flagged: structure, risk and timing all look in line.
             </p>
           )}
+
+          {res.timeframesRead && res.timeframesRead.length > 0 ? (
+            <p className='text-[10px] text-[var(--text-muted)]'>
+              candles:{' '}
+              {res.timeframesRead
+                .map((t) => `${t.tf} ${t.candles} (${t.status})`)
+                .join(', ')}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </section>

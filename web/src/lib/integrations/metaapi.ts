@@ -364,31 +364,53 @@ export async function fetchTickSize(
 
 export type LiveCandle = { o: number; h: number; l: number; c: number };
 
-/** Recent OHLC candles for a symbol, oldest to newest. MetaApi loads candles
- *  backward from startTime, so we pass "now" to get the most recent ones. */
+export type CandleResult = { candles: LiveCandle[]; status: string };
+
+// MetaApi serves historical candles from a dedicated market-data host, not the
+// trading-client host used for positions/deals.
+function marketDataHost(region: string): string {
+  return `https://mt-market-data-client-api-v1.${region}.agiliumtrade.ai`;
+}
+
+/** Recent OHLC candles for a symbol, oldest to newest. Returns a status string
+ *  too so callers can diagnose an empty result (http_404, error, empty, ok). */
 export async function fetchCandles(
   metaApiAccountId: string,
   region: string,
   symbol: string,
   timeframe = '1h',
   limit = 100,
-): Promise<LiveCandle[]> {
+): Promise<CandleResult> {
   const startTime = encodeURIComponent(new Date().toISOString());
-  const body = (await clientGet(
-    region,
-    metaApiAccountId,
-    `/historical-market-data/symbols/${encodeURIComponent(symbol)}/timeframes/${encodeURIComponent(timeframe)}/candles?startTime=${startTime}&limit=${limit}`,
-    'candles',
-  )) as Array<Record<string, unknown>> | null;
-  if (!Array.isArray(body)) return [];
-  return body
-    .map((k) => ({
-      o: Number(k.open ?? 0),
-      h: Number(k.high ?? 0),
-      l: Number(k.low ?? 0),
-      c: Number(k.close ?? 0),
-    }))
-    .filter((k) => k.h > 0 && k.l > 0);
+  const url =
+    `${marketDataHost(region)}/users/current/accounts/${encodeURIComponent(metaApiAccountId)}` +
+    `/historical-market-data/symbols/${encodeURIComponent(symbol)}/timeframes/${encodeURIComponent(timeframe)}/candles?startTime=${startTime}&limit=${limit}`;
+  try {
+    const res = await fetch(url, {
+      headers: { 'auth-token': getMetaApiToken() },
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      const raw = await res.text().catch(() => '');
+      console.error(
+        `[metaapi] candles ${timeframe} failed: ${res.status} ${raw.slice(0, 200)}`,
+      );
+      return { candles: [], status: `http_${res.status}` };
+    }
+    const json = (await res.json()) as unknown;
+    if (!Array.isArray(json)) return { candles: [], status: 'not_array' };
+    const candles = (json as Array<Record<string, unknown>>)
+      .map((k) => ({
+        o: Number(k.open ?? 0),
+        h: Number(k.high ?? 0),
+        l: Number(k.low ?? 0),
+        c: Number(k.close ?? 0),
+      }))
+      .filter((k) => k.h > 0 && k.l > 0);
+    return { candles, status: candles.length ? 'ok' : 'empty' };
+  } catch {
+    return { candles: [], status: 'error' };
+  }
 }
 
 export type AccountInfo = { balance: number | null; currency: string | null };

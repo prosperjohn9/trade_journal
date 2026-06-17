@@ -225,13 +225,13 @@ export async function POST(request: Request) {
       fetchTickSize(conn.metaapi_account_id, region, pos.symbol),
       fetchAccountInformation(conn.metaapi_account_id, region),
     ]);
-    const candleSets = await Promise.all(
+    const candleResults = await Promise.all(
       tfs.map((t) =>
         fetchCandles(conn.metaapi_account_id, region, pos.symbol, t.code, 120),
       ),
     );
     const timeframes = tfs
-      .map((t, i) => ({ tf: t.tf, candles: candleSets[i] }))
+      .map((t, i) => ({ tf: t.tf, candles: candleResults[i].candles }))
       .filter((t) => t.candles.length >= 6);
     const pipSize = tickSize && tickSize > 0 ? tickSize * 10 : null;
 
@@ -401,10 +401,11 @@ export async function POST(request: Request) {
       signals,
       summary,
       model: AI_MODEL,
-      // How many candles each timeframe returned, to confirm the read had data.
-      timeframesRead: timeframes.map((t) => ({
+      // Per-timeframe candle count + fetch status, to diagnose the candle feed.
+      timeframesRead: tfs.map((t, i) => ({
         tf: t.tf,
-        candles: t.candles.length,
+        candles: candleResults[i].candles.length,
+        status: candleResults[i].status,
       })),
     });
   } catch (e) {
