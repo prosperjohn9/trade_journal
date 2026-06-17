@@ -374,7 +374,7 @@ export default function DashboardClient() {
             {/* Prop-firm challenge status (renders nothing for non-prop users) */}
             <PropChallengeWidget accountId={s.accountId} />
 
-            {/* Live Guard: on-demand second opinion on an open position */}
+            {/* Foresight: on-demand second opinion on an open position */}
             <LiveGuardPanel accountId={s.accountId} />
 
             {/* Prop career ROI (renders nothing for non-prop users) */}

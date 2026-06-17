@@ -64,7 +64,7 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
       <div className='flex flex-wrap items-center justify-between gap-3'>
         <div>
           <h2 className='flex items-center gap-2 text-lg font-semibold text-[var(--text-primary)]'>
-            Live Guard
+            Foresight
             <span className='rounded-full border border-[var(--border-default)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]'>
               Beta
             </span>
@@ -78,7 +78,7 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
           onClick={() => void run()}
           disabled={busy}
           className='rounded-lg bg-[var(--accent-cta)] px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60'>
-          {busy ? 'Reading your trade...' : 'Run Live Guard'}
+          {busy ? 'Reading your trade...' : 'Run Foresight'}
         </button>
       </div>
 

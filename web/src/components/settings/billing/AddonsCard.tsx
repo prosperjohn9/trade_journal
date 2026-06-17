@@ -72,7 +72,7 @@ export function AddonsCard({ entitled }: { entitled: boolean }) {
           <div className='flex items-center justify-between rounded-lg border border-dashed border-[var(--border-default)] p-3'>
             <div>
               <div className='text-sm font-medium text-[var(--text-secondary)]'>
-                Live Guard (real-time AI second opinion)
+                Foresight (real-time AI second opinion)
               </div>
               <div className='text-xs text-[var(--text-muted)]'>
                 ${GUARDRAIL_PRICE_MONTHLY}/MetaTrader account, free on cTrader
@@ -200,7 +200,7 @@ export function AddonsCard({ entitled }: { entitled: boolean }) {
 
       <div className='mt-3 rounded-lg border border-dashed border-[var(--border-default)] p-3'>
         <div className='text-sm font-medium text-[var(--text-secondary)]'>
-          Live Guard (real-time breach protection)
+          Foresight (real-time AI second opinion)
         </div>
         <div className='text-xs text-[var(--text-muted)]'>
           ${GUARDRAIL_PRICE_MONTHLY}/MetaTrader account, free for cTrader.

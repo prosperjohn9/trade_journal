@@ -73,7 +73,7 @@ export async function POST(request: Request) {
   const entitlements = await getServerEntitlements(sb);
   if (!entitlements.features.ai) {
     return NextResponse.json(
-      { error: 'Live Guard requires an active plan.', code: 'upgrade_required' },
+      { error: 'Foresight requires an active plan.', code: 'upgrade_required' },
       { status: 403 },
     );
   }
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            'This account is not live right now, so there is no open position to read. Live Guard runs continuously on the accounts you enable it for; this on-demand check only works while the account is actively connected.',
+            'This account is not live right now, so there is no open position to read. Foresight runs continuously on the accounts you enable it for; this on-demand check only works while the account is actively connected.',
           code: 'not_live',
         },
         { status: 409 },
@@ -292,7 +292,7 @@ export async function POST(request: Request) {
       model: AI_MODEL,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Live Guard failed.';
+    const msg = e instanceof Error ? e.message : 'Foresight failed.';
     return NextResponse.json({ error: msg }, { status: 502 });
   }
 }

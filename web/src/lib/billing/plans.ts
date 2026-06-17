@@ -68,9 +68,11 @@ export const PLAN_ORDER: PlanId[] = ['pro', 'elite', 'master'];
  *  Cost to us ~$3.90/account (deploy fee + hosting + amortized provisioning). */
 export const EXTRA_SYNC_PRICE_MONTHLY = 6;
 
-/** Add-on: MetaTrader Live Guard (real-time breach guardrail), per account per
- *  month (USD). Needs an always-deployed MetaApi account (~$10/mo cost). The
- *  cTrader guardrail is free (Spotware streaming has no per-account fee). */
+/** Add-on: MetaTrader Foresight (real-time AI co-pilot at trade entry), per
+ *  account per month (USD). Needs an always-deployed MetaApi account (~$10/mo
+ *  cost). Foresight is free on cTrader (Spotware streaming has no per-account
+ *  fee), so it auto-applies to all cTrader accounts; on MetaTrader it is a paid
+ *  per-account seat the user assigns. */
 export const GUARDRAIL_PRICE_MONTHLY = 18;
 
 /** Absolute ceiling on synced accounts regardless of add-ons (abuse guard). */

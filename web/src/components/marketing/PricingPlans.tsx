@@ -164,7 +164,7 @@ export function PricingPlans() {
         <p>
           Prices are in US dollars. Your bank or card network shows the amount
           in your local currency at checkout. Extra MetaTrader accounts are $
-          {EXTRA_SYNC_PRICE_MONTHLY}/account each; real-time breach Live Guard is
+          {EXTRA_SYNC_PRICE_MONTHLY}/account each; real-time Foresight (AI co-pilot) is
           ${GUARDRAIL_PRICE_MONTHLY}/account (free for cTrader). cTrader auto-sync
           is always free.
         </p>
