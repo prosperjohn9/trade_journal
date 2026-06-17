@@ -269,6 +269,146 @@ export async function fetchHistoricalDeals(params: {
   return Array.isArray(body) ? body : (body.deals ?? []);
 }
 
+// === Live (open-position) reads for the Live Guard analyzer ====================
+// All require a DEPLOYED + CONNECTED account (deploy-on-demand by the caller).
+
+export type OpenPosition = {
+  id: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  openPrice: number;
+  currentPrice: number | null;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  volume: number;
+};
+
+async function clientGet(
+  region: string,
+  metaApiAccountId: string,
+  path: string,
+  context: string,
+): Promise<unknown> {
+  const url = `${clientApiHost(region)}/users/current/accounts/${encodeURIComponent(metaApiAccountId)}${path}`;
+  const res = await fetch(url, {
+    headers: { 'auth-token': getMetaApiToken() },
+    cache: 'no-store',
+  });
+  if (res.status === 404) return null; // e.g. no such position / symbol not subscribed
+  if (!res.ok) throw await metaApiError(context, res);
+  return res.json();
+}
+
+/** Open positions on the account right now. */
+export async function fetchOpenPositions(
+  metaApiAccountId: string,
+  region: string,
+): Promise<OpenPosition[]> {
+  const body = (await clientGet(region, metaApiAccountId, '/positions', 'positions')) as
+    | Array<Record<string, unknown>>
+    | null;
+  if (!Array.isArray(body)) return [];
+  return body.map((p) => ({
+    id: String(p.id ?? ''),
+    symbol: String(p.symbol ?? '').toUpperCase(),
+    side: p.type === 'POSITION_TYPE_SELL' ? 'SELL' : 'BUY',
+    openPrice: Number(p.openPrice ?? 0),
+    currentPrice: num(p.currentPrice as number | undefined),
+    stopLoss: num(p.stopLoss as number | undefined),
+    takeProfit: num(p.takeProfit as number | undefined),
+    volume: Number(p.volume ?? 0),
+  }));
+}
+
+export type SymbolPrice = {
+  bid: number | null;
+  ask: number | null;
+  /** Value of one tick of loss per lot, in account currency (for risk sizing). */
+  lossTickValue: number | null;
+};
+
+/** Live price + tick value for a symbol. spread = ask - bid. */
+export async function fetchSymbolPrice(
+  metaApiAccountId: string,
+  region: string,
+  symbol: string,
+): Promise<SymbolPrice | null> {
+  const body = (await clientGet(
+    region,
+    metaApiAccountId,
+    `/symbols/${encodeURIComponent(symbol)}/current-price?keepSubscription=false`,
+    'symbol price',
+  )) as Record<string, unknown> | null;
+  if (!body) return null;
+  return {
+    bid: num(body.bid as number | undefined),
+    ask: num(body.ask as number | undefined),
+    lossTickValue: num(body.lossTickValue as number | undefined),
+  };
+}
+
+/** Tick size for a symbol (to turn a stop distance into ticks). */
+export async function fetchTickSize(
+  metaApiAccountId: string,
+  region: string,
+  symbol: string,
+): Promise<number | null> {
+  const body = (await clientGet(
+    region,
+    metaApiAccountId,
+    `/symbols/${encodeURIComponent(symbol)}/specification`,
+    'symbol spec',
+  )) as Record<string, unknown> | null;
+  return body ? num(body.tickSize as number | undefined) : null;
+}
+
+export type LiveCandle = { o: number; h: number; l: number; c: number };
+
+/** Recent OHLC candles for a symbol, oldest to newest. */
+export async function fetchCandles(
+  metaApiAccountId: string,
+  region: string,
+  symbol: string,
+  timeframe = '1h',
+  limit = 100,
+): Promise<LiveCandle[]> {
+  const body = (await clientGet(
+    region,
+    metaApiAccountId,
+    `/historical-market-data/symbols/${encodeURIComponent(symbol)}/timeframes/${encodeURIComponent(timeframe)}/candles?limit=${limit}`,
+    'candles',
+  )) as Array<Record<string, unknown>> | null;
+  if (!Array.isArray(body)) return [];
+  return body
+    .map((k) => ({
+      o: Number(k.open ?? 0),
+      h: Number(k.high ?? 0),
+      l: Number(k.low ?? 0),
+      c: Number(k.close ?? 0),
+    }))
+    .filter((k) => k.h > 0 && k.l > 0);
+}
+
+export type AccountInfo = { balance: number | null; currency: string | null };
+
+/** Account balance + currency. */
+export async function fetchAccountInformation(
+  metaApiAccountId: string,
+  region: string,
+): Promise<AccountInfo | null> {
+  const body = (await clientGet(
+    region,
+    metaApiAccountId,
+    '/account-information',
+    'account info',
+  )) as Record<string, unknown> | null;
+  if (!body) return null;
+  return {
+    balance: num(body.balance as number | undefined),
+    currency: typeof body.currency === 'string' ? body.currency : null,
+  };
+}
+
 /** Volume-weighted average price of a set of deals. */
 function vwap(deals: MetatraderDeal[]): number | null {
   let vol = 0;

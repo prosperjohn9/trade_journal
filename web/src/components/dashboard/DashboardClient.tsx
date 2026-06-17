@@ -11,6 +11,7 @@ import { DashboardCards } from './DashboardCards';
 import { DashboardTradeTable } from './DashboardTradeTable';
 import { PropChallengeWidget } from './PropChallengeWidget';
 import { PropCareerCard } from './PropCareerCard';
+import { LiveGuardPanel } from './LiveGuardPanel';
 import { PlanExpiryBanner } from '@/src/components/billing/PlanExpiryBanner';
 
 type DashboardTheme = 'light' | 'dark';
@@ -372,6 +373,9 @@ export default function DashboardClient() {
           <>
             {/* Prop-firm challenge status (renders nothing for non-prop users) */}
             <PropChallengeWidget accountId={s.accountId} />
+
+            {/* Live Guard: on-demand second opinion on an open position */}
+            <LiveGuardPanel />
 
             {/* Prop career ROI (renders nothing for non-prop users) */}
             <PropCareerCard />
