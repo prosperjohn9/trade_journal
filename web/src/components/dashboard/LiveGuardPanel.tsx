@@ -135,23 +135,30 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
       </div>
 
       {accounts.length > 0 ? (
-        <div className='mt-3 flex items-center gap-2'>
-          <label className='text-xs text-[var(--text-muted)]'>Account</label>
-          <select
-            value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-            className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] px-2 py-1 text-sm text-[var(--text-primary)] outline-none'>
-            {accounts.map((a) => (
-              <option key={a.accountId} value={a.accountId}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+        <div className='mt-3'>
+          <div className='flex items-center gap-2'>
+            <label className='text-xs text-[var(--text-muted)]'>Account</label>
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] px-2 py-1 text-sm text-[var(--text-primary)] outline-none'>
+              {accounts.map((a) => (
+                <option key={a.accountId} value={a.accountId}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className='mt-1 text-[11px] text-[var(--text-muted)]'>
+            MetaTrader-connected accounts only. If the account with your open
+            trade is not here, connect it via MetaTrader in Settings first.
+          </p>
         </div>
       ) : (
         <p className='mt-3 text-xs text-[var(--text-muted)]'>
-          No MetaTrader account connected yet. Connect one in Settings to use
-          Foresight.
+          No MetaTrader-connected account yet. Foresight reads live positions
+          through MetaApi, so connect the account your trade is on (Settings,
+          then Connect MetaTrader with the investor password).
         </p>
       )}
 
