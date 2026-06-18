@@ -1,0 +1,20 @@
+{
+  "name": "foresight-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Always-on MetaTrader watcher that triggers a Foresight read the instant a guarded trade opens, and closes the loop when it exits.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
