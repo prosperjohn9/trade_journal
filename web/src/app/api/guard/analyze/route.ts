@@ -40,6 +40,7 @@ import {
   fetchAccountInformation,
   DEFAULT_MT_REGION,
 } from '@/src/lib/integrations/metaapi';
+import { sendTelegram } from '@/src/lib/integrations/telegram';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -141,7 +142,15 @@ export async function POST(request: Request) {
     analyzedTf?: unknown;
     executedTf?: unknown;
     setupId?: unknown;
+    trigger?: unknown;
   };
+  // What prompted this read. The worker sets 'open' the instant a trade opens and
+  // 'modify' when the trader moves a stop or target; both tailor the alert's lead
+  // line. A user-initiated read is just 'manual'.
+  const trigger: 'open' | 'modify' | 'manual' =
+    body.trigger === 'open' || body.trigger === 'modify'
+      ? body.trigger
+      : 'manual';
   const analyzedTf: Tf | null = isTf(body.analyzedTf) ? body.analyzedTf : null;
   const executedTf: Tf | null = isTf(body.executedTf) ? body.executedTf : null;
   const setupId = typeof body.setupId === 'string' ? body.setupId : null;
@@ -614,6 +623,28 @@ export async function POST(request: Request) {
         () => {},
         () => {},
       );
+
+    // Worker mode: push the read to the owner's Telegram the instant it lands.
+    // Delivery lives here (not in the worker) so the bot token and chat id never
+    // leave the app. Best-effort; a missing link just means no push.
+    if (isWorker) {
+      const { data: prof } = await sb
+        .from('profiles')
+        .select('telegram_chat_id')
+        .eq('id', userId)
+        .maybeSingle();
+      const chatId = (prof as { telegram_chat_id?: string | null } | null)
+        ?.telegram_chat_id;
+      if (chatId) {
+        const lead =
+          trigger === 'modify'
+            ? 'You changed the stop or target on this open trade.\n\n'
+            : '';
+        const head = `Foresight: ${pos.symbol} ${pos.side} ${pos.volume} lots`;
+        const text = `${head}\n\n${lead}${tldr}\n\n${summary}`;
+        await sendTelegram(chatId, text);
+      }
+    }
 
     return NextResponse.json({
       position: {
