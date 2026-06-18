@@ -28,6 +28,9 @@ export type SyncConnection = {
   metaapi_account_id: string;
   region: string | null;
   last_synced_at?: string | null;
+  // When true, the Foresight worker keeps this account deployed 24/7 and owns its
+  // deploy/undeploy lifecycle, so a sync must NOT undeploy it afterwards.
+  guard_enabled?: boolean | null;
 };
 
 export type SyncResult = {
@@ -398,9 +401,15 @@ export async function syncConnection(
       .eq('id', c.id);
     return { connectionId: c.id, imported: 0, skipped: 0, error: msg };
   } finally {
-    if (undeployWhenDone) {
-      // Cost control: stop hosting once we've pulled history. Best-effort; the
-      // daily cron reconciles any account left deployed.
+    // Cost control: stop hosting once we've pulled history. Best-effort; the
+    // daily cron reconciles any account left deployed.
+    //
+    // EXCEPTION: a guard_enabled account is kept deployed 24/7 by the Foresight
+    // worker, which owns its deploy lifecycle. Undeploying it here would rip it
+    // out from under the worker; the worker would just redeploy it, restarting
+    // the broker handshake and leaving the account flapping "Disconnected". So we
+    // never undeploy a guarded account on sync.
+    if (undeployWhenDone && !c.guard_enabled) {
       try {
         await undeployAccount(c.metaapi_account_id);
       } catch {

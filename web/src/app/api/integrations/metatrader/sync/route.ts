@@ -45,7 +45,9 @@ export async function POST(request: Request) {
 
   let query = sb
     .from('mt_connections')
-    .select('id, account_id, metaapi_account_id, region, last_synced_at')
+    .select(
+      'id, account_id, metaapi_account_id, region, last_synced_at, guard_enabled',
+    )
     .eq('user_id', user.id)
     // Breached and over-limit accounts were auto-disconnected; their MetaApi
     // account is gone, so a sync attempt would only produce a confusing error.
