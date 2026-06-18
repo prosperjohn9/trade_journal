@@ -28,6 +28,7 @@ export type SyncConnection = {
   metaapi_account_id: string;
   region: string | null;
   last_synced_at?: string | null;
+  created_at?: string | null;
   // When true, the Foresight worker keeps this account deployed 24/7 and owns its
   // deploy/undeploy lifecycle, so a sync must NOT undeploy it afterwards.
   guard_enabled?: boolean | null;
@@ -288,13 +289,23 @@ export async function syncConnection(
           .update({ state: 'connecting', updated_at: nowIso() })
           .eq('id', c.id);
         const firstTime = !c.last_synced_at;
+        const ageMin = c.created_at
+          ? (Date.now() - new Date(c.created_at).getTime()) / 60_000
+          : 0;
+        // A genuine first connect can take a few minutes. But if a never-synced
+        // account still cannot reach the broker after that, the cause is almost
+        // always the credentials or server, not latency, so say so plainly
+        // instead of telling them to keep retrying forever.
+        const stuck = firstTime && ageMin > 4;
         return {
           connectionId: c.id,
           imported: 0,
           skipped: 0,
-          error: firstTime
-            ? 'Your account is connecting to the broker for the first time. This can take a few minutes, then tap Sync now again.'
-            : 'Your account is reconnecting to the broker. Give it a moment, then tap Sync now again.',
+          error: stuck
+            ? 'Still cannot reach the broker after a few minutes. Double-check this account: the server name must match your broker exactly (for example FundingPips-SIM1), and the investor (read-only) password must be enabled for this login. A breached or disabled account will not connect.'
+            : firstTime
+              ? 'Your account is connecting to the broker for the first time. This can take a few minutes, then tap Sync now again.'
+              : 'Your account is reconnecting to the broker. Give it a moment, then tap Sync now again.',
         };
       }
     }

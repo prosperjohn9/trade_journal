@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     admin
       .from('mt_connections')
       .select(
-        'id, account_id, metaapi_account_id, region, last_synced_at, state, updated_at, user_id, guard_enabled',
+        'id, account_id, metaapi_account_id, region, last_synced_at, created_at, state, updated_at, user_id, guard_enabled',
       ),
     admin.from('subscriptions').select(`user_id, ${SUBSCRIPTION_SELECT}`),
   ]);

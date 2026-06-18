@@ -641,7 +641,9 @@ export async function POST(request: Request) {
             ? 'You changed the stop or target on this open trade.\n\n'
             : '';
         const head = `Foresight: ${pos.symbol} ${pos.side} ${pos.volume} lots`;
-        const text = `${head}\n\n${lead}${tldr}\n\n${summary}`;
+        const link =
+          'See it on your dashboard: https://tradershindsight.com/dashboard';
+        const text = `${head}\n\n${lead}${tldr}\n\n${summary}\n\n${link}`;
         await sendTelegram(chatId, text);
       }
     }

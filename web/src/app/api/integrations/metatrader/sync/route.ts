@@ -46,7 +46,7 @@ export async function POST(request: Request) {
   let query = sb
     .from('mt_connections')
     .select(
-      'id, account_id, metaapi_account_id, region, last_synced_at, guard_enabled',
+      'id, account_id, metaapi_account_id, region, last_synced_at, created_at, guard_enabled',
     )
     .eq('user_id', user.id)
     // Breached and over-limit accounts were auto-disconnected; their MetaApi
