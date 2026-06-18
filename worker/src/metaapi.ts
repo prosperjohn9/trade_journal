@@ -50,13 +50,14 @@ export async function deployAccount(id: string): Promise<void> {
   }
 }
 
-/** Stop the account (ends ongoing hosting). Used when Foresight is turned off. */
+/** Stop the account (ends ongoing hosting). Used when Foresight is turned off.
+ *  A 404 means it is already undeployed or gone, which is success for us. */
 export async function undeployAccount(id: string): Promise<void> {
   const res = await fetch(
     `${PROVISIONING_HOST}/users/current/accounts/${encodeURIComponent(id)}/undeploy`,
     { method: 'POST', headers: authHeaders() },
   );
-  if (![200, 201, 202, 204].includes(res.status)) {
+  if (![200, 201, 202, 204, 404].includes(res.status)) {
     throw new Error(`undeploy ${res.status}`);
   }
 }
