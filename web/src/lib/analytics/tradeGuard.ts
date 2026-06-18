@@ -518,14 +518,23 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
   }
 
   // 8. Committed rules this trade looks like it breaks (their own rules).
-  ctx.committedRuleHits.forEach((label, i) => {
+  //    Multiple breaks collapse into ONE signal so the headline never repeats
+  //    "Breaks a rule you committed to".
+  if (ctx.committedRuleHits.length === 1) {
     out.push({
-      id: `committed-${i}`,
+      id: 'committed',
       severity: 'warning',
       title: 'Breaks a rule you committed to',
-      detail: `${label} This is the exact pattern you committed to stopping.`,
+      detail: `${ctx.committedRuleHits[0]} This is the exact pattern you committed to stopping.`,
     });
-  });
+  } else if (ctx.committedRuleHits.length > 1) {
+    out.push({
+      id: 'committed',
+      severity: 'warning',
+      title: `Breaks ${ctx.committedRuleHits.length} rules you committed to`,
+      detail: `This trade breaks rules you committed to: ${ctx.committedRuleHits.join('; ')}. These are the exact patterns you committed to stopping.`,
+    });
+  }
 
   // 9. Their record on this pair, and whether this is their worst session.
   if (ctx.pairStats && ctx.pairStats.trades >= 5) {
@@ -565,7 +574,9 @@ export function flagHeadline(signals: GuardSignal[]): string {
     (s) => s.severity === 'warning' || s.severity === 'caution',
   );
   if (!flags.length) return 'Clean read, nothing flags on this one.';
-  const titles = flags.slice(0, 3).map((s) => s.title);
-  const more = flags.length - titles.length;
-  return `${titles.join(', ')}${more > 0 ? `, +${more} more` : ''}. ${flags.length} flag${flags.length === 1 ? '' : 's'} to weigh.`;
+  // Distinct titles only, so a repeated headline never shows twice.
+  const unique = [...new Set(flags.map((s) => s.title))];
+  const titles = unique.slice(0, 3);
+  const more = unique.length - titles.length;
+  return `${titles.join(', ')}${more > 0 ? `, +${more} more` : ''}. ${unique.length} flag${unique.length === 1 ? '' : 's'} to weigh.`;
 }

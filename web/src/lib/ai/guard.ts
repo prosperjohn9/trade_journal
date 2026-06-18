@@ -11,7 +11,9 @@ import {
   type GuardSignal,
 } from '@/src/lib/analytics/tradeGuard';
 
-const GUARD_MAX_TOKENS = 400;
+// Headroom so a rich read (rules + trend + risk + news, with plain-English
+// glosses) finishes cleanly instead of truncating mid-sentence.
+const GUARD_MAX_TOKENS = 700;
 
 export type GuardUsage = {
   input_tokens?: number;
