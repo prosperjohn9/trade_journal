@@ -26,8 +26,8 @@ export default function RefundsPage() {
           <a href='https://tradershindsight.com'>
             https://tradershindsight.com
           </a>{' '}
-          (the &ldquo;Service&rdquo;), operated from Agbor, Delta State,
-          Nigeria. It is written to be specific to our Service. Where this
+          (the &ldquo;Service&rdquo;), operated from Delta State, Nigeria. It
+          is written to be specific to our Service. Where this
           policy and our{' '}
           <a href='/terms'>Terms of Service</a> differ on refunds or
           cancellation, this policy controls.
@@ -154,7 +154,7 @@ export default function RefundsPage() {
         <p>
           The Trader&apos;s Hindsight
           <br />
-          Agbor, Delta State, Nigeria
+          Delta State, Nigeria
           <br />
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
           <br />

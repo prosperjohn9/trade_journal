@@ -207,8 +207,6 @@ export default function CookiesPage() {
         <p>
           The Trader&apos;s Hindsight
           <br />
-          Agbor
-          <br />
           Delta State
           <br />
           Nigeria

@@ -22,7 +22,7 @@ export default function TermsPage() {
           We are The Trader&apos;s Hindsight (&ldquo;<strong>Company</strong>
           &rdquo;, &ldquo;<strong>we</strong>&rdquo;, &ldquo;
           <strong>us</strong>&rdquo;, or &ldquo;<strong>our</strong>&rdquo;), a
-          business operating from Nigeria at Agbor, Delta State, Nigeria.
+          business operating from Nigeria at Delta State, Nigeria.
         </p>
         <p>
           We operate the website{' '}
@@ -48,7 +48,7 @@ export default function TermsPage() {
         <p>
           You can contact us by phone at +234 811 869 8266, email at{' '}
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>, or by mail
-          to Agbor, Delta State, Nigeria.
+          to Delta State, Nigeria.
         </p>
         <p>
           These Legal Terms constitute a legally binding agreement made between
@@ -804,8 +804,6 @@ export default function TermsPage() {
         </p>
         <p>
           The Trader&apos;s Hindsight
-          <br />
-          Agbor
           <br />
           Delta State
           <br />

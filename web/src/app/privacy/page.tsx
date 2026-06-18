@@ -836,8 +836,6 @@ export default function PrivacyPage() {
         <p>
           The Trader&apos;s Hindsight
           <br />
-          Agbor
-          <br />
           Delta State
           <br />
           Nigeria

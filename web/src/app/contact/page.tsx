@@ -37,7 +37,7 @@ export default function ContactPage() {
             .
           </p>
           <p className='mt-2 text-sm text-slate-400'>
-            The Trader&apos;s Hindsight, Agbor, Delta State, Nigeria.
+            The Trader&apos;s Hindsight, Delta State, Nigeria.
           </p>
 
           <div className='mt-10'>
