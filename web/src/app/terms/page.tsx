@@ -309,10 +309,14 @@ export default function TermsPage() {
         </p>
         <h3>Cancellation</h3>
         <p>
-          All purchases are non-refundable. You can cancel your subscription
-          at any time by logging into your account. Your cancellation will
-          take effect at the end of the current paid term. If you have any
-          questions or are unsatisfied with our Services, please email us at{' '}
+          You can cancel your subscription at any time by logging into your
+          account. Your cancellation will take effect at the end of the current
+          paid term, and you keep access until then. Fees already paid for the
+          current term are generally non-refundable, except in the specific
+          cases set out in our{' '}
+          <a href='/refunds'>Refund &amp; Cancellation Policy</a>, which governs
+          all refunds and cancellations. If you have any questions or are
+          unsatisfied with our Services, please email us at{' '}
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
         </p>
         <h3>Fee Changes</h3>
