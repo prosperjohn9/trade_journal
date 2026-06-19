@@ -96,7 +96,8 @@ export function useTradeEdit() {
 
   const [pnlAmount, setPnlAmount] = useState('0');
   const [pnlPercent, setPnlPercent] = useState('0');
-  const [riskAmount, setRiskAmount] = useState<string>('1000');
+  const [riskAmount, setRiskAmount] = useState<string>('');
+  const [importSource, setImportSource] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
 
   const riskNumber = useMemo(() => {
@@ -378,9 +379,12 @@ export function useTradeEdit() {
         setOutcome((res.trade.outcome ?? 'WIN') as Outcome);
         setPnlAmount(String(res.trade.pnl_amount ?? 0));
         setPnlPercent(String(res.trade.pnl_percent ?? 0));
+        // Show the real risk, or empty when none was captured (e.g. a synced
+        // trade), never a phantom default that looks like real data.
         setRiskAmount(
-          res.trade.risk_amount == null ? '1000' : String(res.trade.risk_amount),
+          res.trade.risk_amount == null ? '' : String(res.trade.risk_amount),
         );
+        setImportSource(res.trade.import_source ?? null);
         setNotes(res.trade.notes ?? '');
 
         setTemplateId(res.trade.template_id ?? null);
@@ -415,7 +419,7 @@ export function useTradeEdit() {
         setReviewNotes(res.trade.review_notes ?? '');
 
         const initialRisk =
-          res.trade.risk_amount == null ? '1000' : String(res.trade.risk_amount);
+          res.trade.risk_amount == null ? '' : String(res.trade.risk_amount);
 
         setBaselineDraft(
           buildDraftSnapshot({
@@ -610,6 +614,7 @@ export function useTradeEdit() {
     pnlPercentAuto,
     riskAmount,
     setRiskAmount,
+    isSynced: Boolean(importSource),
     notes,
     setNotes,
 

@@ -154,7 +154,7 @@ const TRADE_VIEW_SELECT = `
   pnl_amount, pnl_percent, risk_amount, r_multiple,
   account_id,
   account:accounts(id, name, account_type, base_currency, starting_balance),
-  template_id, notes, reviewed_at,
+  template_id, notes, reviewed_at, import_source,
   entry_price, stop_loss, take_profit, exit_price, closed_at, commission, net_pnl,
   emotion_tag, lesson_learned, review_notes,
   before_screenshot_path, after_trade_screenshot_url

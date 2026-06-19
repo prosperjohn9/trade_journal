@@ -299,6 +299,25 @@ export function TradeEditClient() {
               </div>
             </div>
 
+            {s.isSynced &&
+            (!s.riskAmount || !s.stopLoss || !s.takeProfit) ? (
+              <p className='rounded-lg border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-xs text-[var(--text-secondary)]'>
+                <span className='font-semibold text-[var(--text-primary)]'>
+                  From broker sync.
+                </span>{' '}
+                Your broker&apos;s history did not include{' '}
+                {[
+                  !s.riskAmount && 'your risk',
+                  !s.stopLoss && 'a stop loss',
+                  !s.takeProfit && 'a take profit',
+                ]
+                  .filter(Boolean)
+                  .join(', ')}{' '}
+                for this trade. Add the missing values to track risk and your
+                R-multiple. Everything else was kept from the sync.
+              </p>
+            ) : null}
+
             <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
               <Field label='Risk ($)'>
                 <input

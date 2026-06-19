@@ -40,6 +40,7 @@ export type TradeEditRow = {
   notes: string | null;
 
   template_id: string | null;
+  import_source: string | null;
 
   before_screenshot_path: string | null;
 
