@@ -20,4 +20,5 @@ export const config = {
   pollIntervalMs: seconds('POLL_INTERVAL_SECONDS', 12),
   refreshAccountsMs: seconds('REFRESH_ACCOUNTS_SECONDS', 120),
   modifyCooldownMs: seconds('MODIFY_COOLDOWN_SECONDS', 300),
+  newsSweepMs: seconds('NEWS_SWEEP_SECONDS', 60),
 };

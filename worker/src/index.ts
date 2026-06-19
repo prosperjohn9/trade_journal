@@ -23,6 +23,7 @@ import {
   listGuardedAccounts,
   requestAnalyze,
   reportClose,
+  reportNewsCheck,
   type GuardedAccount,
 } from './app';
 
@@ -38,10 +39,13 @@ type AccountState = {
   // without firing alerts for trades that predate the worker.
   seeded: boolean;
   known: Map<string, PosSnapshot>;
+  // Symbols currently open, refreshed each poll; fed to the news countdown.
+  openSymbols: string[];
 };
 
 const accounts = new Map<string, AccountState>();
 let lastRefresh = 0;
+let lastNewsSweep = 0;
 let stopping = false;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -63,7 +67,12 @@ async function refreshAccounts(): Promise<void> {
     if (existing) {
       existing.acc = a;
     } else {
-      accounts.set(a.connectionId, { acc: a, seeded: false, known: new Map() });
+      accounts.set(a.connectionId, {
+        acc: a,
+        seeded: false,
+        known: new Map(),
+        openSymbols: [],
+      });
       log.info(`now guarding account ${a.metaApiAccountId} (${a.region})`);
     }
   }
@@ -115,6 +124,7 @@ async function tickAccount(st: AccountState): Promise<void> {
     return;
   }
   const current = new Map(positions.map((p) => [p.id, p]));
+  st.openSymbols = [...new Set(positions.map((p) => p.symbol))];
 
   // First successful read after (re)start: remember what is already open without
   // alerting, so we only fire on trades opened from here on.
@@ -197,6 +207,21 @@ async function tick(): Promise<void> {
   for (const st of accounts.values()) {
     if (stopping) break;
     await tickAccount(st);
+  }
+
+  // In-trade news countdown, on a slower cadence than position polling: tell the
+  // app which symbols are open so it can ping when high-impact news nears one.
+  if (Date.now() - lastNewsSweep >= config.newsSweepMs) {
+    lastNewsSweep = Date.now();
+    for (const st of accounts.values()) {
+      if (stopping) break;
+      if (!st.seeded || st.openSymbols.length === 0) continue;
+      try {
+        await reportNewsCheck(st.acc.connectionId, st.openSymbols);
+      } catch (e) {
+        log.warn('news check failed:', e);
+      }
+    }
   }
 }
 

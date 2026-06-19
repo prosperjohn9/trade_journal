@@ -61,3 +61,20 @@ export async function reportClose(
     throw new Error(`close ${res.status} ${t.slice(0, 200)}`);
   }
 }
+
+/** Report the symbols open on a guarded account so the app can ping Telegram
+ *  when high-impact news nears one of them. The app decides + delivers + dedupes. */
+export async function reportNewsCheck(
+  connectionId: string,
+  symbols: string[],
+): Promise<void> {
+  const res = await fetch(`${config.appUrl}/api/guard/news`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ connectionId, symbols }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`news ${res.status} ${t.slice(0, 200)}`);
+  }
+}
