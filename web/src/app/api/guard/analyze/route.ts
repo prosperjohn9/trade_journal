@@ -642,7 +642,7 @@ export async function POST(request: Request) {
             : '';
         const head = `Foresight: ${pos.symbol} ${pos.side} ${pos.volume} lots`;
         const link =
-          'See it on your dashboard: https://tradershindsight.com/dashboard';
+          'See this and past reads: https://tradershindsight.com/foresight';
         const text = `${head}\n\n${lead}${tldr}\n\n${summary}\n\n${link}`;
         await sendTelegram(chatId, text);
       }

@@ -193,6 +193,11 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
             A grounded second opinion on a live open position: trend, risk,
             structure, spread, news and your own leaks.
           </p>
+          <a
+            href='/foresight'
+            className='mt-1 inline-block text-xs font-medium text-[var(--text-secondary)] underline-offset-2 hover:text-[var(--text-primary)] hover:underline'>
+            View past reads
+          </a>
         </div>
         <div className='flex flex-wrap items-center gap-2'>
           <button
