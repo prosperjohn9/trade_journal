@@ -318,13 +318,16 @@ export function useAccounts() {
 
   async function onToggleArchive(a: Account) {
     setPageMsg('');
-    // Optimistic; reload reconciles.
+    const next = !a.archived;
+    // Optimistic, and authoritative for this toggle: do NOT refetch on success.
+    // A reload here can return a briefly-stale read (browser-cached GET) that
+    // clobbers this and makes the account reappear, which looked like archiving
+    // "did nothing". On failure we refetch to revert to the truth.
     setAccounts((prev) =>
-      prev.map((x) => (x.id === a.id ? { ...x, archived: !a.archived } : x)),
+      prev.map((x) => (x.id === a.id ? { ...x, archived: next } : x)),
     );
     try {
-      await updateAccount(a.id, { archived: !a.archived });
-      await reload();
+      await updateAccount(a.id, { archived: next });
     } catch (e: unknown) {
       setPageMsg(getErr(e, 'Failed to update account'));
       await reload();
