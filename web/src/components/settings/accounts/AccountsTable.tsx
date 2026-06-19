@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { formatAccountTagLabel } from '@/src/domain/account';
+import { formatAccountTagLabel, type Account } from '@/src/domain/account';
 import { formatMoney } from '@/src/lib/utils/format';
 import { cx } from '@/src/lib/utils/ui';
 import { EmptyState } from '@/src/components/ui/EmptyState';
@@ -47,13 +47,11 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
     })
     .map(({ account }) => account);
 
-  // Archived accounts (e.g. a breached challenge) drop out of the main list to
-  // keep it clean, behind a toggle, and the summary counts only active ones.
+  // Archived accounts (e.g. a breached challenge) move into their own
+  // collapsible section to keep the main list clean; the summary counts only
+  // active ones.
   const activeAccounts = orderedAccounts.filter((a) => !a.archived);
   const archivedAccounts = orderedAccounts.filter((a) => a.archived);
-  const visibleAccounts = showArchived
-    ? [...activeAccounts, ...archivedAccounts]
-    : activeAccounts;
 
   const defaultAccount = activeAccounts.find((a) => a.is_default) ?? null;
   const totalAccounts = activeAccounts.length;
@@ -88,250 +86,9 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
       </div>
 
       <div className='space-y-4'>
-        {visibleAccounts.map((a) => {
-          const currency = a.base_currency ?? 'USD';
-          const tradeCount = Number(a.trade_count ?? 0);
-          const netPnl = Number(a.net_pnl ?? 0);
-          const cashflow = Number(a.net_cashflow ?? 0);
-          const startingBalance = Number(a.starting_balance ?? 0);
-          const currentBalance = startingBalance + netPnl + cashflow;
-          const propQuick = a.prop_rules
-            ? computePropQuickStatus({
-                startingBalance,
-                netProfit: netPnl,
-                netCashflow: cashflow,
-                rules: a.prop_rules,
-              })
-            : null;
-          const visibleTags = a.tags.slice(0, MAX_VISIBLE_TAGS);
-          const hiddenTagCount = Math.max(a.tags.length - visibleTags.length, 0);
-
-          return (
-            <article
-              key={a.id}
-              className={cx(
-                'relative overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5',
-                a.archived && 'opacity-60',
-              )}
-              style={
-                a.is_default
-                  ? {
-                      borderColor:
-                        'color-mix(in srgb, var(--accent) 34%, var(--border-default))',
-                      boxShadow:
-                        '0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent), 0 24px 34px -34px color-mix(in srgb, var(--accent) 60%, transparent)',
-                    }
-                  : undefined
-              }>
-              {a.is_default && (
-                <span
-                  className='pointer-events-none absolute inset-y-4 left-0 w-1 rounded-r-full'
-                  style={{
-                    background:
-                      'linear-gradient(to bottom, color-mix(in srgb, var(--accent) 80%, transparent), color-mix(in srgb, var(--accent) 36%, transparent))',
-                  }}
-                />
-              )}
-
-              <div className='flex flex-wrap items-start justify-between gap-4'>
-                <div>
-                  <h3 className='text-xl font-semibold tracking-tight text-[var(--text-primary)]'>
-                    {a.name}
-                  </h3>
-                  <div className='mt-2 flex flex-wrap items-center gap-1.5 text-sm text-[var(--text-muted)]'>
-                    <AccountTypeBadge accountType={a.account_type} />
-                    <span aria-hidden='true'>·</span>
-                    <span>{currency}</span>
-                    {a.archived ? (
-                      <>
-                        <span aria-hidden='true'>·</span>
-                        <span className='inline-flex items-center rounded-full border border-[var(--border-default)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]'>
-                          Archived
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
-
-                  {visibleTags.length > 0 && (
-                    <div className='mt-3 flex flex-wrap items-center gap-1.5'>
-                      {visibleTags.map((tag) => (
-                        <span
-                          key={`${a.id}-${tag}`}
-                          className='inline-flex items-center rounded-full bg-[var(--neutral-badge)] px-2 py-1 text-[13px] leading-none text-[var(--neutral-text)]'>
-                          {formatAccountTagLabel(tag)}
-                        </span>
-                      ))}
-                      {hiddenTagCount > 0 && (
-                        <span className='text-xs text-[var(--text-muted)]'>
-                          +{hiddenTagCount} more
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {a.is_default && (
-                  <span
-                    className='inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide'
-                    style={{
-                      backgroundColor:
-                        'color-mix(in srgb, var(--accent) 14%, var(--bg-surface))',
-                      borderColor:
-                        'color-mix(in srgb, var(--accent) 35%, transparent)',
-                      color: 'color-mix(in srgb, var(--accent) 86%, var(--text-primary))',
-                    }}>
-                    Default
-                  </span>
-                )}
-              </div>
-
-              <p className='mt-4 text-[15px] font-medium text-[var(--text-secondary)]'>
-                Balance:{' '}
-                <span className='font-semibold text-[var(--text-primary)]'>
-                  {formatMoney(currentBalance, currency)}
-                </span>
-                <span className='ml-2 text-xs text-[var(--text-muted)]'>
-                  from {formatMoney(startingBalance, currency)}
-                </span>
-              </p>
-
-              <div className='mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[var(--text-secondary)]'>
-                <span>
-                  Trades:{' '}
-                  <strong className='font-semibold text-[var(--text-primary)]'>
-                    {tradeCount}
-                  </strong>
-                </span>
-                <span>
-                  Net P&L:{' '}
-                  <strong
-                    className={cx(
-                      'font-semibold',
-                      netPnl > 0
-                        ? 'text-[var(--profit)]'
-                        : netPnl < 0
-                          ? 'text-[var(--loss)]'
-                          : 'text-[var(--text-primary)]',
-                    )}>
-                    {netPnl > 0 ? '+' : ''}
-                    {formatMoney(netPnl, currency)}
-                  </strong>
-                </span>
-                {cashflow !== 0 ? (
-                  <span>
-                    Deposits/withdrawals:{' '}
-                    <strong className='font-semibold text-[var(--text-primary)]'>
-                      {cashflow > 0 ? '+' : ''}
-                      {formatMoney(cashflow, currency)}
-                    </strong>
-                  </span>
-                ) : null}
-              </div>
-
-              {propQuick ? (
-                <div className='mt-3 rounded-lg border border-[var(--border-default)] p-3'>
-                  <div className='flex items-center justify-between text-xs'>
-                    <span className='font-medium text-[var(--text-secondary)]'>
-                      Challenge progress
-                    </span>
-                    {propQuick.targetMet ? (
-                      <span className='font-semibold text-[var(--profit)]'>
-                        Target met
-                      </span>
-                    ) : propQuick.profitProgressPct != null ? (
-                      <span className='text-[var(--text-muted)]'>
-                        {Math.round(propQuick.profitProgressPct)}% to target
-                      </span>
-                    ) : null}
-                  </div>
-                  {propQuick.profitTargetAmount != null ? (
-                    <div className='mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-muted)]'>
-                      <div
-                        className='h-full rounded-full'
-                        style={{
-                          width: `${Math.max(0, Math.min(100, propQuick.profitProgressPct ?? 0))}%`,
-                          backgroundColor: propQuick.targetMet
-                            ? 'var(--profit)'
-                            : 'var(--accent)',
-                        }}
-                      />
-                    </div>
-                  ) : null}
-                  {propQuick.drawdownBufferAmount != null ? (
-                    <p
-                      className='mt-1.5 text-[11px]'
-                      style={{
-                        color:
-                          propQuick.drawdownBufferAmount <= 0
-                            ? 'var(--loss)'
-                            : 'var(--text-muted)',
-                      }}>
-                      {propQuick.drawdownBufferAmount <= 0
-                        ? 'Drawdown floor breached'
-                        : `${formatMoney(propQuick.drawdownBufferAmount, currency)} buffer before breach`}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <div
-                className='mt-4 border-t pt-4'
-                style={{
-                  borderColor:
-                    'color-mix(in srgb, var(--border-default) 58%, transparent)',
-                }}>
-                <div className='flex flex-wrap items-center gap-x-2 gap-y-1 text-sm'>
-                  <button
-                    className='text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]'
-                    onClick={() => s.openEdit(a)}>
-                    Edit
-                  </button>
-
-                  {!a.is_default && (
-                    <>
-                      <span className='text-[var(--text-muted)]'>•</span>
-                      <button
-                        className='text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-60'
-                        onClick={() => s.onSetDefault(a.id)}
-                        disabled={s.settingDefaultId === a.id}>
-                        {s.settingDefaultId === a.id ? 'Setting…' : 'Set Default'}
-                      </button>
-                    </>
-                  )}
-
-                  <span className='text-[var(--text-muted)]'>•</span>
-                  <button
-                    className='text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]'
-                    onClick={() => void s.onToggleArchive(a)}>
-                    {a.archived ? 'Unarchive' : 'Archive'}
-                  </button>
-
-                  <span className='text-[var(--text-muted)]'>•</span>
-                  <button
-                    className='text-[var(--loss)] transition-colors hover:opacity-85'
-                    onClick={() => s.requestDelete(a)}>
-                    Delete
-                  </button>
-
-                  <MetaTraderConnect accountId={a.id} onSynced={s.reload} />
-
-                  <ImportTrades accountId={a.id} onImported={s.reload} />
-
-                  <BalanceEventsButton accountId={a.id} onChanged={s.reload} />
-
-                  {a.account_type === 'Challenge' ||
-                  a.account_type === 'Funded' ? (
-                    <PropRulesButton
-                      accountId={a.id}
-                      startingBalance={startingBalance}
-                      onChanged={s.reload}
-                    />
-                  ) : null}
-                </div>
-              </div>
-            </article>
-          );
-        })}
+        {activeAccounts.map((a) => (
+          <AccountCard key={a.id} a={a} s={s} />
+        ))}
 
         {!orderedAccounts.length && (
           <EmptyState
@@ -347,17 +104,280 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
             cta={{ label: 'Add your first trading account', onClick: s.openAdd }}
           />
         )}
+      </div>
 
-        {archivedAccounts.length > 0 ? (
+      {archivedAccounts.length > 0 ? (
+        <div className='overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)]'>
           <button
             onClick={() => setShowArchived((v) => !v)}
-            className='text-xs font-medium text-[var(--text-secondary)] underline-offset-2 transition-colors hover:text-[var(--text-primary)] hover:underline'>
-            {showArchived ? 'Hide' : 'Show'} archived ({archivedAccounts.length}
-            )
+            aria-expanded={showArchived}
+            className='flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left transition-colors hover:bg-[var(--bg-subtle)]'>
+            <span className='flex items-center gap-2'>
+              <span className='text-sm font-semibold text-[var(--text-primary)]'>
+                Archived accounts
+              </span>
+              <span className='inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-[var(--bg-subtle)] px-1.5 py-0.5 text-xs font-medium text-[var(--text-muted)]'>
+                {archivedAccounts.length}
+              </span>
+            </span>
+            <span className='flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)]'>
+              {showArchived ? 'Hide' : 'Show'}
+              <svg
+                viewBox='0 0 24 24'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2'
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                className={cx(
+                  'h-3.5 w-3.5 transition-transform',
+                  showArchived && 'rotate-180',
+                )}>
+                <polyline points='6 9 12 15 18 9' />
+              </svg>
+            </span>
           </button>
+          {showArchived ? (
+            <div className='space-y-4 border-t border-[var(--border-default)] p-5'>
+              {archivedAccounts.map((a) => (
+                <AccountCard key={a.id} a={a} s={s} />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AccountCard({ a, s }: { a: Account; s: AccountsState }) {
+  const currency = a.base_currency ?? 'USD';
+  const tradeCount = Number(a.trade_count ?? 0);
+  const netPnl = Number(a.net_pnl ?? 0);
+  const cashflow = Number(a.net_cashflow ?? 0);
+  const startingBalance = Number(a.starting_balance ?? 0);
+  const currentBalance = startingBalance + netPnl + cashflow;
+  const propQuick = a.prop_rules
+    ? computePropQuickStatus({
+        startingBalance,
+        netProfit: netPnl,
+        netCashflow: cashflow,
+        rules: a.prop_rules,
+      })
+    : null;
+  const visibleTags = a.tags.slice(0, MAX_VISIBLE_TAGS);
+  const hiddenTagCount = Math.max(a.tags.length - visibleTags.length, 0);
+
+  return (
+    <article
+      className='relative overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5'
+      style={
+        a.is_default
+          ? {
+              borderColor:
+                'color-mix(in srgb, var(--accent) 34%, var(--border-default))',
+              boxShadow:
+                '0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent), 0 24px 34px -34px color-mix(in srgb, var(--accent) 60%, transparent)',
+            }
+          : undefined
+      }>
+      {a.is_default && (
+        <span
+          className='pointer-events-none absolute inset-y-4 left-0 w-1 rounded-r-full'
+          style={{
+            background:
+              'linear-gradient(to bottom, color-mix(in srgb, var(--accent) 80%, transparent), color-mix(in srgb, var(--accent) 36%, transparent))',
+          }}
+        />
+      )}
+
+      <div className='flex flex-wrap items-start justify-between gap-4'>
+        <div>
+          <h3 className='text-xl font-semibold tracking-tight text-[var(--text-primary)]'>
+            {a.name}
+          </h3>
+          <div className='mt-2 flex flex-wrap items-center gap-1.5 text-sm text-[var(--text-muted)]'>
+            <AccountTypeBadge accountType={a.account_type} />
+            <span aria-hidden='true'>·</span>
+            <span>{currency}</span>
+          </div>
+
+          {visibleTags.length > 0 && (
+            <div className='mt-3 flex flex-wrap items-center gap-1.5'>
+              {visibleTags.map((tag) => (
+                <span
+                  key={`${a.id}-${tag}`}
+                  className='inline-flex items-center rounded-full bg-[var(--neutral-badge)] px-2 py-1 text-[13px] leading-none text-[var(--neutral-text)]'>
+                  {formatAccountTagLabel(tag)}
+                </span>
+              ))}
+              {hiddenTagCount > 0 && (
+                <span className='text-xs text-[var(--text-muted)]'>
+                  +{hiddenTagCount} more
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {a.is_default && (
+          <span
+            className='inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide'
+            style={{
+              backgroundColor:
+                'color-mix(in srgb, var(--accent) 14%, var(--bg-surface))',
+              borderColor: 'color-mix(in srgb, var(--accent) 35%, transparent)',
+              color: 'color-mix(in srgb, var(--accent) 86%, var(--text-primary))',
+            }}>
+            Default
+          </span>
+        )}
+      </div>
+
+      <p className='mt-4 text-[15px] font-medium text-[var(--text-secondary)]'>
+        Balance:{' '}
+        <span className='font-semibold text-[var(--text-primary)]'>
+          {formatMoney(currentBalance, currency)}
+        </span>
+        <span className='ml-2 text-xs text-[var(--text-muted)]'>
+          from {formatMoney(startingBalance, currency)}
+        </span>
+      </p>
+
+      <div className='mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[var(--text-secondary)]'>
+        <span>
+          Trades:{' '}
+          <strong className='font-semibold text-[var(--text-primary)]'>
+            {tradeCount}
+          </strong>
+        </span>
+        <span>
+          Net P&L:{' '}
+          <strong
+            className={cx(
+              'font-semibold',
+              netPnl > 0
+                ? 'text-[var(--profit)]'
+                : netPnl < 0
+                  ? 'text-[var(--loss)]'
+                  : 'text-[var(--text-primary)]',
+            )}>
+            {netPnl > 0 ? '+' : ''}
+            {formatMoney(netPnl, currency)}
+          </strong>
+        </span>
+        {cashflow !== 0 ? (
+          <span>
+            Deposits/withdrawals:{' '}
+            <strong className='font-semibold text-[var(--text-primary)]'>
+              {cashflow > 0 ? '+' : ''}
+              {formatMoney(cashflow, currency)}
+            </strong>
+          </span>
         ) : null}
       </div>
-    </section>
+
+      {propQuick ? (
+        <div className='mt-3 rounded-lg border border-[var(--border-default)] p-3'>
+          <div className='flex items-center justify-between text-xs'>
+            <span className='font-medium text-[var(--text-secondary)]'>
+              Challenge progress
+            </span>
+            {propQuick.targetMet ? (
+              <span className='font-semibold text-[var(--profit)]'>
+                Target met
+              </span>
+            ) : propQuick.profitProgressPct != null ? (
+              <span className='text-[var(--text-muted)]'>
+                {Math.round(propQuick.profitProgressPct)}% to target
+              </span>
+            ) : null}
+          </div>
+          {propQuick.profitTargetAmount != null ? (
+            <div className='mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-muted)]'>
+              <div
+                className='h-full rounded-full'
+                style={{
+                  width: `${Math.max(0, Math.min(100, propQuick.profitProgressPct ?? 0))}%`,
+                  backgroundColor: propQuick.targetMet
+                    ? 'var(--profit)'
+                    : 'var(--accent)',
+                }}
+              />
+            </div>
+          ) : null}
+          {propQuick.drawdownBufferAmount != null ? (
+            <p
+              className='mt-1.5 text-[11px]'
+              style={{
+                color:
+                  propQuick.drawdownBufferAmount <= 0
+                    ? 'var(--loss)'
+                    : 'var(--text-muted)',
+              }}>
+              {propQuick.drawdownBufferAmount <= 0
+                ? 'Drawdown floor breached'
+                : `${formatMoney(propQuick.drawdownBufferAmount, currency)} buffer before breach`}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div
+        className='mt-4 border-t pt-4'
+        style={{
+          borderColor:
+            'color-mix(in srgb, var(--border-default) 58%, transparent)',
+        }}>
+        <div className='flex flex-wrap items-center gap-x-2 gap-y-1 text-sm'>
+          <button
+            className='text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]'
+            onClick={() => s.openEdit(a)}>
+            Edit
+          </button>
+
+          {!a.is_default && !a.archived && (
+            <>
+              <span className='text-[var(--text-muted)]'>•</span>
+              <button
+                className='text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-60'
+                onClick={() => s.onSetDefault(a.id)}
+                disabled={s.settingDefaultId === a.id}>
+                {s.settingDefaultId === a.id ? 'Setting…' : 'Set Default'}
+              </button>
+            </>
+          )}
+
+          <span className='text-[var(--text-muted)]'>•</span>
+          <button
+            className='text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]'
+            onClick={() => void s.onToggleArchive(a)}>
+            {a.archived ? 'Unarchive' : 'Archive'}
+          </button>
+
+          <span className='text-[var(--text-muted)]'>•</span>
+          <button
+            className='text-[var(--loss)] transition-colors hover:opacity-85'
+            onClick={() => s.requestDelete(a)}>
+            Delete
+          </button>
+
+          <MetaTraderConnect accountId={a.id} onSynced={s.reload} />
+
+          <ImportTrades accountId={a.id} onImported={s.reload} />
+
+          <BalanceEventsButton accountId={a.id} onChanged={s.reload} />
+
+          {a.account_type === 'Challenge' || a.account_type === 'Funded' ? (
+            <PropRulesButton
+              accountId={a.id}
+              startingBalance={startingBalance}
+              onChanged={s.reload}
+            />
+          ) : null}
+        </div>
+      </div>
+    </article>
   );
 }
 

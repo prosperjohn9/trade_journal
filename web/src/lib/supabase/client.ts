@@ -21,4 +21,10 @@ export const supabase = createClient(url, anonKey, {
     persistSession: true,
     autoRefreshToken: true,
   },
+  global: {
+    // Never serve API reads from the browser HTTP cache. A stale cached read
+    // after a write (e.g. archiving an account, then reloading) would otherwise
+    // show the old value and make the change look like it reverted.
+    fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
+  },
 });
