@@ -316,6 +316,21 @@ export function useAccounts() {
     }
   }
 
+  async function onToggleArchive(a: Account) {
+    setPageMsg('');
+    // Optimistic; reload reconciles.
+    setAccounts((prev) =>
+      prev.map((x) => (x.id === a.id ? { ...x, archived: !a.archived } : x)),
+    );
+    try {
+      await updateAccount(a.id, { archived: !a.archived });
+      await reload();
+    } catch (e: unknown) {
+      setPageMsg(getErr(e, 'Failed to update account'));
+      await reload();
+    }
+  }
+
   function requestDelete(a: Account) {
     setDeleteMsg('');
     setDeleteTarget(a);
@@ -378,6 +393,7 @@ export function useAccounts() {
     allTagSuggestions,
 
     reload,
+    onToggleArchive,
 
     openAdd,
     closeAdd,

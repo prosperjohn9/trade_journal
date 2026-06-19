@@ -25,6 +25,7 @@ export type Account = {
   starting_balance: number;
   base_currency: string | null;
   is_default: boolean;
+  archived: boolean;
   trade_count?: number;
   net_pnl?: number;
   net_cashflow?: number;

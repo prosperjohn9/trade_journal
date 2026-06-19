@@ -155,6 +155,9 @@ async function checkBreachAndDisconnect(
         updated_at: new Date().toISOString(),
       })
       .eq('id', c.id);
+    // A breached challenge is dead, so archive it out of the main list. The user
+    // can unarchive it any time; all trades are kept either way.
+    await sb.from('accounts').update({ archived: true }).eq('id', c.account_id);
     return true;
   } catch {
     return false; // never fail a sync over the breach check

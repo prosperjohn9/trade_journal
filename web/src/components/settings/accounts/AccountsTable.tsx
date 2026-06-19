@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { formatAccountTagLabel } from '@/src/domain/account';
 import { formatMoney } from '@/src/lib/utils/format';
 import { cx } from '@/src/lib/utils/ui';
@@ -29,9 +30,12 @@ type AccountsState = Pick<
   | 'requestDelete'
   | 'openAdd'
   | 'reload'
+  | 'onToggleArchive'
 >;
 
 export function AccountsTable({ state: s }: { state: AccountsState }) {
+  const [showArchived, setShowArchived] = useState(false);
+
   const orderedAccounts = s.accounts
     .map((account, index) => ({ account, index }))
     .sort((left, right) => {
@@ -43,14 +47,22 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
     })
     .map(({ account }) => account);
 
-  const defaultAccount = orderedAccounts.find((a) => a.is_default) ?? null;
-  const totalAccounts = orderedAccounts.length;
-  const totalStartingBalance = orderedAccounts.reduce(
+  // Archived accounts (e.g. a breached challenge) drop out of the main list to
+  // keep it clean, behind a toggle, and the summary counts only active ones.
+  const activeAccounts = orderedAccounts.filter((a) => !a.archived);
+  const archivedAccounts = orderedAccounts.filter((a) => a.archived);
+  const visibleAccounts = showArchived
+    ? [...activeAccounts, ...archivedAccounts]
+    : activeAccounts;
+
+  const defaultAccount = activeAccounts.find((a) => a.is_default) ?? null;
+  const totalAccounts = activeAccounts.length;
+  const totalStartingBalance = activeAccounts.reduce(
     (sum, account) => sum + Number(account.starting_balance ?? 0),
     0,
   );
   const uniqueCurrencies = Array.from(
-    new Set(orderedAccounts.map((a) => a.base_currency ?? 'USD')),
+    new Set(activeAccounts.map((a) => a.base_currency ?? 'USD')),
   );
   const totalCurrency = uniqueCurrencies.length === 1 ? uniqueCurrencies[0] : 'USD';
   const hasMixedCurrencies = uniqueCurrencies.length > 1;
@@ -76,7 +88,7 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
       </div>
 
       <div className='space-y-4'>
-        {orderedAccounts.map((a) => {
+        {visibleAccounts.map((a) => {
           const currency = a.base_currency ?? 'USD';
           const tradeCount = Number(a.trade_count ?? 0);
           const netPnl = Number(a.net_pnl ?? 0);
@@ -97,7 +109,10 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
           return (
             <article
               key={a.id}
-              className='relative overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5'
+              className={cx(
+                'relative overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5',
+                a.archived && 'opacity-60',
+              )}
               style={
                 a.is_default
                   ? {
@@ -127,6 +142,14 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
                     <AccountTypeBadge accountType={a.account_type} />
                     <span aria-hidden='true'>·</span>
                     <span>{currency}</span>
+                    {a.archived ? (
+                      <>
+                        <span aria-hidden='true'>·</span>
+                        <span className='inline-flex items-center rounded-full border border-[var(--border-default)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]'>
+                          Archived
+                        </span>
+                      </>
+                    ) : null}
                   </div>
 
                   {visibleTags.length > 0 && (
@@ -278,6 +301,13 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
 
                   <span className='text-[var(--text-muted)]'>•</span>
                   <button
+                    className='text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]'
+                    onClick={() => void s.onToggleArchive(a)}>
+                    {a.archived ? 'Unarchive' : 'Archive'}
+                  </button>
+
+                  <span className='text-[var(--text-muted)]'>•</span>
+                  <button
                     className='text-[var(--loss)] transition-colors hover:opacity-85'
                     onClick={() => s.requestDelete(a)}>
                     Delete
@@ -317,6 +347,15 @@ export function AccountsTable({ state: s }: { state: AccountsState }) {
             cta={{ label: 'Add your first trading account', onClick: s.openAdd }}
           />
         )}
+
+        {archivedAccounts.length > 0 ? (
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            className='text-xs font-medium text-[var(--text-secondary)] underline-offset-2 transition-colors hover:text-[var(--text-primary)] hover:underline'>
+            {showArchived ? 'Hide' : 'Show'} archived ({archivedAccounts.length}
+            )
+          </button>
+        ) : null}
       </div>
     </section>
   );

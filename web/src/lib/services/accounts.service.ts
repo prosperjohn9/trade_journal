@@ -119,6 +119,7 @@ function mapAccount(
     starting_balance: row.starting_balance,
     base_currency: row.base_currency,
     is_default: row.is_default,
+    archived: row.archived ?? false,
     trade_count: stats?.trade_count ?? 0,
     net_pnl: stats?.net_pnl ?? 0,
     net_cashflow: cashflow ?? 0,

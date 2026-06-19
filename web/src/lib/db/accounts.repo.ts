@@ -1,7 +1,7 @@
 import { supabase } from '@/src/lib/supabase/client';
 
 const ACCOUNT_VIEW_SELECT_COLUMNS =
-  'id, user_id, name, account_type, tags, starting_balance, base_currency, is_default, created_at';
+  'id, user_id, name, account_type, tags, starting_balance, base_currency, is_default, archived, created_at';
 
 export type AccountRow = {
   id: string;
@@ -12,6 +12,7 @@ export type AccountRow = {
   starting_balance: number;
   base_currency: string | null;
   is_default: boolean;
+  archived?: boolean | null;
   created_at: string;
 };
 
@@ -29,6 +30,7 @@ export type UpdateAccountInput = {
   tags?: string[];
   starting_balance?: number;
   base_currency?: string | null;
+  archived?: boolean;
 };
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -229,6 +231,7 @@ export async function updateAccountForUser(
     patch.starting_balance = input.starting_balance;
   if (input.base_currency !== undefined)
     patch.base_currency = input.base_currency;
+  if (typeof input.archived === 'boolean') patch.archived = input.archived;
 
   const shouldUpdateAccount = Object.keys(patch).length > 0;
   const shouldUpdateTags = input.tags !== undefined;
