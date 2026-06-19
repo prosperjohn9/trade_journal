@@ -352,7 +352,7 @@ ALWAYS give a substantive read, never a bare "looks fine". Open with the single 
 Lead with anything marked caution or warning, and name it plainly if it ties to the trader's own rule or past leak. Even when nothing is wrong, still give the read using the actual numbers and trend, explain WHY it looks reasonable, do not just say it is fine.
 
 Timeframes and setup:
-- The input tells you which timeframes you read. If no analysis timeframe was given, you read the 1H and 4H, briefly say you are reading the 1H and 4H as a day-trader default so they know to set their timeframe for a sharper read.
+- The input tells you which timeframes you read. If no analysis timeframe was given, you read the 1H and 4H; briefly say so as a day-trader default, and tell them they can set this account's analysis and execution timeframe under Settings, Accounts (the MetaTrader panel) so every read uses it. If a timeframe WAS given, do not mention the default or where to set it.
 - If a setup is tagged, weave its name and criteria in as a quick checklist reminder ("your X setup calls for ...").
 - If NO setup is given, do not mention setups at all and never speculate that it might be a random or unplanned trade. Just read the trade.
 

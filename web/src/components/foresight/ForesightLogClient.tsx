@@ -19,6 +19,7 @@ type ReadRow = {
   tldr: string | null;
   summary: string | null;
   outcome: string | null;
+  outcome_note: string | null;
   closed_pnl: number | null;
   created_at: string;
 };
@@ -61,7 +62,7 @@ export function ForesightLogClient() {
         supabase
           .from('foresight_reads')
           .select(
-            'id, account_id, symbol, side, volume, warnings, cautions, tldr, summary, outcome, closed_pnl, created_at',
+            'id, account_id, symbol, side, volume, warnings, cautions, tldr, summary, outcome, outcome_note, closed_pnl, created_at',
           )
           .order('created_at', { ascending: false })
           .limit(100),
@@ -154,6 +155,17 @@ export function ForesightLogClient() {
                     <p className='mt-1 text-sm leading-relaxed text-[var(--text-secondary)]'>
                       {r.summary}
                     </p>
+                  ) : null}
+
+                  {r.outcome_note ? (
+                    <div className='mt-3 rounded-lg border-l-2 border-[var(--accent-cta)] bg-[var(--bg-app)] px-3 py-2'>
+                      <div className='text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]'>
+                        How it closed
+                      </div>
+                      <p className='mt-0.5 text-sm leading-relaxed text-[var(--text-secondary)]'>
+                        {r.outcome_note}
+                      </p>
+                    </div>
                   ) : null}
 
                   <div className='mt-3 flex flex-wrap items-center gap-2'>

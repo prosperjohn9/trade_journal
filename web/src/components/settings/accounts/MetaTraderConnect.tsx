@@ -5,6 +5,7 @@ import { mutate } from 'swr';
 import { supabase } from '@/src/lib/supabase/client';
 import { apiPost, isUpgradeError } from '@/src/lib/api/fetcher';
 import { UpgradePrompt } from '@/src/components/ui/UpgradePrompt';
+import { TF_VALUES, tfLabel, type Tf } from '@/src/lib/analytics/timeframes';
 
 type MtConnection = {
   id: string;
@@ -14,6 +15,9 @@ type MtConnection = {
   login: string;
   server: string;
   guard_enabled: boolean;
+  guard_analyzed_tf: string | null;
+  guard_executed_tf: string | null;
+  guard_setup_id: string | null;
 };
 
 type SyncResult = {
@@ -27,7 +31,7 @@ type SyncResult = {
 };
 
 const CONN_COLS =
-  'id, state, last_synced_at, last_error, login, server, guard_enabled';
+  'id, state, last_synced_at, last_error, login, server, guard_enabled, guard_analyzed_tf, guard_executed_tf, guard_setup_id';
 
 function relativeTime(iso: string | null): string {
   if (!iso) return 'never';
@@ -73,6 +77,14 @@ export function MetaTraderConnect({
   const [msg, setMsg] = useState<string | null>(null);
   const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
 
+  // Per-account Foresight read context (analysis/execution timeframe + setup),
+  // so the worker's auto-fired read uses the trader's real timeframes.
+  const [gAnalyzed, setGAnalyzed] = useState<Tf | ''>('');
+  const [gExecuted, setGExecuted] = useState<Tf | ''>('');
+  const [gSetup, setGSetup] = useState('');
+  const [setups, setSetups] = useState<{ id: string; name: string }[]>([]);
+  const [savingGuard, setSavingGuard] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     supabase
@@ -87,6 +99,67 @@ export function MetaTraderConnect({
       cancelled = true;
     };
   }, [accountId]);
+
+  // Setup templates for the per-account Foresight setup picker.
+  useEffect(() => {
+    let cancelled = false;
+    void supabase
+      .from('setup_templates')
+      .select('id, name')
+      .then(({ data }) => {
+        if (!cancelled) setSetups((data ?? []) as { id: string; name: string }[]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Mirror the connection's saved Foresight settings into the form when it
+  // loads or refreshes. Deferred out of the effect body (lint: no sync setState).
+  useEffect(() => {
+    if (!conn) return;
+    const id = window.requestAnimationFrame(() => {
+      setGAnalyzed((conn.guard_analyzed_tf as Tf) || '');
+      setGExecuted((conn.guard_executed_tf as Tf) || '');
+      setGSetup(conn.guard_setup_id || '');
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [conn]);
+
+  async function saveGuardSettings() {
+    if (!conn) return;
+    setSavingGuard(true);
+    setMsg(null);
+    setUpgradeMsg(null);
+    try {
+      await apiPost('/api/guard/settings', {
+        connectionId: conn.id,
+        analyzedTf: gAnalyzed || null,
+        executedTf: gExecuted || null,
+        setupId: gSetup || null,
+      });
+      // Re-read the live trade with the new settings, pushed to Telegram. If
+      // there is no open trade, the analyze call just reports that, which is fine.
+      try {
+        await apiPost('/api/guard/analyze', {
+          accountId,
+          deliver: true,
+          analyzedTf: gAnalyzed || undefined,
+          executedTf: gExecuted || undefined,
+          setupId: gSetup || undefined,
+        });
+        setMsg('Saved. A fresh read was sent to your Telegram.');
+      } catch {
+        setMsg('Saved. These apply to your next trade on this account.');
+      }
+      await refresh();
+    } catch (e) {
+      if (isUpgradeError(e)) setUpgradeMsg(e.message);
+      else setMsg(e instanceof Error ? e.message : 'Could not save settings.');
+    } finally {
+      setSavingGuard(false);
+    }
+  }
 
   async function refresh() {
     const { data } = await supabase
@@ -269,6 +342,71 @@ export function MetaTraderConnect({
                     disabled={syncing}
                   />
                 </label>
+
+                {conn.guard_enabled ? (
+                  <div className='space-y-2 rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
+                    <p className='text-[11px] text-[var(--text-muted)]'>
+                      How you trade this account, so Foresight reads your
+                      timeframes instead of the 1H/4H default.
+                    </p>
+                    <div className='flex flex-wrap items-center gap-x-3 gap-y-2'>
+                      <label className='flex items-center gap-1.5 text-xs text-[var(--text-muted)]'>
+                        Analyze
+                        <select
+                          value={gAnalyzed}
+                          onChange={(e) =>
+                            setGAnalyzed(e.target.value as Tf | '')
+                          }
+                          className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 py-1 text-sm text-[var(--text-primary)] outline-none'>
+                          <option value=''>Default (1H + 4H)</option>
+                          {TF_VALUES.map((t) => (
+                            <option key={t} value={t}>
+                              {tfLabel(t)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className='flex items-center gap-1.5 text-xs text-[var(--text-muted)]'>
+                        Execute
+                        <select
+                          value={gExecuted}
+                          onChange={(e) =>
+                            setGExecuted(e.target.value as Tf | '')
+                          }
+                          className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 py-1 text-sm text-[var(--text-primary)] outline-none'>
+                          <option value=''>Not set</option>
+                          {TF_VALUES.map((t) => (
+                            <option key={t} value={t}>
+                              {tfLabel(t)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {setups.length > 0 ? (
+                        <label className='flex items-center gap-1.5 text-xs text-[var(--text-muted)]'>
+                          Setup
+                          <select
+                            value={gSetup}
+                            onChange={(e) => setGSetup(e.target.value)}
+                            className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 py-1 text-sm text-[var(--text-primary)] outline-none'>
+                            <option value=''>No setup</option>
+                            {setups.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                    </div>
+                    <button
+                      onClick={() => void saveGuardSettings()}
+                      disabled={savingGuard}
+                      className='rounded-lg border border-[var(--border-default)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-60'>
+                      {savingGuard ? 'Saving…' : 'Save & re-read'}
+                    </button>
+                  </div>
+                ) : null}
 
                 {conn.state === 'breached' ? (
                   <p className='rounded-lg border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-xs text-[var(--text-secondary)]'>

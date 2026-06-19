@@ -143,6 +143,7 @@ export async function POST(request: Request) {
     executedTf?: unknown;
     setupId?: unknown;
     trigger?: unknown;
+    deliver?: unknown;
   };
   // What prompted this read. The worker sets 'open' the instant a trade opens and
   // 'modify' when the trader moves a stop or target; both tailor the alert's lead
@@ -151,9 +152,15 @@ export async function POST(request: Request) {
     body.trigger === 'open' || body.trigger === 'modify'
       ? body.trigger
       : 'manual';
-  const analyzedTf: Tf | null = isTf(body.analyzedTf) ? body.analyzedTf : null;
-  const executedTf: Tf | null = isTf(body.executedTf) ? body.executedTf : null;
-  const setupId = typeof body.setupId === 'string' ? body.setupId : null;
+  // Body values win (the on-demand panel); otherwise we fall back to this
+  // account's saved Foresight settings below, so the worker reads the trader's
+  // real timeframes instead of the day-trader default.
+  const bodyAnalyzedTf: Tf | null = isTf(body.analyzedTf) ? body.analyzedTf : null;
+  const bodyExecutedTf: Tf | null = isTf(body.executedTf) ? body.executedTf : null;
+  const bodySetupId = typeof body.setupId === 'string' ? body.setupId : null;
+  // A re-read the trader asked for (e.g. after changing timeframes) should also
+  // push to Telegram, like a worker-fired read does.
+  const wantDeliver = body.deliver === true;
   // Opt-in: briefly deploy a cold account to read a live position (a test
   // affordance). Default stays read-only, so it never deploys on its own.
   const wantWake = body.wake === true;
@@ -180,7 +187,9 @@ export async function POST(request: Request) {
   // NULL state is kept (a Postgres .neq would silently drop it).
   let q = sb
     .from('mt_connections')
-    .select('id, account_id, metaapi_account_id, region, state, user_id');
+    .select(
+      'id, account_id, metaapi_account_id, region, state, user_id, guard_analyzed_tf, guard_executed_tf, guard_setup_id',
+    );
   if (!isWorker) q = q.eq('user_id', userId);
   if (connectionId) q = q.eq('id', connectionId);
   else if (accountId) q = q.eq('account_id', accountId);
@@ -193,6 +202,9 @@ export async function POST(request: Request) {
     region: string | null;
     state: string | null;
     user_id: string;
+    guard_analyzed_tf: string | null;
+    guard_executed_tf: string | null;
+    guard_setup_id: string | null;
   }>).find((c) => !dead.has(c.state ?? ''));
   if (!conn) {
     return NextResponse.json(
@@ -203,6 +215,15 @@ export async function POST(request: Request) {
   // In worker mode we now know the owner; the rest scopes everything to them.
   if (isWorker) userId = conn.user_id;
   const region = conn.region ?? DEFAULT_MT_REGION;
+
+  // Final read context: explicit body values (on-demand panel) win, else the
+  // account's saved Foresight settings, so a worker-fired read uses the trader's
+  // real analysis/execution timeframe and setup.
+  const analyzedTf: Tf | null =
+    bodyAnalyzedTf ?? (isTf(conn.guard_analyzed_tf) ? conn.guard_analyzed_tf : null);
+  const executedTf: Tf | null =
+    bodyExecutedTf ?? (isTf(conn.guard_executed_tf) ? conn.guard_executed_tf : null);
+  const setupId = bodySetupId ?? conn.guard_setup_id ?? null;
 
   let undeployAfter = false;
   try {
@@ -624,10 +645,11 @@ export async function POST(request: Request) {
         () => {},
       );
 
-    // Worker mode: push the read to the owner's Telegram the instant it lands.
+    // Push the read to the owner's Telegram: always for a worker-fired read, and
+    // for a user-asked re-read (deliver:true), e.g. after changing timeframes.
     // Delivery lives here (not in the worker) so the bot token and chat id never
     // leave the app. Best-effort; a missing link just means no push.
-    if (isWorker) {
+    if (isWorker || wantDeliver) {
       const { data: prof } = await sb
         .from('profiles')
         .select('telegram_chat_id')

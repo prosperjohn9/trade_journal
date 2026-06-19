@@ -73,7 +73,7 @@ export async function POST(request: Request) {
   // never analyzed this trade; nothing to close.
   const { data: readRow } = await sb
     .from('foresight_reads')
-    .select('id, symbol, side, tldr, warnings')
+    .select('id, symbol, side, tldr, warnings, signals')
     .eq('account_id', c.account_id)
     .eq('position_id', positionId)
     .is('outcome', null)
@@ -86,6 +86,7 @@ export async function POST(request: Request) {
     side: string;
     tldr: string | null;
     warnings: number | null;
+    signals: Array<{ severity: string; title: string }> | null;
   } | null;
   if (!read) {
     return NextResponse.json({ ok: true, skipped: 'no-read' });
@@ -114,10 +115,37 @@ export async function POST(request: Request) {
 
   const outcome =
     Math.abs(pnl) < 0.01 ? 'BREAKEVEN' : pnl > 0 ? 'WIN' : 'LOSS';
+  const won = outcome === 'WIN';
+
+  // Tie the result back to what Foresight flagged at entry. This is the Hindsight
+  // payoff: a win on a flagged trade is a reinforced leak, not a green light; a
+  // loss on a clean read is just variance.
+  const flags = (read.signals ?? [])
+    .filter((s) => s.severity === 'warning' || s.severity === 'caution')
+    .map((s) => s.title);
+  const hadWarning = (read.signals ?? []).some((s) => s.severity === 'warning');
+  const flagList = [...new Set(flags)].slice(0, 4).join('; ');
+
+  let outcomeNote: string;
+  if (outcome === 'BREAKEVEN') {
+    outcomeNote = 'Closed roughly flat.';
+  } else if (flags.length === 0) {
+    outcomeNote = won
+      ? 'Nothing was flagged at entry and it came in. Process and result lined up, this is what a clean trade looks like.'
+      : 'Nothing was flagged at entry, so this is a normal losing trade, not a behavioural leak. Part of the game; do not overcorrect.';
+  } else if (won) {
+    outcomeNote = `It worked out, but Foresight flagged ${flags.length} thing${flags.length === 1 ? '' : 's'} at entry: ${flagList}. Those were real risks, not the reason you won. Winning on a flagged trade is exactly how a leak gets reinforced, so judge this by the process, not the green number.`;
+  } else {
+    outcomeNote = `The risks flagged at entry showed up: ${flagList}. ${hadWarning ? 'The warning there is a leak to fix, not bad luck.' : 'Worth reviewing whether those cautions made the difference.'}`;
+  }
 
   await sb
     .from('foresight_reads')
-    .update({ outcome, closed_pnl: Math.round(pnl * 100) / 100 })
+    .update({
+      outcome,
+      closed_pnl: Math.round(pnl * 100) / 100,
+      outcome_note: outcomeNote,
+    })
     .eq('id', read.id);
 
   // Push the result, tied back to what Foresight said at entry.
@@ -143,8 +171,8 @@ export async function POST(request: Request) {
           ? 'closed at a loss'
           : 'closed flat';
     const head = `${read.symbol} ${read.side} ${verb}: ${signed(pnl)} ${currency}`;
-    const tie = read.tldr ? `\n\nForesight read at entry: ${read.tldr}` : '';
-    await sendTelegram(chatId, head + tie);
+    const entry = read.tldr ? `\n\nAt entry: ${read.tldr}` : '';
+    await sendTelegram(chatId, `${head}${entry}\n\n${outcomeNote}`);
   }
 
   return NextResponse.json({ ok: true, outcome, pnl });

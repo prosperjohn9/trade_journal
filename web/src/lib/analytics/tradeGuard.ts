@@ -574,9 +574,10 @@ export function flagHeadline(signals: GuardSignal[]): string {
     (s) => s.severity === 'warning' || s.severity === 'caution',
   );
   if (!flags.length) return 'Clean read, nothing flags on this one.';
-  // Distinct titles only, so a repeated headline never shows twice.
+  // Distinct titles only, so a repeated headline never shows twice. List them
+  // all (up to a sane ceiling) instead of a vague "+N more".
   const unique = [...new Set(flags.map((s) => s.title))];
-  const titles = unique.slice(0, 3);
+  const titles = unique.slice(0, 6);
   const more = unique.length - titles.length;
-  return `${titles.join(', ')}${more > 0 ? `, +${more} more` : ''}. ${unique.length} flag${unique.length === 1 ? '' : 's'} to weigh.`;
+  return `${titles.join(', ')}${more > 0 ? `, and ${more} more` : ''}. ${unique.length} flag${unique.length === 1 ? '' : 's'} to weigh.`;
 }
