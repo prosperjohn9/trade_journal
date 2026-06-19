@@ -1,21 +1,30 @@
-// Per-account add-on pricing and reconciliation. v1: the extra-MetaTrader-sync
-// add-on ($6/account/month, x10 for yearly). One-period purchases; the cron
-// expires due ones and keeps subscriptions.extra_synced_accounts in sync with
-// the user's active add-ons.
+// Per-account add-on pricing and reconciliation.
+//   - mt_sync   ($6/account/month):  extra MetaTrader auto-sync accounts.
+//   - guardrail ($18/account/month): real-time Foresight seats, i.e. how many
+//     MetaTrader accounts the user may turn Foresight on for.
+// One-period purchases (x10 for yearly). The cron expires due ones and keeps the
+// per-user counters on subscriptions (extra_synced_accounts, guardrail_seats) in
+// sync with the user's active add-ons.
 
 import type { createServiceClient } from '@/src/lib/supabase/admin';
-import { EXTRA_SYNC_PRICE_MONTHLY } from './plans';
+import { EXTRA_SYNC_PRICE_MONTHLY, GUARDRAIL_PRICE_MONTHLY } from './plans';
 
 type Admin = ReturnType<typeof createServiceClient>;
 
-export type AddonKind = 'mt_sync';
+export type AddonKind = 'mt_sync' | 'guardrail';
 export type AddonCycle = 'monthly' | 'yearly';
+
+export function isAddonKind(v: unknown): v is AddonKind {
+  return v === 'mt_sync' || v === 'guardrail';
+}
 
 /** Monthly unit price for an add-on kind (USD). */
 export function addonUnitPrice(kind: AddonKind): number {
   switch (kind) {
     case 'mt_sync':
       return EXTRA_SYNC_PRICE_MONTHLY;
+    case 'guardrail':
+      return GUARDRAIL_PRICE_MONTHLY;
   }
 }
 
@@ -39,17 +48,18 @@ export function addonPeriodEnd(cycle: AddonCycle, from: Date = new Date()): Date
 
 type AddonRow = { quantity: number; current_period_end: string | null };
 
-/** Sum of a user's active, unexpired mt_sync add-on quantities. */
-export async function activeExtraSync(
+/** Sum of a user's active, unexpired add-on quantities for one kind. */
+export async function activeAddonQuantity(
   admin: Admin,
   userId: string,
+  kind: AddonKind,
   now: number = Date.now(),
 ): Promise<number> {
   const { data } = await admin
     .from('subscription_addons')
     .select('quantity, current_period_end')
     .eq('user_id', userId)
-    .eq('kind', 'mt_sync')
+    .eq('kind', kind)
     .eq('status', 'active');
   return ((data ?? []) as AddonRow[]).reduce((sum, a) => {
     const live =
@@ -59,16 +69,24 @@ export async function activeExtraSync(
   }, 0);
 }
 
-/** Recompute and persist a single user's extra_synced_accounts from their
- *  active add-ons. Called right after an add-on is activated. */
-export async function recomputeUserExtraSync(
+/** Recompute and persist a user's add-on-derived counters (extra synced
+ *  accounts and guardrail seats) from their active add-ons. Called right after
+ *  an add-on is activated and whenever one expires. */
+export async function recomputeUserAddons(
   admin: Admin,
   userId: string,
 ): Promise<void> {
-  const extra = await activeExtraSync(admin, userId);
+  const [extra, seats] = await Promise.all([
+    activeAddonQuantity(admin, userId, 'mt_sync'),
+    activeAddonQuantity(admin, userId, 'guardrail'),
+  ]);
   await admin
     .from('subscriptions')
-    .update({ extra_synced_accounts: extra, updated_at: new Date().toISOString() })
+    .update({
+      extra_synced_accounts: extra,
+      guardrail_seats: seats,
+      updated_at: new Date().toISOString(),
+    })
     .eq('user_id', userId);
 }
 
@@ -103,13 +121,13 @@ export async function activateAddonByTxRef(
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
-    await recomputeUserExtraSync(admin, row.user_id);
+    await recomputeUserAddons(admin, row.user_id);
   }
   return true;
 }
 
 /** Daily housekeeping: expire one-period add-ons whose term has ended, then
- *  re-sync extra_synced_accounts for every affected user. Safe to run often. */
+ *  re-sync the add-on counters for every affected user. Safe to run often. */
 export async function reconcileAddons(admin: Admin): Promise<void> {
   const nowIso = new Date().toISOString();
 
@@ -122,11 +140,11 @@ export async function reconcileAddons(admin: Admin): Promise<void> {
     .lt('current_period_end', nowIso)
     .select('user_id');
 
-  // Recompute extra slots for any user who just had an add-on expire.
+  // Recompute counters for any user who just had an add-on expire.
   const userIds = [
     ...new Set(((expired ?? []) as { user_id: string }[]).map((r) => r.user_id)),
   ];
   for (const userId of userIds) {
-    await recomputeUserExtraSync(admin, userId);
+    await recomputeUserAddons(admin, userId);
   }
 }

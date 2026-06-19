@@ -23,6 +23,7 @@ export type SubscriptionRow = {
   status: SubscriptionStatus;
   billing_cycle: 'monthly' | 'yearly';
   extra_synced_accounts: number;
+  guardrail_seats: number;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
 };
@@ -32,6 +33,9 @@ export type EntitlementLimits = {
   syncIntervalHours: number;
   manualRefreshesPerMonth: number;
   aiActionsPerMonth: number;
+  /** How many MetaTrader accounts the user may turn real-time Foresight on for
+   *  (paid per-account seats). cTrader Foresight is free and not counted here. */
+  guardrailSeats: number;
 };
 
 export type EntitlementFeatures = {
@@ -56,6 +60,7 @@ const LOCKED_LIMITS: EntitlementLimits = {
   syncIntervalHours: 0,
   manualRefreshesPerMonth: 0,
   aiActionsPerMonth: 0,
+  guardrailSeats: 0,
 };
 
 const LOCKED_FEATURES: EntitlementFeatures = {
@@ -121,6 +126,7 @@ export function resolveEntitlements(
       syncIntervalHours: plan.syncIntervalHours,
       manualRefreshesPerMonth: plan.manualRefreshesPerMonth,
       aiActionsPerMonth: plan.aiActionsPerMonth,
+      guardrailSeats: Math.max(0, sub.guardrail_seats || 0),
     },
     features: { ...ALL_FEATURES },
   };
@@ -141,6 +147,7 @@ export function adminEntitlements(): Entitlements {
       syncIntervalHours: PLANS.master.syncIntervalHours,
       manualRefreshesPerMonth: 99_999,
       aiActionsPerMonth: 99_999,
+      guardrailSeats: 999,
     },
     features: { ...ALL_FEATURES },
   };
@@ -148,4 +155,4 @@ export function adminEntitlements(): Entitlements {
 
 /** Columns to select for entitlement resolution. */
 export const SUBSCRIPTION_SELECT =
-  'plan, status, billing_cycle, extra_synced_accounts, current_period_end, cancel_at_period_end';
+  'plan, status, billing_cycle, extra_synced_accounts, guardrail_seats, current_period_end, cancel_at_period_end';

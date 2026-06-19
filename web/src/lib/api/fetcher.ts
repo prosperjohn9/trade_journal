@@ -20,6 +20,7 @@ const UPGRADE_CODES = new Set([
   'limit_reached', // synced-account count at plan limit
   'quota_reached', // AI monthly actions spent
   'manual_refresh_limit', // manual broker refreshes spent
+  'guardrail_seat_required', // no free Foresight seat for this account
 ]);
 
 /** True when the error is a plan gate the user can fix by upgrading. */

@@ -186,13 +186,12 @@ export function MetaTraderConnect({
   async function toggleGuard(on: boolean) {
     if (!conn) return;
     setMsg(null);
+    setUpgradeMsg(null);
     setSyncing(true);
     try {
-      const { error } = await supabase
-        .from('mt_connections')
-        .update({ guard_enabled: on })
-        .eq('id', conn.id);
-      if (error) throw error;
+      // Enabling is gated server-side on paid Foresight seats; the route returns
+      // a seat-required upgrade error when the user has none free.
+      await apiPost('/api/guard/toggle', { connectionId: conn.id, on });
       await refresh();
       setMsg(
         on
@@ -200,7 +199,8 @@ export function MetaTraderConnect({
           : 'Real-time Foresight turned off for this account.',
       );
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Could not update Foresight.');
+      if (isUpgradeError(e)) setUpgradeMsg(e.message);
+      else setMsg(e instanceof Error ? e.message : 'Could not update Foresight.');
     } finally {
       setSyncing(false);
     }

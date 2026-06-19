@@ -6,6 +6,7 @@ import { createCryptoInvoice } from '@/src/lib/billing/nowpayments';
 import {
   addonAmount,
   addonUnitPrice,
+  isAddonKind,
   type AddonCycle,
   type AddonKind,
 } from '@/src/lib/billing/addons';
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
     cycle?: unknown;
     method?: unknown;
   };
-  const kind = body.kind === 'mt_sync' ? ('mt_sync' as AddonKind) : null;
+  const kind: AddonKind | null = isAddonKind(body.kind) ? body.kind : null;
   const quantity = Number(body.quantity);
   const cycle: AddonCycle = body.cycle === 'yearly' ? 'yearly' : 'monthly';
   const method = body.method === 'crypto' ? 'crypto' : 'card';
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
   }
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
     return NextResponse.json(
-      { error: 'Choose between 1 and 20 accounts.' },
+      { error: 'Choose a quantity between 1 and 20.' },
       { status: 400 },
     );
   }
@@ -78,7 +79,12 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   }
-  if (ent.limits.syncedAccounts + quantity > MAX_SYNCED_ACCOUNTS_HARD_CAP) {
+  // The synced-account ceiling only bounds extra-sync purchases; guardrail
+  // seats are not synced accounts, so that ceiling does not apply to them.
+  if (
+    kind === 'mt_sync' &&
+    ent.limits.syncedAccounts + quantity > MAX_SYNCED_ACCOUNTS_HARD_CAP
+  ) {
     return NextResponse.json(
       { error: `That exceeds the ${MAX_SYNCED_ACCOUNTS_HARD_CAP}-account ceiling.` },
       { status: 400 },
@@ -104,7 +110,10 @@ export async function POST(request: Request) {
       tx_ref: txRef,
     });
 
-    const label = `${quantity} extra MetaTrader account${quantity === 1 ? '' : 's'}`;
+    const label =
+      kind === 'guardrail'
+        ? `${quantity} Foresight seat${quantity === 1 ? '' : 's'}`
+        : `${quantity} extra MetaTrader account${quantity === 1 ? '' : 's'}`;
 
     if (method === 'crypto') {
       const { invoiceUrl } = await createCryptoInvoice({
