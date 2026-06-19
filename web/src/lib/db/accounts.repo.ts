@@ -116,6 +116,7 @@ function hydrateAccountRow(row: Record<string, unknown>): AccountRow {
     base_currency:
       typeof row.base_currency === 'string' ? row.base_currency : null,
     is_default: Boolean(row.is_default),
+    archived: Boolean(row.archived),
     created_at: String(row.created_at ?? ''),
   };
 }
