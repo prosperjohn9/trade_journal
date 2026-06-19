@@ -634,6 +634,7 @@ export async function POST(request: Request) {
         stop_loss: pos.stopLoss,
         take_profit: pos.takeProfit,
         volume: pos.volume,
+        risk_money: riskMoney,
         warnings: signals.filter((s) => s.severity === 'warning').length,
         cautions: signals.filter((s) => s.severity === 'caution').length,
         tldr,

@@ -258,6 +258,74 @@ export async function logRefresh(
 }
 
 /**
+ * Foresight-enhanced sync. Guarded trades had their stop, target, and dollar
+ * risk captured live at entry in foresight_reads, but the broker's deal history
+ * rarely carries them. Backfill any synced trade on this account that is still
+ * missing a stop, target, or risk from its matching Foresight read (matched by
+ * position id). Only fills nulls, so it never overwrites what the user typed.
+ * Best-effort: never throws, so it can never break a sync.
+ */
+async function backfillForesightLevels(
+  sb: SupabaseClient,
+  accountId: string,
+): Promise<void> {
+  try {
+    const { data: reads } = await sb
+      .from('foresight_reads')
+      .select('position_id, stop_loss, take_profit, risk_money, created_at')
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: false });
+    const readRows = (reads ?? []) as Array<{
+      position_id: string;
+      stop_loss: number | null;
+      take_profit: number | null;
+      risk_money: number | null;
+    }>;
+    if (!readRows.length) return;
+
+    // Latest read per position wins (rows are newest-first), so a moved stop is
+    // reflected.
+    const byPosition = new Map<
+      string,
+      { stop_loss: number | null; take_profit: number | null; risk_money: number | null }
+    >();
+    for (const r of readRows) {
+      if (!byPosition.has(r.position_id)) byPosition.set(r.position_id, r);
+    }
+
+    const { data: trades } = await sb
+      .from('trades')
+      .select('id, external_id, stop_loss, take_profit, risk_amount')
+      .eq('account_id', accountId)
+      .like('external_id', 'metaapi:%')
+      .or('stop_loss.is.null,take_profit.is.null,risk_amount.is.null');
+    const tradeRows = (trades ?? []) as Array<{
+      id: string;
+      external_id: string;
+      stop_loss: number | null;
+      take_profit: number | null;
+      risk_amount: number | null;
+    }>;
+
+    for (const t of tradeRows) {
+      const read = byPosition.get(t.external_id.replace(/^metaapi:/, ''));
+      if (!read) continue;
+      const patch: Record<string, number> = {};
+      if (t.stop_loss == null && read.stop_loss != null)
+        patch.stop_loss = read.stop_loss;
+      if (t.take_profit == null && read.take_profit != null)
+        patch.take_profit = read.take_profit;
+      if (t.risk_amount == null && read.risk_money != null)
+        patch.risk_amount = Math.round(read.risk_money * 100) / 100;
+      if (Object.keys(patch).length === 0) continue;
+      await sb.from('trades').update(patch).eq('id', t.id);
+    }
+  } catch {
+    // best-effort; never break a sync over the backfill
+  }
+}
+
+/**
  * Sync one MetaTrader connection with deploy-on-demand: make sure the account is
  * deployed and connected, pull its full raw deal history (free MetaApi API), pair
  * the deals into trades in-house, upsert idempotently via external_id, then
@@ -387,6 +455,10 @@ export async function syncConnection(
         imported = toInsert.length;
       }
     }
+
+    // Fill any synced trade still missing a stop, target, or risk from its live
+    // Foresight read (guarded accounts only; no-op otherwise).
+    await backfillForesightLevels(sb, c.account_id);
 
     await sb
       .from('mt_connections')
