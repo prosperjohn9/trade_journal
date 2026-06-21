@@ -16,7 +16,9 @@ const PT = {
   HEARTBEAT: 51,
   APP_AUTH_REQ: 2100,
   ACCOUNT_AUTH_REQ: 2102,
+  ASSET_LIST_REQ: 2112,
   SYMBOLS_LIST_REQ: 2114,
+  TRADER_REQ: 2121,
   DEAL_LIST_REQ: 2133,
   ERROR_RES: 2142,
   GET_ACCOUNTS_REQ: 2149,
@@ -232,6 +234,39 @@ export class CtraderSession {
       ctidTraderAccountId,
       accessToken,
     });
+  }
+
+  /** Trader account: current balance + deposit currency (asset id) + money exponent. */
+  async getTrader(
+    ctidTraderAccountId: number,
+  ): Promise<{ balance: number; depositAssetId: number; moneyDigits: number }> {
+    const bytes = await this.request('ProtoOATraderReq', PT.TRADER_REQ, {
+      ctidTraderAccountId,
+    });
+    const Res = root.lookupType('ProtoOATraderRes');
+    const res = Res.decode(bytes) as unknown as {
+      trader?: { balance: unknown; depositAssetId: unknown; moneyDigits?: unknown };
+    };
+    const t = res.trader ?? { balance: 0, depositAssetId: 0 };
+    return {
+      balance: toNum(t.balance),
+      depositAssetId: toNum(t.depositAssetId),
+      moneyDigits: toNum(t.moneyDigits),
+    };
+  }
+
+  /** Asset id -> currency code (e.g. EUR, USD). */
+  async getAssets(ctidTraderAccountId: number): Promise<Map<number, string>> {
+    const bytes = await this.request('ProtoOAAssetListReq', PT.ASSET_LIST_REQ, {
+      ctidTraderAccountId,
+    });
+    const Res = root.lookupType('ProtoOAAssetListRes');
+    const res = Res.decode(bytes) as unknown as {
+      asset?: Array<{ assetId: unknown; name?: string }>;
+    };
+    const map = new Map<number, string>();
+    for (const a of res.asset ?? []) map.set(toNum(a.assetId), a.name ?? '');
+    return map;
   }
 
   async getSymbols(ctidTraderAccountId: number): Promise<Map<number, string>> {

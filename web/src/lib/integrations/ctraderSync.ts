@@ -17,11 +17,12 @@ type Admin = ReturnType<typeof createServiceClient>;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-/** Pair cTrader deals (grouped by position) into closed-trade rows. */
+/** Pair cTrader deals (grouped by position) into closed-trade rows.
+ *  account_id is left blank; the caller assigns it once the account exists. */
 export function pairCtraderDeals(
   deals: CtraderDeal[],
   symbols: Map<number, string>,
-  ctx: { userId: string; accountId: string },
+  userId: string,
 ): ImportedTradeRow[] {
   const byPosition = new Map<number, CtraderDeal[]>();
   for (const d of deals) {
@@ -75,8 +76,8 @@ export function pairCtraderDeals(
     const pnlPercent = prevBal > 0 ? round2((net / prevBal) * 100) : 0;
 
     rows.push({
-      user_id: ctx.userId,
-      account_id: ctx.accountId,
+      user_id: userId,
+      account_id: '',
       external_id: `ctrader:${positionId}`,
       import_source: 'ctrader',
       instrument:
@@ -108,6 +109,7 @@ async function ensureAccount(
   userId: string,
   conn: { id: string; account_id: string | null },
   acc: CtraderAccount,
+  meta: { currency: string; startingBalance: number },
 ): Promise<string> {
   if (conn.account_id) return conn.account_id;
   const name = `${acc.brokerTitleShort || 'cTrader'} ${acc.traderLogin}`
@@ -119,8 +121,8 @@ async function ensureAccount(
       user_id: userId,
       name,
       account_type: acc.isLive ? 'Live' : 'Demo',
-      base_currency: 'USD',
-      starting_balance: 0,
+      base_currency: meta.currency,
+      starting_balance: meta.startingBalance,
     })
     .select('id')
     .single();
@@ -236,12 +238,29 @@ export async function syncCtraderForUser(
       if (connErr) throw connErr;
       const conn = connRow as { id: string; account_id: string | null };
 
-      const accountId = await ensureAccount(admin, userId, conn, acc);
       const s = await sessionFor(env);
       await s.accountAuth(acc.ctidTraderAccountId, accessToken);
       const symbols = await s.getSymbols(acc.ctidTraderAccountId);
       const deals = await s.getDeals(acc.ctidTraderAccountId, 0, Date.now(), 1000);
-      const rows = pairCtraderDeals(deals, symbols, { userId, accountId });
+      const rows = pairCtraderDeals(deals, symbols, userId);
+
+      // Detect deposit currency + initial balance only when creating the account
+      // (never clobber a user's own edits on an already-linked account). Starting
+      // balance is the current balance backed out by realized P&L.
+      let meta = { currency: 'USD', startingBalance: 0 };
+      if (!conn.account_id) {
+        const sumNet = rows.reduce((sum, r) => sum + r.net_pnl, 0);
+        const trader = await s.getTrader(acc.ctidTraderAccountId);
+        const assets = await s.getAssets(acc.ctidTraderAccountId);
+        const balance = trader.balance / Math.pow(10, trader.moneyDigits || 2);
+        meta = {
+          currency: assets.get(trader.depositAssetId) || 'USD',
+          startingBalance: round2(balance - sumNet),
+        };
+      }
+
+      const accountId = await ensureAccount(admin, userId, conn, acc, meta);
+      for (const r of rows) r.account_id = accountId;
       const imported = await upsertTrades(admin, accountId, rows);
 
       await admin

@@ -84,9 +84,10 @@ export function ConnectCtraderButton() {
       <button onClick={() => void sync()} disabled={busy} className={btn}>
         {busy ? 'Working…' : 'Sync cTrader'}
       </button>
-      {msg ? (
-        <span className='w-full text-xs text-[var(--text-muted)]'>{msg}</span>
-      ) : null}
+      <span className='w-full text-xs text-[var(--text-muted)]'>
+        {msg ??
+          'cTrader imports your accounts, balance, and trade history automatically (read-only). Edit an account if anything looks off.'}
+      </span>
     </>
   );
 }
