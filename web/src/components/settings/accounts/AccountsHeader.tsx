@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import type { useAccounts } from '@/src/hooks/useAccounts';
 import { ConnectBrokerButton } from './ConnectBrokerButton';
+import { ConnectCtraderButton } from './ConnectCtraderButton';
 
 type AccountsState = Pick<
   ReturnType<typeof useAccounts>,
@@ -31,6 +32,8 @@ export function AccountsHeader({ state: s }: { state: AccountsState }) {
         </button>
 
         <ConnectBrokerButton onCreated={s.reload} />
+
+        <ConnectCtraderButton />
 
         <button
           className='rounded-lg border border-transparent bg-[var(--accent-cta)] px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110'
