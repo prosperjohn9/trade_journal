@@ -1,27 +1,54 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { apiFetch } from '@/src/lib/api/fetcher';
+import { useCallback, useEffect, useState } from 'react';
+import { apiFetch, apiPost } from '@/src/lib/api/fetcher';
 
-// Starts the cTrader OAuth flow. cTrader sync (and Foresight) are free, so this
-// is a one-tap connect: fetch the Spotware consent URL and redirect. After the
-// user grants access, the callback bounces back with ?ctrader=connected|error,
-// which we surface here.
+// cTrader connect + sync. Connect runs the OAuth flow; Sync pulls deal history
+// over the Open API socket into trades. After authorizing, the callback bounces
+// back with ?ctrader=connected, which we use to auto-sync once.
+
+type SyncResult = {
+  connected: boolean;
+  accounts?: Array<{ login: number; imported: number; total: number }>;
+};
+
+const btn =
+  'rounded-lg border border-[var(--border-default)] bg-transparent px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] disabled:opacity-60';
 
 export function ConnectCtraderButton() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+
+  const sync = useCallback(async (announce = true) => {
+    setBusy(true);
+    if (announce) setMsg('Syncing your cTrader trades...');
+    try {
+      const r = await apiPost<SyncResult>(
+        '/api/integrations/ctrader/sync',
+        {},
+      );
+      if (!r.connected) {
+        setMsg('Connect cTrader first.');
+        setBusy(false);
+        return;
+      }
+      const imported = (r.accounts ?? []).reduce((s, a) => s + a.imported, 0);
+      const n = (r.accounts ?? []).length;
+      setMsg(
+        `Synced ${imported} trade${imported === 1 ? '' : 's'} across ${n} cTrader account${n === 1 ? '' : 's'}.`,
+      );
+      window.setTimeout(() => window.location.reload(), 1200);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'cTrader sync failed.');
+      setBusy(false);
+    }
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const status = params.get('ctrader');
     if (!status) return;
     const id = window.requestAnimationFrame(() => {
-      setMsg(
-        status === 'connected'
-          ? 'cTrader connected. Your accounts will appear here shortly.'
-          : 'cTrader connection failed. Please try connecting again.',
-      );
       params.delete('ctrader');
       const qs = params.toString();
       window.history.replaceState(
@@ -29,9 +56,11 @@ export function ConnectCtraderButton() {
         '',
         window.location.pathname + (qs ? `?${qs}` : ''),
       );
+      if (status === 'connected') void sync();
+      else setMsg('cTrader connection failed. Please try connecting again.');
     });
     return () => window.cancelAnimationFrame(id);
-  }, []);
+  }, [sync]);
 
   async function connect() {
     setBusy(true);
@@ -49,11 +78,11 @@ export function ConnectCtraderButton() {
 
   return (
     <>
-      <button
-        onClick={() => void connect()}
-        disabled={busy}
-        className='rounded-lg border border-[var(--border-default)] bg-transparent px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] disabled:opacity-60'>
-        {busy ? 'Connecting…' : 'Connect cTrader'}
+      <button onClick={() => void connect()} disabled={busy} className={btn}>
+        Connect cTrader
+      </button>
+      <button onClick={() => void sync()} disabled={busy} className={btn}>
+        {busy ? 'Working…' : 'Sync cTrader'}
       </button>
       {msg ? (
         <span className='w-full text-xs text-[var(--text-muted)]'>{msg}</span>
