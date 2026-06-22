@@ -19,7 +19,6 @@ import {
   computePropStatus,
   type PropRules,
 } from '@/src/lib/analytics/propFirm';
-import { isOverForesightCap } from '@/src/lib/analytics/foresightCap';
 import {
   fetchHighImpactEvents,
   currenciesForPair,
@@ -216,12 +215,9 @@ export async function POST(request: Request) {
   // In worker mode we now know the owner; the rest scopes everything to them.
   if (isWorker) userId = conn.user_id;
   const region = conn.region ?? DEFAULT_MT_REGION;
-
-  // Worker-fired reads are bounded by the monthly Foresight-read cap (the always-
-  // on abuse ceiling); user-asked reads are bounded by the AI quota gated above.
-  if (isWorker && (await isOverForesightCap(sb, userId))) {
-    return NextResponse.json({ ok: true, skipped: 'cap_reached' });
-  }
+  // NOTE: MetaTrader Foresight is a paid per-account seat ($18/account), so it is
+  // NEVER capped. The monthly read cap is the abuse ceiling on the FREE cTrader
+  // lane only, enforced in the cTrader analyze route.
 
   // Final read context: explicit body values (on-demand panel) win, else the
   // account's saved Foresight settings, so a worker-fired read uses the trader's

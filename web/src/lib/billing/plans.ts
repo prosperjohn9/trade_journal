@@ -23,7 +23,7 @@ export type PlanDef = {
   syncIntervalHours: number; // auto-sync cadence (24 = once daily)
   manualRefreshesPerMonth: number; // user-triggered "refresh now" allowance
   aiActionsPerMonth: number; // insight refreshes + trade reviews + chat turns
-  foresightReadsPerMonth: number; // always-on Foresight reads (worker-fired)
+  foresightReadsPerMonth: number; // free cTrader Foresight reads/mo (MT is paid, uncapped)
   blurb: string;
 };
 

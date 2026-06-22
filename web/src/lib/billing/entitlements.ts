@@ -36,8 +36,8 @@ export type EntitlementLimits = {
   /** How many MetaTrader accounts the user may turn real-time Foresight on for
    *  (paid per-account seats). cTrader Foresight is free and not counted here. */
   guardrailSeats: number;
-  /** Monthly cap on always-on Foresight reads (worker-fired, both brokers). The
-   *  abuse ceiling on the free cTrader co-pilot; not a target. */
+  /** Monthly abuse ceiling on FREE cTrader Foresight reads only. MetaTrader
+   *  Foresight is a paid per-account seat and is never capped. Not a target. */
   foresightReadsPerMonth: number;
 };
 

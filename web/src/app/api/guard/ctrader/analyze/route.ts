@@ -11,7 +11,7 @@ import {
 } from '@/src/lib/analytics/tradeGuard';
 import { buildBehavioralGuardContext } from '@/src/lib/analytics/guardBehavioral';
 import { isTf, tfLabel } from '@/src/lib/analytics/timeframes';
-import { isOverForesightCap } from '@/src/lib/analytics/foresightCap';
+import { isOverCtraderReadCap } from '@/src/lib/analytics/foresightCap';
 import { sendTelegram } from '@/src/lib/integrations/telegram';
 
 export const runtime = 'nodejs';
@@ -128,8 +128,9 @@ export async function POST(request: Request) {
   }
   const userId = conn.user_id;
 
-  // Monthly Foresight-read cap (abuse ceiling). Skip the AI read when reached.
-  if (await isOverForesightCap(sb, userId)) {
+  // Free-lane abuse ceiling: skip the AI read when this month's cTrader read
+  // allowance is used up. (MetaTrader Foresight is paid and never capped.)
+  if (await isOverCtraderReadCap(sb, userId)) {
     return NextResponse.json({ ok: true, skipped: 'cap_reached' });
   }
 
