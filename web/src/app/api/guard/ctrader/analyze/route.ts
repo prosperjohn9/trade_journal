@@ -10,6 +10,7 @@ import {
   type GuardTimeframe,
 } from '@/src/lib/analytics/tradeGuard';
 import { buildBehavioralGuardContext } from '@/src/lib/analytics/guardBehavioral';
+import { isTf, tfLabel } from '@/src/lib/analytics/timeframes';
 import { sendTelegram } from '@/src/lib/integrations/telegram';
 
 export const runtime = 'nodejs';
@@ -104,10 +105,12 @@ export async function POST(request: Request) {
 
   const sb = createServiceClient();
 
-  // Resolve the cTrader connection -> owner + journal account.
+  // Resolve the cTrader connection -> owner + journal account + read settings.
   const { data: connRow } = await sb
     .from('ctrader_connections')
-    .select('id, account_id, user_id, state')
+    .select(
+      'id, account_id, user_id, state, guard_analyzed_tf, guard_executed_tf, guard_setup_id',
+    )
     .eq('id', connectionId)
     .maybeSingle();
   const conn = connRow as {
@@ -115,11 +118,16 @@ export async function POST(request: Request) {
     account_id: string;
     user_id: string;
     state: string | null;
+    guard_analyzed_tf: string | null;
+    guard_executed_tf: string | null;
+    guard_setup_id: string | null;
   } | null;
   if (!conn || conn.state === 'breached') {
     return NextResponse.json({ error: 'Unknown cTrader account.' }, { status: 404 });
   }
   const userId = conn.user_id;
+  const analyzedTf = isTf(conn.guard_analyzed_tf) ? conn.guard_analyzed_tf : null;
+  const executedTf = isTf(conn.guard_executed_tf) ? conn.guard_executed_tf : null;
 
   try {
     const behavioral = await buildBehavioralGuardContext(sb, {
@@ -128,6 +136,29 @@ export async function POST(request: Request) {
       symbol,
       volumeLots: volume,
     });
+
+    // The tagged setup's checklist, for criteria context (same as MetaTrader).
+    let setup: GuardContext['setup'] = null;
+    if (conn.guard_setup_id) {
+      const { data: tpl } = await sb
+        .from('setup_templates')
+        .select('name')
+        .eq('id', conn.guard_setup_id)
+        .maybeSingle();
+      if (tpl) {
+        const { data: items } = await sb
+          .from('setup_template_items')
+          .select('label, is_active')
+          .eq('template_id', conn.guard_setup_id)
+          .order('sort_order', { ascending: true });
+        setup = {
+          name: (tpl as { name: string }).name,
+          criteria: ((items ?? []) as Array<{ label: string; is_active: boolean }>)
+            .filter((i) => i.is_active !== false)
+            .map((i) => i.label),
+        };
+      }
+    }
 
     const ctx: GuardContext = {
       symbol,
@@ -147,9 +178,9 @@ export async function POST(request: Request) {
       news: behavioral.news,
       minutesSinceLastLoss: behavioral.minutesSinceLastLoss,
       medianVolumeLots: behavioral.medianVolumeLots,
-      analyzedTf: typeof m.analyzedTf === 'string' ? m.analyzedTf : null,
-      executedTf: typeof m.executedTf === 'string' ? m.executedTf : null,
-      setup: null,
+      analyzedTf: analyzedTf ? tfLabel(analyzedTf) : null,
+      executedTf: executedTf ? tfLabel(executedTf) : null,
+      setup,
       exposure,
       committedRuleHits: behavioral.committedRuleHits,
       propBuffer: behavioral.propBuffer,

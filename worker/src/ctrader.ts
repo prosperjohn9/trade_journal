@@ -50,6 +50,8 @@ export type CtraderGuardAccount = {
   environment: CtraderEnv;
   userId: string;
   accessToken: string;
+  // The trader's real timeframes (label + cTrader period); defaults H1/H4.
+  timeframes?: Array<{ label: string; period: number }>;
 };
 
 export type CtraderPosition = {
@@ -522,13 +524,24 @@ export class CtraderHub {
     const s = this.sock(a.environment);
     await s.authAccount(a.ctidTraderAccountId, a.accessToken);
 
+    // Read the trader's real timeframes (analysis + higher context); default to
+    // the day-trader 1H + 4H when none are configured.
+    const tfs =
+      a.timeframes && a.timeframes.length
+        ? a.timeframes
+        : [
+            { label: '1H', period: PERIOD.H1 },
+            { label: '4H', period: PERIOD.H4 },
+          ];
     const timeframes: MarketContext['timeframes'] = [];
-    const [h1, h4] = await Promise.all([
-      s.trendbars(a.ctidTraderAccountId, pos.symbolId, PERIOD.H1, 120).catch(() => []),
-      s.trendbars(a.ctidTraderAccountId, pos.symbolId, PERIOD.H4, 120).catch(() => []),
-    ]);
-    if (h1.length >= 6) timeframes.push({ tf: '1H', candles: h1 });
-    if (h4.length >= 6) timeframes.push({ tf: '4H', candles: h4 });
+    const series = await Promise.all(
+      tfs.map((t) =>
+        s.trendbars(a.ctidTraderAccountId, pos.symbolId, t.period, 120).catch(() => []),
+      ),
+    );
+    tfs.forEach((t, i) => {
+      if (series[i].length >= 6) timeframes.push({ tf: t.label, candles: series[i] });
+    });
 
     let pipSize: number | null = null;
     const spec = await this.getSpec(a, pos.symbolId).catch(() => null);

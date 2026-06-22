@@ -50,3 +50,24 @@ export function analysisTimeframes(analyzed?: Tf | null): AnalysisTf[] {
 export function tfLabel(t: Tf): string {
   return LABEL[t];
 }
+
+// cTrader Open API ProtoOATrendbarPeriod ids per timeframe.
+const CTRADER_PERIOD: Record<Tf, number> = {
+  '1m': 1, '5m': 5, '15m': 7, '30m': 8, '1h': 9, '4h': 10, '1d': 12,
+};
+
+export type CtraderTf = { label: string; period: number };
+
+/** Same chain as analysisTimeframes, but as cTrader trendbar periods, so the
+ *  worker fetches the trader's real timeframes over the Open API socket. */
+export function ctraderTimeframes(analyzed?: Tf | null): CtraderTf[] {
+  const chain: Tf[] = analyzed ? [analyzed, ...HIGHER[analyzed]] : ['1h', '4h'];
+  const seen = new Set<Tf>();
+  const out: CtraderTf[] = [];
+  for (const t of chain) {
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push({ label: LABEL[t], period: CTRADER_PERIOD[t] });
+  }
+  return out;
+}

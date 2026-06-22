@@ -7,6 +7,7 @@ import {
   type SubscriptionRow,
 } from '@/src/lib/billing/entitlements';
 import { adminUserIdSet } from '@/src/lib/auth/admin';
+import { ctraderTimeframes, isTf } from '@/src/lib/analytics/timeframes';
 
 export const runtime = 'nodejs';
 
@@ -30,6 +31,7 @@ type Conn = {
   state: string | null;
   user_id: string;
   created_at: string | null;
+  guard_analyzed_tf: string | null;
 };
 
 export async function GET(request: Request) {
@@ -42,7 +44,7 @@ export async function GET(request: Request) {
   const { data, error } = await sb
     .from('ctrader_connections')
     .select(
-      'id, account_id, ctid_trader_account_id, environment, state, user_id, created_at',
+      'id, account_id, ctid_trader_account_id, environment, state, user_id, created_at, guard_analyzed_tf',
     )
     .eq('guard_enabled', true)
     .order('created_at', { ascending: true });
@@ -115,6 +117,11 @@ export async function GET(request: Request) {
       environment: c.environment === 'live' ? 'live' : 'demo',
       userId: c.user_id,
       accessToken: tokenByUser.get(c.user_id) as string,
+      // The trader's real timeframes (analysis + higher context), resolved to
+      // cTrader trendbar periods, so the worker reads what they read.
+      timeframes: ctraderTimeframes(
+        isTf(c.guard_analyzed_tf) ? c.guard_analyzed_tf : null,
+      ),
     }));
 
   return NextResponse.json({ accounts });

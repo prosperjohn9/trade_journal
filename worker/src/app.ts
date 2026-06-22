@@ -71,6 +71,8 @@ export type CtraderGuardAccountDto = {
   environment: 'live' | 'demo';
   userId: string;
   accessToken: string;
+  // The trader's real timeframes, resolved to cTrader trendbar periods.
+  timeframes?: Array<{ label: string; period: number }>;
 };
 
 /** The cTrader accounts with Foresight enabled that the worker should watch. */

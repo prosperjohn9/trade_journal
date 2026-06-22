@@ -6,7 +6,7 @@ import { formatMoney } from '@/src/lib/utils/format';
 import { cx } from '@/src/lib/utils/ui';
 import { EmptyState } from '@/src/components/ui/EmptyState';
 import type { useAccounts } from '@/src/hooks/useAccounts';
-import { MetaTraderConnect } from './MetaTraderConnect';
+import { BrokerControls } from './BrokerControls';
 import { ImportTrades } from './ImportTrades';
 import { BalanceEventsButton } from './BalanceEventsButton';
 import { PropRulesButton } from './PropRulesButton';
@@ -362,7 +362,7 @@ function AccountCard({ a, s }: { a: Account; s: AccountsState }) {
             Delete
           </button>
 
-          <MetaTraderConnect accountId={a.id} onSynced={s.reload} />
+          <BrokerControls accountId={a.id} onChanged={s.reload} />
 
           <ImportTrades accountId={a.id} onImported={s.reload} />
 
