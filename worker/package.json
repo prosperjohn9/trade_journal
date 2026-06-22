@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Always-on MetaTrader watcher that triggers a Foresight read the instant a guarded trade opens, and closes the loop when it exits.",
+  "description": "Always-on MetaTrader + cTrader watcher that triggers a Foresight read the instant a guarded trade opens, and closes the loop when it exits.",
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "tsx src/index.ts",
@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "protobufjs": "^8.6.4",
     "tsx": "^4.19.2"
   },
   "devDependencies": {

@@ -62,6 +62,65 @@ export async function reportClose(
   }
 }
 
+// === cTrader ===
+
+export type CtraderGuardAccountDto = {
+  connectionId: string;
+  accountId: string;
+  ctidTraderAccountId: number;
+  environment: 'live' | 'demo';
+  userId: string;
+  accessToken: string;
+};
+
+/** The cTrader accounts with Foresight enabled that the worker should watch. */
+export async function listGuardedCtraderAccounts(): Promise<
+  CtraderGuardAccountDto[]
+> {
+  const res = await fetch(`${config.appUrl}/api/guard/ctrader/accounts`, {
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(`list ctrader accounts ${res.status}`);
+  const body = (await res.json()) as { accounts?: CtraderGuardAccountDto[] };
+  return body.accounts ?? [];
+}
+
+/** Ask the app to analyze a cTrader position. The worker supplies the live market
+ *  context (candles, spread, dollar risk); the app adds the behavioural half. */
+export async function requestCtraderAnalyze(
+  connectionId: string,
+  trigger: 'open' | 'modify',
+  position: Record<string, unknown>,
+  market: Record<string, unknown>,
+): Promise<void> {
+  const res = await fetch(`${config.appUrl}/api/guard/ctrader/analyze`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ connectionId, trigger, position, market }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`ctrader analyze ${res.status} ${t.slice(0, 200)}`);
+  }
+}
+
+/** Tell the app a guarded cTrader position closed, with its realized P&L. */
+export async function reportCtraderClose(
+  connectionId: string,
+  positionId: string,
+  pnl: number,
+): Promise<void> {
+  const res = await fetch(`${config.appUrl}/api/guard/ctrader/close`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ connectionId, positionId, pnl }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`ctrader close ${res.status} ${t.slice(0, 200)}`);
+  }
+}
+
 /** Report the symbols open on a guarded account so the app can ping Telegram
  *  when high-impact news nears one of them. The app decides + delivers + dedupes. */
 export async function reportNewsCheck(

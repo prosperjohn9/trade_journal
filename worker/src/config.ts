@@ -13,10 +13,19 @@ function seconds(name: string, defSeconds: number): number {
   return (Number.isFinite(n) && n > 0 ? n : defSeconds) * 1000;
 }
 
+function optional(name: string): string | null {
+  const v = process.env[name];
+  return v && v.trim() ? v.trim() : null;
+}
+
 export const config = {
   appUrl: required('APP_URL').replace(/\/+$/, ''),
   workerSecret: required('WORKER_SECRET'),
   metaApiToken: required('METAAPI_TOKEN'),
+  // cTrader is optional: when these are unset the worker simply skips cTrader
+  // watching (MetaTrader keeps working). Same app credentials as the web app.
+  ctraderClientId: optional('CTRADER_CLIENT_ID'),
+  ctraderClientSecret: optional('CTRADER_CLIENT_SECRET'),
   pollIntervalMs: seconds('POLL_INTERVAL_SECONDS', 12),
   refreshAccountsMs: seconds('REFRESH_ACCOUNTS_SECONDS', 120),
   modifyCooldownMs: seconds('MODIFY_COOLDOWN_SECONDS', 300),

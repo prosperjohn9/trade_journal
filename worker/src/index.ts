@@ -24,8 +24,16 @@ import {
   requestAnalyze,
   reportClose,
   reportNewsCheck,
+  listGuardedCtraderAccounts,
+  requestCtraderAnalyze,
+  reportCtraderClose,
   type GuardedAccount,
 } from './app';
+import {
+  CtraderHub,
+  type CtraderGuardAccount,
+  type CtraderPosition,
+} from './ctrader';
 
 type PosSnapshot = {
   stopLoss: number | null;
@@ -47,6 +55,19 @@ const accounts = new Map<string, AccountState>();
 let lastRefresh = 0;
 let lastNewsSweep = 0;
 let stopping = false;
+
+// cTrader is optional: only watched when the app credentials are configured.
+const hub =
+  config.ctraderClientId && config.ctraderClientSecret
+    ? new CtraderHub(config.ctraderClientId, config.ctraderClientSecret)
+    : null;
+
+type CtAccountState = {
+  acc: CtraderGuardAccount;
+  seeded: boolean;
+  known: Map<string, PosSnapshot>;
+};
+const ctraderAccounts = new Map<string, CtAccountState>();
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -90,6 +111,34 @@ async function refreshAccounts(): Promise<void> {
   }
 
   log.info(`watching ${accounts.size} guarded account(s)`);
+}
+
+// Sync the watched cTrader set. No deployment to manage (the Open API socket is
+// free), so we just add newly enabled accounts and drop disabled ones.
+async function refreshCtraderAccounts(): Promise<void> {
+  if (!hub) return;
+  const list = await listGuardedCtraderAccounts();
+  const live = new Set(list.map((a) => a.connectionId));
+  for (const a of list) {
+    const existing = ctraderAccounts.get(a.connectionId);
+    if (existing) existing.acc = a;
+    else {
+      ctraderAccounts.set(a.connectionId, {
+        acc: a,
+        seeded: false,
+        known: new Map(),
+      });
+      log.info(
+        `now guarding cTrader account ${a.ctidTraderAccountId} (${a.environment})`,
+      );
+    }
+  }
+  for (const [id, st] of ctraderAccounts) {
+    if (!live.has(id)) {
+      ctraderAccounts.delete(id);
+      log.info(`stopped guarding cTrader ${st.acc.ctidTraderAccountId}`);
+    }
+  }
 }
 
 // Make sure the account is deployed and connected. Returns true only when it is
@@ -195,18 +244,131 @@ async function tickAccount(st: AccountState): Promise<void> {
   }
 }
 
+// Assemble the live market context and ask the app for a read.
+async function fireCtraderAnalyze(
+  acc: CtraderGuardAccount,
+  p: CtraderPosition,
+  trigger: 'open' | 'modify',
+): Promise<void> {
+  if (!hub) return;
+  const lots = await hub.lots(acc, p);
+  const market = await hub.marketContext(acc, p);
+  await requestCtraderAnalyze(
+    acc.connectionId,
+    trigger,
+    {
+      positionId: p.positionId,
+      symbol: p.symbol,
+      side: p.side,
+      entry: p.entry,
+      volume: lots,
+      stopLoss: p.stopLoss,
+      takeProfit: p.takeProfit,
+    },
+    market as unknown as Record<string, unknown>,
+  );
+}
+
+async function tickCtraderAccount(st: CtAccountState): Promise<void> {
+  if (!hub) return;
+  let positions: CtraderPosition[];
+  try {
+    positions = await hub.positions(st.acc);
+  } catch (e) {
+    log.warn(`ctrader positions ${st.acc.ctidTraderAccountId} failed:`, e);
+    return;
+  }
+  const current = new Map(positions.map((p) => [p.positionId, p]));
+
+  // First successful poll after (re)start: remember what is already open without
+  // alerting, so we only fire on trades opened from here on.
+  if (!st.seeded) {
+    for (const p of positions) {
+      st.known.set(p.positionId, {
+        stopLoss: p.stopLoss,
+        takeProfit: p.takeProfit,
+        lastModifyAt: 0,
+      });
+    }
+    st.seeded = true;
+    log.info(
+      `seeded cTrader ${st.acc.ctidTraderAccountId} with ${positions.length} open position(s)`,
+    );
+    return;
+  }
+
+  // Opens and modifies.
+  for (const p of positions) {
+    const prev = st.known.get(p.positionId);
+    if (!prev) {
+      st.known.set(p.positionId, {
+        stopLoss: p.stopLoss,
+        takeProfit: p.takeProfit,
+        lastModifyAt: 0,
+      });
+      log.info(`OPEN cTrader ${p.symbol} ${p.side}`);
+      try {
+        await fireCtraderAnalyze(st.acc, p, 'open');
+      } catch (e) {
+        log.warn('ctrader analyze(open) failed:', e);
+      }
+      continue;
+    }
+    const changed =
+      !approxEq(prev.stopLoss, p.stopLoss) ||
+      !approxEq(prev.takeProfit, p.takeProfit);
+    if (changed) {
+      prev.stopLoss = p.stopLoss;
+      prev.takeProfit = p.takeProfit;
+      const now = Date.now();
+      if (now - prev.lastModifyAt >= config.modifyCooldownMs) {
+        prev.lastModifyAt = now;
+        log.info(`MODIFY cTrader ${p.symbol}`);
+        try {
+          await fireCtraderAnalyze(st.acc, p, 'modify');
+        } catch (e) {
+          log.warn('ctrader analyze(modify) failed:', e);
+        }
+      }
+    }
+  }
+
+  // Closes.
+  for (const id of [...st.known.keys()]) {
+    if (!current.has(id)) {
+      st.known.delete(id);
+      log.info(`CLOSE cTrader position ${id}`);
+      try {
+        const pnl = await hub.closedPnl(st.acc, id);
+        await reportCtraderClose(st.acc.connectionId, id, pnl);
+      } catch (e) {
+        log.warn('ctrader close failed:', e);
+      }
+    }
+  }
+}
+
 async function tick(): Promise<void> {
   if (Date.now() - lastRefresh >= config.refreshAccountsMs) {
     try {
       await refreshAccounts();
-      lastRefresh = Date.now();
     } catch (e) {
       log.warn('refresh accounts failed:', e);
     }
+    try {
+      await refreshCtraderAccounts();
+    } catch (e) {
+      log.warn('refresh ctrader accounts failed:', e);
+    }
+    lastRefresh = Date.now();
   }
   for (const st of accounts.values()) {
     if (stopping) break;
     await tickAccount(st);
+  }
+  for (const st of ctraderAccounts.values()) {
+    if (stopping) break;
+    await tickCtraderAccount(st);
   }
 
   // In-trade news countdown, on a slower cadence than position polling: tell the
@@ -229,11 +391,17 @@ async function main(): Promise<void> {
   log.info('Foresight worker starting', {
     appUrl: config.appUrl,
     pollMs: config.pollIntervalMs,
+    ctrader: hub ? 'enabled' : 'disabled',
   });
   try {
     await refreshAccounts();
   } catch (e) {
     log.warn('initial refresh failed (will retry):', e);
+  }
+  try {
+    await refreshCtraderAccounts();
+  } catch (e) {
+    log.warn('initial ctrader refresh failed (will retry):', e);
   }
   lastRefresh = Date.now();
 
