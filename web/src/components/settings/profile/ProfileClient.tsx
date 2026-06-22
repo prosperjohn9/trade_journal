@@ -7,6 +7,7 @@ import { getOrCreateProfile, updateProfile } from '@/src/lib/db/profiles.repo';
 import { DeleteAccountModal } from './DeleteAccountModal';
 import { ExportTradesButton } from './ExportTradesButton';
 import { ConnectTelegram } from './ConnectTelegram';
+import { WeeklyDigestToggle } from './WeeklyDigestToggle';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -179,6 +180,9 @@ export function ProfileClient() {
 
         {/* Telegram alerts for Foresight. */}
         <ConnectTelegram />
+
+        {/* Weekly Hindsight digest opt-out. */}
+        <WeeklyDigestToggle />
 
         {/* Your data — portability, as promised in the privacy policy. */}
         <section className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
