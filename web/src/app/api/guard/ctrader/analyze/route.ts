@@ -11,6 +11,7 @@ import {
 } from '@/src/lib/analytics/tradeGuard';
 import { buildBehavioralGuardContext } from '@/src/lib/analytics/guardBehavioral';
 import { isTf, tfLabel } from '@/src/lib/analytics/timeframes';
+import { isOverForesightCap } from '@/src/lib/analytics/foresightCap';
 import { sendTelegram } from '@/src/lib/integrations/telegram';
 
 export const runtime = 'nodejs';
@@ -126,6 +127,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unknown cTrader account.' }, { status: 404 });
   }
   const userId = conn.user_id;
+
+  // Monthly Foresight-read cap (abuse ceiling). Skip the AI read when reached.
+  if (await isOverForesightCap(sb, userId)) {
+    return NextResponse.json({ ok: true, skipped: 'cap_reached' });
+  }
+
   const analyzedTf = isTf(conn.guard_analyzed_tf) ? conn.guard_analyzed_tf : null;
   const executedTf = isTf(conn.guard_executed_tf) ? conn.guard_executed_tf : null;
 

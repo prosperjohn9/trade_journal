@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/src/lib/supabase/admin';
+import { AI_MODEL, isAiConfigured } from '@/src/lib/ai/client';
+import { logUsage } from '@/src/lib/ai/usage';
+import { narrateClose } from '@/src/lib/ai/guard';
 import { sendTelegram } from '@/src/lib/integrations/telegram';
 
 export const runtime = 'nodejs';
+export const maxDuration = 30;
 
 // POST /api/guard/ctrader/close  (worker-only)
 //
@@ -76,26 +80,57 @@ export async function POST(request: Request) {
   const outcome = Math.abs(pnl) < 0.01 ? 'BREAKEVEN' : pnl > 0 ? 'WIN' : 'LOSS';
   const won = outcome === 'WIN';
 
-  // Tie the result back to what Foresight flagged at entry (the Hindsight payoff:
-  // a win on a flagged trade is a reinforced leak; a loss on a clean read is just
-  // variance).
   const flags = (read.signals ?? [])
     .filter((s) => s.severity === 'warning' || s.severity === 'caution')
     .map((s) => s.title);
   const hadWarning = (read.signals ?? []).some((s) => s.severity === 'warning');
   const flagList = [...new Set(flags)].slice(0, 4).join('; ');
 
-  let outcomeNote: string;
+  const { data: acct } = await sb
+    .from('accounts')
+    .select('base_currency')
+    .eq('id', conn.account_id)
+    .maybeSingle();
+  const currency =
+    (acct as { base_currency?: string | null } | null)?.base_currency ?? 'USD';
+
+  // Templated fallback, used only if the AI reflection is unavailable.
+  let note: string;
   if (outcome === 'BREAKEVEN') {
-    outcomeNote = 'Closed roughly flat.';
+    note =
+      flags.length === 0
+        ? 'Closed flat. Nothing was flagged, so a neutral result with nothing to fix.'
+        : `Closed flat, so it did not punish you this time, but you flagged ${flagList} at entry. Flat is luck here, not a green light to keep taking that setup.`;
   } else if (flags.length === 0) {
-    outcomeNote = won
+    note = won
       ? 'Nothing was flagged at entry and it came in. Process and result lined up, this is what a clean trade looks like.'
       : 'Nothing was flagged at entry, so this is a normal losing trade, not a behavioural leak. Part of the game; do not overcorrect.';
   } else if (won) {
-    outcomeNote = `It worked out, but Foresight flagged ${flags.length} thing${flags.length === 1 ? '' : 's'} at entry: ${flagList}. Those were real risks, not the reason you won. Winning on a flagged trade is exactly how a leak gets reinforced, so judge this by the process, not the green number.`;
+    note = `It worked out, but Foresight flagged ${flags.length} thing${flags.length === 1 ? '' : 's'} at entry: ${flagList}. Those were real risks, not the reason you won. Winning on a flagged trade is exactly how a leak gets reinforced, so judge this by the process, not the green number.`;
   } else {
-    outcomeNote = `The risks flagged at entry showed up: ${flagList}. ${hadWarning ? 'The warning there is a leak to fix, not bad luck.' : 'Worth reviewing whether those cautions made the difference.'}`;
+    note = `The risks flagged at entry showed up: ${flagList}. ${hadWarning ? 'The warning there is a leak to fix, not bad luck.' : 'Worth reviewing whether those cautions made the difference.'}`;
+  }
+
+  // The real Hindsight lesson: an AI reflection tying the entry flags to how it
+  // closed. Falls back to the template above if AI is off or errors.
+  if (isAiConfigured()) {
+    try {
+      const { note: aiNote, usage } = await narrateClose({
+        symbol: read.symbol,
+        side: read.side,
+        outcome,
+        pnl,
+        currency,
+        flags,
+        entryTldr: read.tldr,
+      });
+      if (aiNote) {
+        note = aiNote;
+        await logUsage(sb, conn.user_id, 'guard_close', AI_MODEL, usage);
+      }
+    } catch {
+      // keep the templated note
+    }
   }
 
   await sb
@@ -103,7 +138,7 @@ export async function POST(request: Request) {
     .update({
       outcome,
       closed_pnl: Math.round(pnl * 100) / 100,
-      outcome_note: outcomeNote,
+      outcome_note: note,
     })
     .eq('id', read.id);
 
@@ -115,13 +150,6 @@ export async function POST(request: Request) {
   const chatId = (prof as { telegram_chat_id?: string | null } | null)
     ?.telegram_chat_id;
   if (chatId) {
-    const { data: acct } = await sb
-      .from('accounts')
-      .select('base_currency')
-      .eq('id', conn.account_id)
-      .maybeSingle();
-    const currency =
-      (acct as { base_currency?: string | null } | null)?.base_currency ?? 'USD';
     const verb =
       outcome === 'WIN'
         ? 'closed in profit'
@@ -129,8 +157,7 @@ export async function POST(request: Request) {
           ? 'closed at a loss'
           : 'closed flat';
     const head = `${read.symbol} ${read.side} ${verb}: ${signed(pnl)} ${currency}`;
-    const entry = read.tldr ? `\n\nAt entry: ${read.tldr}` : '';
-    await sendTelegram(chatId, `${head}${entry}\n\n${outcomeNote}`);
+    await sendTelegram(chatId, `${head}\n\n${note}`);
   }
 
   return NextResponse.json({ ok: true, outcome, pnl });

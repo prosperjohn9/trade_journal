@@ -23,6 +23,7 @@ export type PlanDef = {
   syncIntervalHours: number; // auto-sync cadence (24 = once daily)
   manualRefreshesPerMonth: number; // user-triggered "refresh now" allowance
   aiActionsPerMonth: number; // insight refreshes + trade reviews + chat turns
+  foresightReadsPerMonth: number; // always-on Foresight reads (worker-fired)
   blurb: string;
 };
 
@@ -36,6 +37,7 @@ export const PLANS: Record<PlanId, PlanDef> = {
     syncIntervalHours: 24,
     manualRefreshesPerMonth: 14,
     aiActionsPerMonth: 40,
+    foresightReadsPerMonth: 80,
     blurb: 'Free cTrader sync, 1 MetaTrader account, and AI coaching.',
   },
   elite: {
@@ -47,6 +49,7 @@ export const PLANS: Record<PlanId, PlanDef> = {
     syncIntervalHours: 24,
     manualRefreshesPerMonth: 28,
     aiActionsPerMonth: 100,
+    foresightReadsPerMonth: 200,
     blurb: 'For active prop traders who want more AI and refreshes.',
   },
   master: {
@@ -58,6 +61,7 @@ export const PLANS: Record<PlanId, PlanDef> = {
     syncIntervalHours: 24,
     manualRefreshesPerMonth: 48,
     aiActionsPerMonth: 200,
+    foresightReadsPerMonth: 600,
     blurb: 'For full-time traders who want maximum AI and refreshes.',
   },
 };

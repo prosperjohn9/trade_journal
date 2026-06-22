@@ -4,7 +4,12 @@
 // both call this; the route meters it like any other AI action.
 
 import { AI_MODEL, getAnthropic } from '@/src/lib/ai/client';
-import { GUARD_SYSTEM, buildGuardInput } from '@/src/lib/ai/prompts';
+import {
+  GUARD_SYSTEM,
+  buildGuardInput,
+  CLOSE_SYSTEM,
+  buildCloseInput,
+} from '@/src/lib/ai/prompts';
 import {
   analyzeTrade,
   type GuardContext,
@@ -50,4 +55,34 @@ export async function narrateGuard(
     .trim();
 
   return { signals, summary, usage: message.usage };
+}
+
+export type CloseNarration = { note: string; usage?: GuardUsage };
+
+/** Close-the-loop reflection: the Hindsight lesson tying the entry flags to how
+ *  the trade actually closed. One short AI call per closed guarded trade. */
+export async function narrateClose(input: {
+  symbol: string;
+  side: string;
+  outcome: 'WIN' | 'LOSS' | 'BREAKEVEN';
+  pnl: number;
+  currency: string;
+  flags: string[];
+  entryTldr: string | null;
+}): Promise<CloseNarration> {
+  const message = await getAnthropic().messages.create({
+    model: AI_MODEL,
+    max_tokens: 320,
+    system: [
+      { type: 'text', text: CLOSE_SYSTEM, cache_control: { type: 'ephemeral' } },
+    ],
+    messages: [{ role: 'user', content: buildCloseInput(input) }],
+  });
+
+  const note = message.content
+    .map((b) => (b.type === 'text' ? b.text : ''))
+    .join('')
+    .trim();
+
+  return { note, usage: message.usage };
 }

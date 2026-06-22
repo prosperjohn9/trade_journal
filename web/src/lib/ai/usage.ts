@@ -2,7 +2,7 @@ import type { createSupabaseWithToken } from '@/src/lib/supabase/server';
 import { AI_USAGE_DAILY_CAP } from './client';
 
 type Sb = ReturnType<typeof createSupabaseWithToken>;
-type Feature = 'trade_review' | 'insights' | 'chat' | 'guard';
+type Feature = 'trade_review' | 'insights' | 'chat' | 'guard' | 'guard_close';
 
 type UsageLike = {
   input_tokens?: number | null;

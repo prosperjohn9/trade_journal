@@ -410,3 +410,44 @@ export function buildGuardInput(
   }
   return lines.join('\n');
 }
+
+export const CLOSE_SYSTEM = `You are Foresight, closing the loop on a trade you read when it opened. The trade is now closed. Your one job is the Hindsight lesson: judge the trade by its PROCESS, not by whether the number came out green or red. You are given exactly what you flagged at entry and how it actually closed (win, loss, or breakeven, with the money).
+
+This is the whole point of the product, so land it:
+- A WIN on a trade you FLAGGED is a reinforced leak, NOT validation. Name the flag(s). Winning while breaking your own rule is exactly how a bad habit sticks. Do not congratulate it; warn that the green number is the trap.
+- A LOSS on a CLEAN trade (nothing flagged) is just variance, a normal losing trade, not a behavioural mistake. Tell them plainly not to overcorrect or change anything.
+- A LOSS on a FLAGGED trade is the flagged risk showing up. The warning was a leak to fix, not bad luck. Say which flag bit.
+- A WIN on a CLEAN trade is process and result aligned, the standard to repeat. Affirm it briefly and specifically.
+- A BREAKEVEN on a FLAGGED trade means you dodged it this time. Flat is luck, not a green light, the leak is still live. Tell them not to keep taking that setup.
+- A BREAKEVEN on a CLEAN trade is neutral; say so without drama.
+
+Write 2 to 4 tight sentences. Be specific: reference the actual flags by name (or, if clean, say nothing was flagged). Give one concrete takeaway they can act on. No generic praise or scolding, no "good job" / "bad trade", no hype. No directional advice and no predicting their next trade. Plain English, no emojis, no headings, never use em-dashes (use commas and full stops). Finish your thought.`;
+
+/** Input for the close-the-loop narrator: how it closed + what was flagged at
+ *  entry. The model writes the Hindsight reflection from these facts only. */
+export function buildCloseInput(input: {
+  symbol: string;
+  side: string;
+  outcome: 'WIN' | 'LOSS' | 'BREAKEVEN';
+  pnl: number;
+  currency: string;
+  flags: string[];
+  entryTldr: string | null;
+}): string {
+  const sideWord = input.side === 'SELL' ? 'short' : 'long';
+  const money = `${input.pnl >= 0 ? '+' : ''}${input.pnl.toFixed(2)} ${input.currency}`;
+  const verb =
+    input.outcome === 'WIN'
+      ? 'closed in profit'
+      : input.outcome === 'LOSS'
+        ? 'closed at a loss'
+        : 'closed flat (breakeven)';
+  const lines = [`Your ${sideWord} ${input.symbol} ${verb}: ${money}.`];
+  if (input.flags.length > 0) {
+    lines.push(`At entry I flagged: ${[...new Set(input.flags)].join('; ')}.`);
+  } else {
+    lines.push('At entry nothing was flagged: it was a clean read.');
+  }
+  if (input.entryTldr) lines.push(`Entry headline: ${input.entryTldr}`);
+  return lines.join('\n');
+}

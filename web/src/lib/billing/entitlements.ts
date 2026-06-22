@@ -36,6 +36,9 @@ export type EntitlementLimits = {
   /** How many MetaTrader accounts the user may turn real-time Foresight on for
    *  (paid per-account seats). cTrader Foresight is free and not counted here. */
   guardrailSeats: number;
+  /** Monthly cap on always-on Foresight reads (worker-fired, both brokers). The
+   *  abuse ceiling on the free cTrader co-pilot; not a target. */
+  foresightReadsPerMonth: number;
 };
 
 export type EntitlementFeatures = {
@@ -61,6 +64,7 @@ const LOCKED_LIMITS: EntitlementLimits = {
   manualRefreshesPerMonth: 0,
   aiActionsPerMonth: 0,
   guardrailSeats: 0,
+  foresightReadsPerMonth: 0,
 };
 
 const LOCKED_FEATURES: EntitlementFeatures = {
@@ -127,6 +131,7 @@ export function resolveEntitlements(
       manualRefreshesPerMonth: plan.manualRefreshesPerMonth,
       aiActionsPerMonth: plan.aiActionsPerMonth,
       guardrailSeats: Math.max(0, sub.guardrail_seats || 0),
+      foresightReadsPerMonth: plan.foresightReadsPerMonth,
     },
     features: { ...ALL_FEATURES },
   };
@@ -148,6 +153,7 @@ export function adminEntitlements(): Entitlements {
       manualRefreshesPerMonth: 99_999,
       aiActionsPerMonth: 99_999,
       guardrailSeats: 999,
+      foresightReadsPerMonth: 999_999,
     },
     features: { ...ALL_FEATURES },
   };
