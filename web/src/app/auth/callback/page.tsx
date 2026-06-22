@@ -33,7 +33,16 @@ function CallbackInner() {
         }
 
         const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) throw error;
+        if (error) {
+          // Insurance: if a session already exists (this code was already
+          // exchanged, e.g. a refresh or back-nav), don't show an error.
+          const { data } = await supabase.auth.getSession();
+          if (data.session) {
+            if (!cancelled) router.replace(next);
+            return;
+          }
+          throw error;
+        }
 
         if (!cancelled) router.replace(next);
       } catch (e: unknown) {

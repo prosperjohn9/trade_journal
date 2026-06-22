@@ -11,6 +11,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
+import { passwordError, PASSWORD_RULE_TEXT } from '@/src/lib/auth/password';
 
 function readSavedEmail(): string {
   if (typeof window === 'undefined') return '';
@@ -175,8 +176,14 @@ function AuthForm() {
       note('Enter your email.', 'error');
       return;
     }
-    if (password.length < 8) {
-      note('Password must be at least 8 characters.', 'error');
+    if (mode === 'signup') {
+      const pwErr = passwordError(password);
+      if (pwErr) {
+        note(pwErr, 'error');
+        return;
+      }
+    } else if (!password) {
+      note('Enter your password.', 'error');
       return;
     }
 
@@ -373,6 +380,12 @@ function AuthForm() {
                 {showPw ? 'Hide' : 'Show'}
               </button>
             </div>
+
+            {!signingIn && (
+              <p className='text-xs leading-relaxed text-slate-500'>
+                {PASSWORD_RULE_TEXT}
+              </p>
+            )}
 
             {signingIn && (
               <div className='text-right'>

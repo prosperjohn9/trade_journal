@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
+import { passwordError, PASSWORD_RULE_TEXT } from '@/src/lib/auth/password';
 
 // Landed here from the password-reset email link. The link carries a PKCE code
 // (or detectSessionInUrl has already established the recovery session); we
@@ -71,8 +72,9 @@ export default function ResetPasswordPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (password.length < 8) {
-      note('Use at least 8 characters.', 'error');
+    const pwErr = passwordError(password);
+    if (pwErr) {
+      note(pwErr, 'error');
       return;
     }
     if (password !== confirm) {
@@ -140,6 +142,9 @@ export default function ResetPasswordPage() {
               minLength={8}
               required
             />
+            <p className='text-xs leading-relaxed opacity-70'>
+              {PASSWORD_RULE_TEXT}
+            </p>
             <button
               type='submit'
               className='w-full rounded-lg p-3 border font-medium disabled:opacity-60'

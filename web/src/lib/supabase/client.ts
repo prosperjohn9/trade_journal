@@ -13,11 +13,13 @@ if (!anonKey) {
 
 export const supabase = createClient(url, anonKey, {
   auth: {
-    // PKCE returns an auth code to /auth/callback (which exchanges it), keeping
-    // OAuth and magic-link consistent. detectSessionInUrl finishes the session
-    // automatically when a code/token lands on a page that loads this client.
+    // PKCE returns an auth code that /auth/callback (OAuth) and /auth/reset
+    // (recovery) each exchange explicitly. detectSessionInUrl is OFF on purpose:
+    // with it on, the client ALSO auto-exchanges the code, racing the page's
+    // explicit exchange for the one-time PKCE verifier; the loser throws "code
+    // verifier not found" even though sign-in succeeded. One exchanger, no race.
     flowType: 'pkce',
-    detectSessionInUrl: true,
+    detectSessionInUrl: false,
     persistSession: true,
     autoRefreshToken: true,
   },
