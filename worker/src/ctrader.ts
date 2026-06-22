@@ -425,7 +425,10 @@ class EnvSocket {
   }
 
   /** Subscribe to a symbol's spot stream (idempotent) and wait for a full quote. */
-  async spread(ctid: number, symbolId: number): Promise<number | null> {
+  private async quote(
+    ctid: number,
+    symbolId: number,
+  ): Promise<{ bid: number; ask: number } | null> {
     const key = `${ctid}:${symbolId}`;
     if (!this.subscribed.has(key)) {
       await this.request('ProtoOASubscribeSpotsReq', PT.SUBSCRIBE_SPOTS_REQ, {
@@ -437,11 +440,23 @@ class EnvSocket {
     const deadline = Date.now() + 3_000;
     while (Date.now() < deadline) {
       const s = this.spots.get(key);
-      if (s?.bid != null && s?.ask != null) return (s.ask - s.bid) / PRICE_SCALE;
+      if (s?.bid != null && s?.ask != null) return { bid: s.bid, ask: s.ask };
       await sleep(150);
     }
     const s = this.spots.get(key);
-    return s?.bid != null && s?.ask != null ? (s.ask - s.bid) / PRICE_SCALE : null;
+    return s?.bid != null && s?.ask != null ? { bid: s.bid, ask: s.ask } : null;
+  }
+
+  /** Current spread in price terms. */
+  async spread(ctid: number, symbolId: number): Promise<number | null> {
+    const q = await this.quote(ctid, symbolId);
+    return q ? (q.ask - q.bid) / PRICE_SCALE : null;
+  }
+
+  /** Current mid price, used for currency conversion. */
+  async midPrice(ctid: number, symbolId: number): Promise<number | null> {
+    const q = await this.quote(ctid, symbolId);
+    return q ? (q.bid + q.ask) / 2 / PRICE_SCALE : null;
   }
 }
 
@@ -453,6 +468,7 @@ export class CtraderHub {
     demo: null,
   };
   private readonly names = new Map<number, Map<number, string>>(); // ctid -> symbolId -> name
+  private readonly namesRev = new Map<number, Map<string, number>>(); // ctid -> name -> symbolId
   private readonly assetsByCtid = new Map<number, Map<number, string>>();
   // Symbol specs are broker-global, so cache per `${env}:${symbolId}`.
   private readonly specs = new Map<
@@ -495,6 +511,47 @@ export class CtraderHub {
     return Math.round(lots * 100) / 100;
   }
 
+  /** Symbol name maps (forward + reverse), fetched once per account and cached. */
+  private async ensureNames(
+    a: CtraderGuardAccount,
+  ): Promise<Map<string, number>> {
+    const cached = this.namesRev.get(a.ctidTraderAccountId);
+    if (cached) return cached;
+    const s = this.sock(a.environment);
+    await s.authAccount(a.ctidTraderAccountId, a.accessToken);
+    const fwd = await s.symbolNames(a.ctidTraderAccountId);
+    const rev = new Map<string, number>();
+    for (const [id, name] of fwd) rev.set(name, id);
+    this.names.set(a.ctidTraderAccountId, fwd);
+    this.namesRev.set(a.ctidTraderAccountId, rev);
+    return rev;
+  }
+
+  /** Live rate to convert an amount in `from` currency into `to`, via whichever
+   *  cross pair the broker lists (direct or inverted). null when neither exists. */
+  private async conversionRate(
+    a: CtraderGuardAccount,
+    from: string,
+    to: string,
+  ): Promise<number | null> {
+    if (from === to) return 1;
+    const rev = await this.ensureNames(a).catch(() => null);
+    if (!rev) return null;
+    const s = this.sock(a.environment);
+
+    const direct = rev.get(`${from}${to}`); // price = from->to
+    if (direct != null) {
+      const p = await s.midPrice(a.ctidTraderAccountId, direct).catch(() => null);
+      if (p && p > 0) return p;
+    }
+    const inverse = rev.get(`${to}${from}`); // price = to->from, so invert
+    if (inverse != null) {
+      const p = await s.midPrice(a.ctidTraderAccountId, inverse).catch(() => null);
+      if (p && p > 0) return 1 / p;
+    }
+    return null;
+  }
+
   /** Reconcile open positions, resolving each symbol id to its name. */
   async positions(a: CtraderGuardAccount): Promise<CtraderPosition[]> {
     const s = this.sock(a.environment);
@@ -502,10 +559,7 @@ export class CtraderHub {
     const positions = await s.reconcile(a.ctidTraderAccountId);
     if (positions.length && !this.names.has(a.ctidTraderAccountId)) {
       try {
-        this.names.set(
-          a.ctidTraderAccountId,
-          await s.symbolNames(a.ctidTraderAccountId),
-        );
+        await this.ensureNames(a);
       } catch (e) {
         log.warn('ctrader symbol names failed:', e);
       }
@@ -569,13 +623,18 @@ export class CtraderHub {
       /* best-effort */
     }
 
-    // Dollar risk to the stop, computed for the direct case (quote currency ==
-    // deposit currency). risk(quote) = |entry - SL| * units; units = volume/100.
+    // Dollar risk to the stop. risk(quote ccy) = |entry - SL| * units, where
+    // units = volume/100. Converted into the deposit currency via a live cross
+    // rate (rate = 1 when quote == deposit), so it works for cross pairs too.
+    // Null only when no conversion pair exists (e.g. an exotic) or no stop.
     let riskMoney: number | null = null;
     const quoteCcy = pos.symbol.length >= 6 ? pos.symbol.slice(-3) : null;
-    if (pos.stopLoss != null && currency && quoteCcy === currency) {
-      riskMoney = Math.abs(pos.entry - pos.stopLoss) * (pos.volume / 100);
-      riskMoney = Math.round(riskMoney * 100) / 100;
+    if (pos.stopLoss != null && currency && quoteCcy) {
+      const riskQuote = Math.abs(pos.entry - pos.stopLoss) * (pos.volume / 100);
+      const rate = await this.conversionRate(a, quoteCcy, currency).catch(
+        () => null,
+      );
+      if (rate != null) riskMoney = Math.round(riskQuote * rate * 100) / 100;
     }
 
     return { balance, currency, pipSize, spreadNow, riskMoney, timeframes };
