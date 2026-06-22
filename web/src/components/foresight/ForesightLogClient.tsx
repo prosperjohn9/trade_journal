@@ -3,6 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
+import { apiFetch } from '@/src/lib/api/fetcher';
+
+type Usage = {
+  used: number;
+  cap: number;
+  unlimited: boolean;
+  hasCtrader: boolean;
+};
 
 // Read history for Foresight: every read the worker (or an on-demand check)
 // logged, newest first, with its close-the-loop outcome once the trade exits.
@@ -40,6 +48,7 @@ export function ForesightLogClient() {
   const [accounts, setAccounts] = useState<
     Map<string, { name: string; currency: string }>
   >(new Map());
+  const [usage, setUsage] = useState<Usage | null>(null);
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -66,7 +75,7 @@ export function ForesightLogClient() {
           )
           .order('created_at', { ascending: false })
           .limit(100),
-        supabase.from('accounts').select('id, name, currency'),
+        supabase.from('accounts').select('id, name, base_currency'),
       ]);
       if (cancelled) return;
       setReads((readRows ?? []) as ReadRow[]);
@@ -74,12 +83,18 @@ export function ForesightLogClient() {
       for (const a of (acctRows ?? []) as Array<{
         id: string;
         name: string;
-        currency: string | null;
+        base_currency: string | null;
       }>) {
-        map.set(a.id, { name: a.name, currency: a.currency ?? 'USD' });
+        map.set(a.id, { name: a.name, currency: a.base_currency ?? 'USD' });
       }
       setAccounts(map);
       setLoading(false);
+      // The free cTrader read allowance, for the usage meter. Best-effort.
+      apiFetch<Usage>('/api/guard/ctrader/usage')
+        .then((u) => {
+          if (!cancelled) setUsage(u);
+        })
+        .catch(() => {});
     })();
     return () => {
       cancelled = true;
@@ -106,6 +121,40 @@ export function ForesightLogClient() {
             Back to dashboard
           </button>
         </header>
+
+        {usage?.hasCtrader ? (
+          <div className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-4'>
+            <div className='flex items-center justify-between text-sm'>
+              <span className='font-medium text-[var(--text-secondary)]'>
+                Free cTrader Foresight this month
+              </span>
+              <span className='font-semibold text-[var(--text-primary)]'>
+                {usage.unlimited
+                  ? `${usage.used} reads`
+                  : `${usage.used} / ${usage.cap}`}
+              </span>
+            </div>
+            {!usage.unlimited && usage.cap > 0 ? (
+              <div className='mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-muted)]'>
+                <div
+                  className='h-full rounded-full transition-[width]'
+                  style={{
+                    width: `${Math.min(100, (usage.used / usage.cap) * 100)}%`,
+                    backgroundColor:
+                      usage.used >= usage.cap ? 'var(--loss)' : 'var(--accent)',
+                  }}
+                />
+              </div>
+            ) : null}
+            <p className='mt-1.5 text-[11px] text-[var(--text-muted)]'>
+              {usage.unlimited
+                ? 'Unlimited on your account.'
+                : usage.used >= usage.cap
+                  ? 'Monthly cap reached, new cTrader reads resume next month. Your MetaTrader Foresight is unaffected.'
+                  : 'cTrader Foresight is free, capped monthly. MetaTrader Foresight is unlimited.'}
+            </p>
+          </div>
+        ) : null}
 
         {loading ? (
           <p className='px-1 text-sm text-[var(--text-secondary)]'>Loading...</p>

@@ -13,13 +13,20 @@ import {
 } from '@/src/lib/billing/entitlements';
 import { adminUserIdSet } from '@/src/lib/auth/admin';
 
-/** True when the user has used up this month's free cTrader Foresight reads. */
-export async function isOverCtraderReadCap(
+export type CtraderReadUsage = {
+  used: number;
+  cap: number;
+  unlimited: boolean;
+  hasCtrader: boolean;
+};
+
+/** This month's free cTrader Foresight read usage for a user. */
+export async function ctraderReadUsage(
   sb: SupabaseClient,
   userId: string,
-): Promise<boolean> {
+): Promise<CtraderReadUsage> {
   const admins = await adminUserIdSet(sb);
-  if (admins.has(userId)) return false; // admins are unlimited
+  const unlimited = admins.has(userId);
 
   const { data: sub } = await sb
     .from('subscriptions')
@@ -28,10 +35,8 @@ export async function isOverCtraderReadCap(
     .maybeSingle();
   const cap = resolveEntitlements((sub as SubscriptionRow | null) ?? null).limits
     .foresightReadsPerMonth;
-  if (cap <= 0) return true; // not entitled
 
-  // Count this month's reads on this user's cTrader accounts only. MetaTrader
-  // (paid) reads must never count against the free-lane cap.
+  // Only reads on this user's cTrader accounts count; MetaTrader (paid) never does.
   const { data: conns } = await sb
     .from('ctrader_connections')
     .select('account_id')
@@ -39,7 +44,9 @@ export async function isOverCtraderReadCap(
   const accountIds = ((conns ?? []) as Array<{ account_id: string | null }>)
     .map((c) => c.account_id)
     .filter((id): id is string => !!id);
-  if (!accountIds.length) return false;
+  if (!accountIds.length) {
+    return { used: 0, cap, unlimited, hasCtrader: false };
+  }
 
   const start = new Date();
   start.setUTCDate(1);
@@ -51,5 +58,17 @@ export async function isOverCtraderReadCap(
     .in('account_id', accountIds)
     .gte('created_at', start.toISOString());
 
-  return (count ?? 0) >= cap;
+  return { used: count ?? 0, cap, unlimited, hasCtrader: true };
+}
+
+/** True when the user has used up this month's free cTrader Foresight reads. */
+export async function isOverCtraderReadCap(
+  sb: SupabaseClient,
+  userId: string,
+): Promise<boolean> {
+  const { used, cap, unlimited, hasCtrader } = await ctraderReadUsage(sb, userId);
+  if (unlimited) return false;
+  if (cap <= 0) return true; // not entitled
+  if (!hasCtrader) return false;
+  return used >= cap;
 }
