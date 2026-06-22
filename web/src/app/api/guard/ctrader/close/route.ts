@@ -1,24 +1,16 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/src/lib/supabase/admin';
-import {
-  fetchHistoricalDeals,
-  DEFAULT_MT_REGION,
-} from '@/src/lib/integrations/metaapi';
 import { sendTelegram } from '@/src/lib/integrations/telegram';
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
 
-// POST /api/guard/close  (worker-only)
+// POST /api/guard/ctrader/close  (worker-only)
 //
-// Closes the loop on a guarded trade. When the worker sees a position vanish, it
-// calls this with the connection + position id. We look up the read we logged at
-// entry, compute the realized P&L from the broker's deal history, record the
-// outcome on that read, and push a short result to the owner's Telegram tying
-// what Foresight said at entry to how it actually turned out.
-//
-// If we never logged a read for this position (it was already open before the
-// worker started watching), there is nothing to close, so we no-op.
+// Close-the-loop for a guarded cTrader trade. The worker sees the position
+// vanish, reads the realized P&L from the cTrader closing deal, and posts it
+// here. We find the read we logged at entry, record the outcome, and push a
+// short result tying what Foresight flagged to how it turned out. No read (trade
+// predated the worker) means there is nothing to close, so we no-op.
 
 function signed(n: number): string {
   const v = Math.round(n * 100) / 100;
@@ -33,48 +25,40 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => ({}))) as {
     connectionId?: unknown;
-    accountId?: unknown;
     positionId?: unknown;
+    pnl?: unknown;
   };
   const connectionId =
     typeof body.connectionId === 'string' ? body.connectionId : null;
-  const accountIdIn =
-    typeof body.accountId === 'string' ? body.accountId : null;
   const positionId =
     typeof body.positionId === 'string' ? body.positionId : null;
-  if (!positionId || (!connectionId && !accountIdIn)) {
+  const pnl =
+    typeof body.pnl === 'number' && Number.isFinite(body.pnl) ? body.pnl : 0;
+  if (!connectionId || !positionId) {
     return NextResponse.json(
-      { error: 'positionId and connectionId (or accountId) are required.' },
+      { error: 'connectionId and positionId are required.' },
       { status: 400 },
     );
   }
 
   const sb = createServiceClient();
 
-  // Resolve the connection -> owner + MetaApi account.
-  let q = sb
-    .from('mt_connections')
-    .select('id, account_id, metaapi_account_id, region, user_id');
-  if (connectionId) q = q.eq('id', connectionId);
-  else if (accountIdIn) q = q.eq('account_id', accountIdIn);
-  const { data: conn } = await q.maybeSingle();
-  const c = conn as {
+  const { data: connRow } = await sb
+    .from('ctrader_connections')
+    .select('id, account_id, user_id')
+    .eq('id', connectionId)
+    .maybeSingle();
+  const conn = connRow as {
     id: string;
     account_id: string;
-    metaapi_account_id: string | null;
-    region: string | null;
     user_id: string;
   } | null;
-  if (!c?.metaapi_account_id) {
-    return NextResponse.json({ ok: true, skipped: 'no-connection' });
-  }
+  if (!conn) return NextResponse.json({ ok: true, skipped: 'no-connection' });
 
-  // The read we logged at entry (still open = outcome null). No read means we
-  // never analyzed this trade; nothing to close.
   const { data: readRow } = await sb
     .from('foresight_reads')
-    .select('id, symbol, side, tldr, warnings, signals')
-    .eq('account_id', c.account_id)
+    .select('id, symbol, side, tldr, signals')
+    .eq('account_id', conn.account_id)
     .eq('position_id', positionId)
     .is('outcome', null)
     .order('created_at', { ascending: false })
@@ -85,41 +69,16 @@ export async function POST(request: Request) {
     symbol: string;
     side: string;
     tldr: string | null;
-    warnings: number | null;
     signals: Array<{ severity: string; title: string }> | null;
   } | null;
-  if (!read) {
-    return NextResponse.json({ ok: true, skipped: 'no-read' });
-  }
+  if (!read) return NextResponse.json({ ok: true, skipped: 'no-read' });
 
-  // Realized P&L = sum of profit + commission + swap across this position's
-  // deals over a recent window (the closing deal lands within minutes).
-  let pnl = 0;
-  try {
-    const region = c.region ?? DEFAULT_MT_REGION;
-    const deals = await fetchHistoricalDeals({
-      metaApiAccountId: c.metaapi_account_id,
-      region,
-      from: new Date(Date.now() - 30 * 60_000),
-      to: new Date(Date.now() + 60_000),
-    });
-    for (const d of deals) {
-      if (d.positionId !== positionId) continue;
-      pnl += Number(d.profit ?? 0) + Number(d.commission ?? 0) + Number(d.swap ?? 0);
-    }
-  } catch {
-    // If the deal feed is briefly unavailable we still record the close, just
-    // without a P&L figure.
-    pnl = 0;
-  }
-
-  const outcome =
-    Math.abs(pnl) < 0.01 ? 'BREAKEVEN' : pnl > 0 ? 'WIN' : 'LOSS';
+  const outcome = Math.abs(pnl) < 0.01 ? 'BREAKEVEN' : pnl > 0 ? 'WIN' : 'LOSS';
   const won = outcome === 'WIN';
 
-  // Tie the result back to what Foresight flagged at entry. This is the Hindsight
-  // payoff: a win on a flagged trade is a reinforced leak, not a green light; a
-  // loss on a clean read is just variance.
+  // Tie the result back to what Foresight flagged at entry (the Hindsight payoff:
+  // a win on a flagged trade is a reinforced leak; a loss on a clean read is just
+  // variance).
   const flags = (read.signals ?? [])
     .filter((s) => s.severity === 'warning' || s.severity === 'caution')
     .map((s) => s.title);
@@ -148,11 +107,10 @@ export async function POST(request: Request) {
     })
     .eq('id', read.id);
 
-  // Push the result, tied back to what Foresight said at entry.
   const { data: prof } = await sb
     .from('profiles')
     .select('telegram_chat_id')
-    .eq('id', c.user_id)
+    .eq('id', conn.user_id)
     .maybeSingle();
   const chatId = (prof as { telegram_chat_id?: string | null } | null)
     ?.telegram_chat_id;
@@ -160,7 +118,7 @@ export async function POST(request: Request) {
     const { data: acct } = await sb
       .from('accounts')
       .select('base_currency')
-      .eq('id', c.account_id)
+      .eq('id', conn.account_id)
       .maybeSingle();
     const currency =
       (acct as { base_currency?: string | null } | null)?.base_currency ?? 'USD';
