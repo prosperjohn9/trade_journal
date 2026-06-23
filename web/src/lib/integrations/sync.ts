@@ -195,7 +195,7 @@ export async function enforceSyncCaps(sb: SupabaseClient): Promise<number> {
     const [{ data: connections }, { data: subs }] = await Promise.all([
       sb
         .from('mt_connections')
-        .select('id, metaapi_account_id, user_id, created_at, state')
+        .select('id, metaapi_account_id, user_id, created_at, state, guard_enabled')
         .order('created_at', { ascending: true }),
       sb.from('subscriptions').select(`user_id, ${SUBSCRIPTION_SELECT}`),
     ]);
@@ -209,7 +209,9 @@ export async function enforceSyncCaps(sb: SupabaseClient): Promise<number> {
 
     // Live connections grouped by user, oldest first (the query is ordered asc).
     // Breached / already-suspended accounts have no MetaApi account, cost
-    // nothing, and so never count toward the cap.
+    // nothing, and so never count toward the cap. GUARDED accounts (guard_enabled)
+    // are paid for separately by the $18 Foresight seat, so they are exempt: they
+    // never count toward the sync cap and are never suspended by it.
     const byUser = new Map<
       string,
       Array<{ id: string; metaapi_account_id: string }>
@@ -219,11 +221,13 @@ export async function enforceSyncCaps(sb: SupabaseClient): Promise<number> {
       metaapi_account_id: string;
       user_id: string;
       state: string | null;
+      guard_enabled: boolean | null;
     }>) {
       if (
         c.state === 'breached' ||
         c.state === 'over_limit' ||
-        c.state === 'passed'
+        c.state === 'passed' ||
+        c.guard_enabled
       )
         continue;
       const arr = byUser.get(c.user_id) ?? [];

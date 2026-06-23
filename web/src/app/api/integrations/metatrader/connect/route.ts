@@ -39,12 +39,15 @@ export async function POST(request: Request) {
   // Breached / over-limit connections have no MetaApi account and cost nothing,
   // so they do not consume a synced-account slot (lets the user reconnect after
   // a breach or a lapsed add-on without first cleaning up the dead row).
+  // Guarded accounts are paid for by the $18 Foresight seat, not the sync cap, so
+  // they are excluded from the count too.
   const { count: syncedCount } = await sb
     .from('mt_connections')
     .select('id', { count: 'exact', head: true })
     .neq('state', 'breached')
     .neq('state', 'over_limit')
-    .neq('state', 'passed');
+    .neq('state', 'passed')
+    .or('guard_enabled.is.null,guard_enabled.eq.false');
   if ((syncedCount ?? 0) >= entitlements.limits.syncedAccounts) {
     return NextResponse.json(
       {
