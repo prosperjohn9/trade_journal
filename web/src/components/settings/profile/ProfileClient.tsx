@@ -26,6 +26,13 @@ export function ProfileClient() {
   const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
+  // Trading defaults (risk per trade + target reward-to-risk). Used by the trade
+  // form, Foresight, and analytics; had no UI before.
+  const [riskDraft, setRiskDraft] = useState('');
+  const [rrDraft, setRrDraft] = useState('');
+  const [savingTrading, setSavingTrading] = useState(false);
+  const [tradingStatus, setTradingStatus] = useState('');
+
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
 
@@ -65,6 +72,16 @@ export function ProfileClient() {
         const { profile } = await getOrCreateProfile();
         if (cancelled) return;
         setDisplayNameDraft(profile.display_name ?? '');
+        const td = profile as {
+          risk_per_trade_percent?: number | null;
+          rr_win?: number | null;
+        };
+        setRiskDraft(
+          td.risk_per_trade_percent != null
+            ? String(td.risk_per_trade_percent)
+            : '',
+        );
+        setRrDraft(td.rr_win != null ? String(td.rr_win) : '');
       } catch (e) {
         // Non-fatal — the user can still see the account and danger zone.
         console.error('Failed to load profile:', e);
@@ -97,6 +114,32 @@ export function ProfileClient() {
     } finally {
       setSaving(false);
       window.setTimeout(() => setStatusMessage(''), STATUS_CLEAR_MS);
+    }
+  }
+
+  async function handleSaveTradingDefaults(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingTrading(true);
+    setTradingStatus('Saving...');
+    try {
+      const risk = Number(riskDraft);
+      const rr = Number(rrDraft);
+      await updateProfile({
+        risk_per_trade_percent:
+          riskDraft.trim() !== '' && Number.isFinite(risk) && risk > 0
+            ? risk
+            : null,
+        rr_win:
+          rrDraft.trim() !== '' && Number.isFinite(rr) && rr > 0 ? rr : null,
+      });
+      setTradingStatus('Saved');
+    } catch (e: unknown) {
+      setTradingStatus(
+        e instanceof Error ? e.message : 'Failed to save trading defaults',
+      );
+    } finally {
+      setSavingTrading(false);
+      window.setTimeout(() => setTradingStatus(''), STATUS_CLEAR_MS);
     }
   }
 
@@ -175,6 +218,80 @@ export function ProfileClient() {
                 {saving ? 'Saving...' : 'Save'}
               </button>
             </div>
+          </form>
+        </section>
+
+        {/* Trading defaults: risk per trade + target reward-to-risk. */}
+        <section className='space-y-5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
+          <div className='flex items-center justify-between gap-3'>
+            <h2 className='text-lg font-semibold text-[var(--text-primary)]'>
+              Trading defaults
+            </h2>
+            {tradingStatus && (
+              <span className='text-xs text-[var(--text-secondary)]'>
+                {tradingStatus}
+              </span>
+            )}
+          </div>
+          <p className='text-sm text-[var(--text-secondary)]'>
+            Used across your journal and Foresight. The trade form warns when a
+            trade risks more than your max, and Foresight treats it as your risk
+            limit.
+          </p>
+          <form
+            onSubmit={handleSaveTradingDefaults}
+            className='space-y-4 border-t border-[var(--border-default)] pt-5'>
+            <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+              <div className='space-y-1.5'>
+                <label
+                  htmlFor='risk-per-trade'
+                  className='text-sm font-medium text-[var(--text-primary)]'>
+                  Max risk per trade (%)
+                </label>
+                <input
+                  id='risk-per-trade'
+                  type='number'
+                  step='0.1'
+                  min='0'
+                  value={riskDraft}
+                  onChange={(e) => setRiskDraft(e.target.value)}
+                  disabled={loadingProfile || savingTrading}
+                  placeholder='1'
+                  className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] disabled:opacity-60'
+                />
+                <p className='text-xs text-[var(--text-muted)]'>
+                  e.g. 1 means warn when a trade risks more than 1% of the
+                  account.
+                </p>
+              </div>
+              <div className='space-y-1.5'>
+                <label
+                  htmlFor='target-rr'
+                  className='text-sm font-medium text-[var(--text-primary)]'>
+                  Target reward-to-risk (R)
+                </label>
+                <input
+                  id='target-rr'
+                  type='number'
+                  step='0.1'
+                  min='0'
+                  value={rrDraft}
+                  onChange={(e) => setRrDraft(e.target.value)}
+                  disabled={loadingProfile || savingTrading}
+                  placeholder='2'
+                  className='w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] disabled:opacity-60'
+                />
+                <p className='text-xs text-[var(--text-muted)]'>
+                  Your planned reward-to-risk, used in analytics.
+                </p>
+              </div>
+            </div>
+            <button
+              type='submit'
+              disabled={loadingProfile || savingTrading}
+              className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60'>
+              {savingTrading ? 'Saving...' : 'Save'}
+            </button>
           </form>
         </section>
 
