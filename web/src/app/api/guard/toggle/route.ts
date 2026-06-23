@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseWithToken, getToken } from '@/src/lib/supabase/server';
 import { getServerEntitlements } from '@/src/lib/billing/server';
+import { undeployAccount } from '@/src/lib/integrations/metaapi';
 
 export const runtime = 'nodejs';
 
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
   // The connection must be the user's (RLS scopes this anyway).
   const { data: conn } = await sb
     .from('mt_connections')
-    .select('id')
+    .select('id, metaapi_account_id')
     .eq('id', connectionId)
     .maybeSingle();
   if (!conn) {
@@ -85,5 +86,20 @@ export async function POST(request: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // Turning Foresight off: undeploy the account now rather than waiting for the
+  // worker's next reconcile, so hosting cost stops immediately and moving a seat
+  // to another account never briefly double-deploys. The worker is a backstop and
+  // won't re-deploy (the flag is now off); a 404 if it's already gone is fine.
+  const metaApiId = (conn as { metaapi_account_id: string | null })
+    .metaapi_account_id;
+  if (!on && metaApiId) {
+    try {
+      await undeployAccount(metaApiId);
+    } catch {
+      // best-effort; the worker reconcile will undeploy it otherwise
+    }
+  }
+
   return NextResponse.json({ ok: true, guard_enabled: on });
 }

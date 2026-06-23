@@ -159,6 +159,9 @@ async function checkBreachAndDisconnect(
       .from('mt_connections')
       .update({
         state: passed ? 'passed' : 'breached',
+        // Release the Foresight seat: a dead login should never keep consuming a
+        // seat, so the trader can guard their replacement account immediately.
+        guard_enabled: false,
         last_error: passed
           ? 'This account passed its profit target, so auto-sync was disconnected. Prop firms issue a fresh login when you pass, connect that one. All trades are kept.'
           : 'This account hit its prop drawdown rules, so auto-sync was disconnected to stop sync charges. All trades are kept.',
