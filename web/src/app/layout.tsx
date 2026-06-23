@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { ChatWidget } from '@/src/components/ai/ChatWidget';
+import { MfaGuard } from '@/src/components/auth/MfaGuard';
 
 export const metadata: Metadata = {
   title: "The Trader's Hindsight — Make your experience your edge",
@@ -21,6 +22,7 @@ export default function RootLayout({
     // dev-only hydration mismatch warning we can't fix from our side.
     <html lang='en' suppressHydrationWarning>
       <body>
+        <MfaGuard />
         {children}
         <ChatWidget />
       </body>
