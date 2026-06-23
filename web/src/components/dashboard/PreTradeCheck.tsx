@@ -44,6 +44,7 @@ export function PreTradeCheck() {
   const [size, setSize] = useState('');
   const [risk, setRisk] = useState('');
   const [analyzedTf, setAnalyzedTf] = useState<Tf | ''>('');
+  const [executedTf, setExecutedTf] = useState<Tf | ''>('');
   const [setupId, setSetupId] = useState('');
   const [wake, setWake] = useState(false);
 
@@ -96,6 +97,7 @@ export function PreTradeCheck() {
         volume: num(size),
         riskMoney: num(risk),
         analyzedTf: analyzedTf || undefined,
+        executedTf: executedTf || undefined,
         setupId: setupId || undefined,
         wake,
       });
@@ -212,6 +214,20 @@ export function PreTradeCheck() {
           <select
             value={analyzedTf}
             onChange={(e) => setAnalyzedTf(e.target.value as Tf | '')}
+            className={`mt-1 ${field}`}>
+            <option value=''>Default (1H + 4H)</option>
+            {TF_VALUES.map((t) => (
+              <option key={t} value={t}>
+                {tfLabel(t)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className='block text-xs text-[var(--text-muted)]'>
+          Execution timeframe
+          <select
+            value={executedTf}
+            onChange={(e) => setExecutedTf(e.target.value as Tf | '')}
             className={`mt-1 ${field}`}>
             <option value=''>Not set</option>
             {TF_VALUES.map((t) => (
