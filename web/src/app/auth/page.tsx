@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
 import { passwordError, PASSWORD_RULE_TEXT } from '@/src/lib/auth/password';
+import { nextRouteAfterAuth } from '@/src/lib/auth/postAuth';
 
 function readSavedEmail(): string {
   if (typeof window === 'undefined') return '';
@@ -210,7 +211,7 @@ function AuthForm() {
           }
           return;
         }
-        router.replace('/dashboard');
+        router.replace(await nextRouteAfterAuth());
         return;
       }
 

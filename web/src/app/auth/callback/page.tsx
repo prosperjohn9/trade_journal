@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
+import { nextRouteAfterAuth } from '@/src/lib/auth/postAuth';
 
 function CallbackInner() {
   const router = useRouter();
@@ -38,7 +39,7 @@ function CallbackInner() {
           // exchanged, e.g. a refresh or back-nav), don't show an error.
           const { data } = await supabase.auth.getSession();
           if (data.session) {
-            if (!cancelled) router.replace(next);
+            if (!cancelled) router.replace(await nextRouteAfterAuth(next));
             return;
           }
           throw error;

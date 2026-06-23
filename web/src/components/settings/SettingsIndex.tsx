@@ -34,6 +34,25 @@ const SECTIONS: Array<{
     ),
   },
   {
+    href: '/settings/security',
+    title: 'Security',
+    description:
+      'Add optional two-factor authentication for an extra layer at sign-in.',
+    icon: (
+      <svg
+        viewBox='0 0 24 24'
+        fill='none'
+        stroke='currentColor'
+        strokeWidth='1.6'
+        strokeLinecap='round'
+        strokeLinejoin='round'
+        className='h-5 w-5'>
+        <path d='M12 3l8 3v6c0 4.5-3 7.5-8 9-5-1.5-8-4.5-8-9V6l8-3z' />
+        <path d='M9 12l2 2 4-4' />
+      </svg>
+    ),
+  },
+  {
     href: '/settings/accounts',
     title: 'Trading Accounts',
     description:
