@@ -56,13 +56,16 @@ export async function POST(request: Request) {
 
   const { data: profs } = await admin
     .from('profiles')
-    .select('id, telegram_chat_id, timezone, news_briefing_enabled')
+    .select(
+      'id, telegram_chat_id, timezone, news_briefing_enabled, news_briefing_currencies',
+    )
     .in('id', [...entitled]);
   const eligible = ((profs ?? []) as Array<{
     id: string;
     telegram_chat_id: string | null;
     timezone: string | null;
     news_briefing_enabled: boolean | null;
+    news_briefing_currencies: string[] | null;
   }>).filter((p) => p.telegram_chat_id && p.news_briefing_enabled !== false);
   if (!eligible.length) return NextResponse.json({ processed: 0, sent: 0 });
 
@@ -79,14 +82,21 @@ export async function POST(request: Request) {
     if (processed >= MAX_PER_RUN) break;
     processed++;
 
-    const { data: rows } = await admin
-      .from('trades')
-      .select('instrument')
-      .eq('user_id', p.id)
-      .gte('opened_at', since);
-    const ccys = new Set<string>();
-    for (const r of (rows ?? []) as Array<{ instrument: string | null }>) {
-      for (const c of currenciesForPair(String(r.instrument ?? ''))) ccys.add(c);
+    // The user's explicit currency choice wins; otherwise infer from the pairs
+    // they've actually traded in the last 60 days.
+    let ccys: Set<string>;
+    if (p.news_briefing_currencies && p.news_briefing_currencies.length) {
+      ccys = new Set(p.news_briefing_currencies.map((c) => c.toUpperCase()));
+    } else {
+      const { data: rows } = await admin
+        .from('trades')
+        .select('instrument')
+        .eq('user_id', p.id)
+        .gte('opened_at', since);
+      ccys = new Set<string>();
+      for (const r of (rows ?? []) as Array<{ instrument: string | null }>) {
+        for (const c of currenciesForPair(String(r.instrument ?? ''))) ccys.add(c);
+      }
     }
     if (!ccys.size) continue;
 
