@@ -8,6 +8,10 @@ import {
 import { adminUserIdSet } from '@/src/lib/auth/admin';
 import { buildWeeklyDigest } from '@/src/lib/analytics/digest';
 import type { HindsightTrade } from '@/src/lib/analytics/hindsight';
+import {
+  buildPnlNormalizer,
+  type PnlNormalizer,
+} from '@/src/lib/analytics/normalizePnl';
 import { sendTelegram } from '@/src/lib/integrations/telegram';
 import { isEmailConfigured, sendEmail } from '@/src/lib/integrations/email';
 
@@ -23,7 +27,7 @@ export const maxDuration = 60;
 
 const APP_ORIGIN = 'https://tradershindsight.com';
 const TRADE_SELECT =
-  'opened_at, closed_at, outcome, pnl_amount, net_pnl, commission, volume, emotion_tag';
+  'account_id, opened_at, closed_at, outcome, pnl_amount, net_pnl, commission, volume, emotion_tag';
 const MAX_PER_RUN = 200;
 
 function authorized(request: Request): boolean {
@@ -35,6 +39,7 @@ function authorized(request: Request): boolean {
 }
 
 type Row = {
+  account_id: string | null;
   opened_at: string;
   closed_at: string | null;
   outcome: string | null;
@@ -45,11 +50,12 @@ type Row = {
   emotion_tag: string | null;
 };
 
-function toTrade(r: Row): HindsightTrade {
-  const pnl =
+function toTrade(r: Row, fx: PnlNormalizer): HindsightTrade {
+  const raw =
     r.net_pnl != null
       ? Number(r.net_pnl)
       : Number(r.pnl_amount ?? 0) - Number(r.commission ?? 0);
+  const pnl = fx.toDisplay(Number.isFinite(raw) ? raw : 0, r.account_id);
   return {
     opened_at: r.opened_at,
     closed_at: r.closed_at,
@@ -109,10 +115,11 @@ export async function POST(request: Request) {
       .gte('closed_at', since);
     if (!rows || !rows.length) continue;
 
-    const digest = buildWeeklyDigest((rows as Row[]).map(toTrade), {
-      currency: p.base_currency ?? 'USD',
-      appUrl: APP_ORIGIN,
-    });
+    const fx = await buildPnlNormalizer(admin, p.id, p.base_currency ?? 'USD');
+    const digest = buildWeeklyDigest(
+      (rows as Row[]).map((r) => toTrade(r, fx)),
+      { currency: p.base_currency ?? 'USD', appUrl: APP_ORIGIN },
+    );
     if (!digest.hasContent) continue;
 
     let delivered = false;
