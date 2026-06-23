@@ -21,6 +21,7 @@ import {
   DEFAULT_MT_REGION,
 } from '@/src/lib/integrations/metaapi';
 import type { GuardTimeframe } from '@/src/lib/analytics/tradeGuard';
+import { fetchCtraderTimeframes } from '@/src/lib/integrations/ctraderMarket';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -187,8 +188,22 @@ export async function POST(request: Request) {
     }>).find((c) => !deadStates.has(c.state ?? ''));
 
     if (!conn) {
-      technicalNote =
-        'No live MetaTrader account is linked here, so the technical read (trend, structure, ATR) is skipped.';
+      // No MetaTrader on this account -> try cTrader. Its Open API is a free
+      // short-lived socket, so there is no deploy/wake cost; the technical read
+      // is always available when the symbol and data are there.
+      const ct = await fetchCtraderTimeframes(
+        sb,
+        user.id,
+        accountId,
+        symbol,
+        analyzedTf,
+      );
+      if (ct.length) {
+        timeframes = ct;
+      } else {
+        technicalNote =
+          'No live broker data for this account, so the technical read (trend, structure, ATR) is skipped. Connect MetaTrader or cTrader, or check the exact symbol name.';
+      }
     } else {
       const region = conn.region ?? DEFAULT_MT_REGION;
       warmAccountId = conn.metaapi_account_id;

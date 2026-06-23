@@ -20,6 +20,7 @@ const PT = {
   SYMBOLS_LIST_REQ: 2114,
   TRADER_REQ: 2121,
   DEAL_LIST_REQ: 2133,
+  GET_TRENDBARS_REQ: 2137,
   ERROR_RES: 2142,
   GET_ACCOUNTS_REQ: 2149,
 } as const;
@@ -327,5 +328,49 @@ export class CtraderSession {
           : null,
       };
     });
+  }
+
+  /** OHLC candles for a symbol/period. cTrader encodes each bar relative to its
+   *  low: low is the absolute low (scaled by 1e5) and open/high/close are stored
+   *  as unsigned deltas above it. We undo that into plain prices. */
+  async getTrendbars(
+    ctidTraderAccountId: number,
+    symbolId: number,
+    period: number,
+    fromMs: number,
+    toMs: number,
+    count = 120,
+  ): Promise<{ o: number; h: number; l: number; c: number }[]> {
+    const bytes = await this.request(
+      'ProtoOAGetTrendbarsReq',
+      PT.GET_TRENDBARS_REQ,
+      {
+        ctidTraderAccountId,
+        period,
+        symbolId,
+        fromTimestamp: fromMs,
+        toTimestamp: toMs,
+        count,
+      },
+    );
+    const Res = root.lookupType('ProtoOAGetTrendbarsRes');
+    const res = Res.decode(bytes) as unknown as {
+      trendbar?: Array<{
+        low?: unknown;
+        deltaOpen?: unknown;
+        deltaHigh?: unknown;
+        deltaClose?: unknown;
+      }>;
+    };
+    const out: { o: number; h: number; l: number; c: number }[] = [];
+    for (const t of res.trendbar ?? []) {
+      const low = toNum(t.low);
+      const o = (low + toNum(t.deltaOpen)) / 1e5;
+      const h = (low + toNum(t.deltaHigh)) / 1e5;
+      const c = (low + toNum(t.deltaClose)) / 1e5;
+      const l = low / 1e5;
+      if (h > 0 && l > 0) out.push({ o, h, l, c });
+    }
+    return out;
   }
 }
