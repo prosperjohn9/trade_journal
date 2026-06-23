@@ -121,7 +121,7 @@ export function LiveGuardPanel({ accountId }: { accountId?: string }) {
         }>;
         // Filter in JS so a NULL state is kept (a Postgres .neq would drop it).
         // Exclude only the genuinely dead states, and dedupe by account.
-        const dead = new Set(['breached', 'over_limit']);
+        const dead = new Set(['breached', 'over_limit', 'passed']);
         const seen = new Set<string>();
         const list: { accountId: string; name: string }[] = [];
         for (const r of rows) {

@@ -114,9 +114,14 @@ export async function POST(request: Request) {
 
   const due = conns
     .filter((c) => {
-      // Breached prop accounts are dead at the firm, and over-limit accounts had
-      // their MetaApi account removed; never pay to sync either.
-      if (c.state === 'breached' || c.state === 'over_limit') return false;
+      // Breached/passed prop accounts are dead logins at the firm, and over-limit
+      // accounts had their MetaApi account removed; never pay to sync any of them.
+      if (
+        c.state === 'breached' ||
+        c.state === 'over_limit' ||
+        c.state === 'passed'
+      )
+        return false;
       // Back off accounts that just failed or are still connecting.
       if (
         (c.state === 'connecting' || c.state === 'error') &&

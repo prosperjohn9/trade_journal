@@ -194,7 +194,7 @@ export async function POST(request: Request) {
   if (connectionId) q = q.eq('id', connectionId);
   else if (accountId) q = q.eq('account_id', accountId);
   const { data: rawConns } = await q.order('created_at', { ascending: true });
-  const dead = new Set(['breached', 'over_limit']);
+  const dead = new Set(['breached', 'over_limit', 'passed']);
   const conn = ((rawConns ?? []) as Array<{
     id: string;
     account_id: string;

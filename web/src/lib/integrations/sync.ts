@@ -40,6 +40,8 @@ export type SyncResult = {
   skipped: number;
   /** The account breached its prop rules and auto-sync was disconnected. */
   breached?: boolean;
+  /** The account passed its target and auto-sync was disconnected (stale login). */
+  passed?: boolean;
   error?: string;
 };
 
@@ -77,10 +79,14 @@ export async function manualRefreshCount(
  * explain. The user can reconnect manually if their configured rules were
  * wrong. Returns true when a disconnect happened.
  */
+// A prop challenge that is over -- breached its drawdown OR passed its target --
+// is a dead login: the firm issues a fresh account either way. We disconnect it
+// (remove the MetaApi account so it stops costing, even on a guarded seat) and
+// archive it. Returns which terminal state fired, or null if it is still live.
 async function checkBreachAndDisconnect(
   sb: SupabaseClient,
   c: SyncConnection,
-): Promise<boolean> {
+): Promise<'breached' | 'passed' | null> {
   try {
     const { data: acct } = await sb
       .from('accounts')
@@ -89,9 +95,11 @@ async function checkBreachAndDisconnect(
       .maybeSingle();
     const rules = ((acct as { prop_rules?: unknown } | null)?.prop_rules ??
       null) as PropRules | null;
-    if (!rules || (rules.maxDrawdownPct == null && rules.dailyLossPct == null)) {
-      return false;
-    }
+    if (!rules) return null;
+    const canBreach =
+      rules.maxDrawdownPct != null || rules.dailyLossPct != null;
+    const canPass = rules.profitTargetPct != null;
+    if (!canBreach && !canPass) return null;
 
     const [{ data: trades }, { data: events }] = await Promise.all([
       sb
@@ -139,7 +147,8 @@ async function checkBreachAndDisconnect(
       trades: propTrades,
       cashflows,
     });
-    if (status.status !== 'breached') return false;
+    if (status.status === 'in_progress') return null;
+    const passed = status.status === 'passed';
 
     try {
       await removeMetaApiAccount(c.metaapi_account_id);
@@ -149,18 +158,19 @@ async function checkBreachAndDisconnect(
     await sb
       .from('mt_connections')
       .update({
-        state: 'breached',
-        last_error:
-          'This account hit its prop drawdown rules, so auto-sync was disconnected to stop sync charges. All trades are kept.',
+        state: passed ? 'passed' : 'breached',
+        last_error: passed
+          ? 'This account passed its profit target, so auto-sync was disconnected. Prop firms issue a fresh login when you pass, connect that one. All trades are kept.'
+          : 'This account hit its prop drawdown rules, so auto-sync was disconnected to stop sync charges. All trades are kept.',
         updated_at: new Date().toISOString(),
       })
       .eq('id', c.id);
-    // A breached challenge is dead, so archive it out of the main list. The user
-    // can unarchive it any time; all trades are kept either way.
+    // A finished challenge (passed or breached) is a dead login, so archive it
+    // out of the main list. The user can unarchive any time; trades are kept.
     await sb.from('accounts').update({ archived: true }).eq('id', c.account_id);
-    return true;
+    return passed ? 'passed' : 'breached';
   } catch {
-    return false; // never fail a sync over the breach check
+    return null; // never fail a sync over the terminal-state check
   }
 }
 
@@ -207,7 +217,12 @@ export async function enforceSyncCaps(sb: SupabaseClient): Promise<number> {
       user_id: string;
       state: string | null;
     }>) {
-      if (c.state === 'breached' || c.state === 'over_limit') continue;
+      if (
+        c.state === 'breached' ||
+        c.state === 'over_limit' ||
+        c.state === 'passed'
+      )
+        continue;
       const arr = byUser.get(c.user_id) ?? [];
       arr.push({ id: c.id, metaapi_account_id: c.metaapi_account_id });
       byUser.set(c.user_id, arr);
@@ -470,11 +485,17 @@ export async function syncConnection(
       })
       .eq('id', c.id);
 
-    // With fresh trades in, check the prop rules; a breached account is
-    // auto-disconnected so it stops costing anyone money.
-    const breached = await checkBreachAndDisconnect(sb, c);
+    // With fresh trades in, check the prop rules; a finished challenge (breached
+    // or passed) is auto-disconnected so it stops costing anyone money.
+    const terminal = await checkBreachAndDisconnect(sb, c);
 
-    return { connectionId: c.id, imported, skipped, breached };
+    return {
+      connectionId: c.id,
+      imported,
+      skipped,
+      breached: terminal === 'breached',
+      passed: terminal === 'passed',
+    };
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Sync failed';
     await sb

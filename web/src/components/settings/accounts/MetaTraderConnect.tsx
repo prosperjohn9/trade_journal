@@ -26,6 +26,7 @@ type SyncResult = {
     imported: number;
     skipped: number;
     breached?: boolean;
+    passed?: boolean;
     error?: string;
   }>;
 };
@@ -216,9 +217,11 @@ export function MetaTraderConnect({
         setMsg(
           r?.breached
             ? `Synced ${imported} new trade${imported === 1 ? '' : 's'}, then auto-disconnected: this account hit its prop drawdown rules. Your trades are kept for review.`
-            : imported > 0
-              ? `Synced — ${imported} new trade${imported === 1 ? '' : 's'} imported.`
-              : 'Up to date — balance and stats refreshed.',
+            : r?.passed
+              ? `Synced ${imported} new trade${imported === 1 ? '' : 's'}, then auto-disconnected: this account passed its target. Connect your new funded login when the firm issues it. Your trades are kept.`
+              : imported > 0
+                ? `Synced — ${imported} new trade${imported === 1 ? '' : 's'} imported.`
+                : 'Up to date — balance and stats refreshed.',
         );
         // Always refresh: the accounts list (trade count / starting balance) and
         // every SWR-backed page (dashboard / analytics / monthly), even when no
@@ -417,6 +420,15 @@ export function MetaTraderConnect({
                     disconnected to stop sync charges. All trades are kept. If
                     the configured rules were wrong, disconnect below and
                     reconnect to start fresh.
+                  </p>
+                ) : conn.state === 'passed' ? (
+                  <p className='rounded-lg border border-emerald-500/40 bg-emerald-500/[0.08] px-3 py-2 text-xs text-[var(--text-secondary)]'>
+                    <span className='font-semibold text-[var(--text-primary)]'>
+                      Challenge passed:
+                    </span>{' '}
+                    this account hit its profit target, so auto-sync was
+                    disconnected. Prop firms issue a fresh login when you pass,
+                    connect that new account here. All trades are kept.
                   </p>
                 ) : conn.state === 'over_limit' ? (
                   <p className='rounded-lg border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-xs text-[var(--text-secondary)]'>

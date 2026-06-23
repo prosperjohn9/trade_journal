@@ -43,7 +43,8 @@ export async function POST(request: Request) {
     .from('mt_connections')
     .select('id', { count: 'exact', head: true })
     .neq('state', 'breached')
-    .neq('state', 'over_limit');
+    .neq('state', 'over_limit')
+    .neq('state', 'passed');
   if ((syncedCount ?? 0) >= entitlements.limits.syncedAccounts) {
     return NextResponse.json(
       {

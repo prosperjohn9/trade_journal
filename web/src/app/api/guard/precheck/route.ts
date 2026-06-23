@@ -180,7 +180,7 @@ export async function POST(request: Request) {
       .select('metaapi_account_id, region, state')
       .eq('user_id', user.id)
       .eq('account_id', accountId);
-    const deadStates = new Set(['breached', 'over_limit']);
+    const deadStates = new Set(['breached', 'over_limit', 'passed']);
     const conn = ((rawConns ?? []) as Array<{
       metaapi_account_id: string;
       region: string | null;

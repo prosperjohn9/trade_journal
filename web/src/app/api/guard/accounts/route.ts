@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const dead = new Set(['breached', 'over_limit']);
+  const dead = new Set(['breached', 'over_limit', 'passed']);
   const live = ((data ?? []) as Conn[]).filter(
     (c) => c.metaapi_account_id && !dead.has(c.state ?? ''),
   );

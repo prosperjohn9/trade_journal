@@ -49,10 +49,11 @@ export async function POST(request: Request) {
       'id, account_id, metaapi_account_id, region, last_synced_at, created_at, guard_enabled',
     )
     .eq('user_id', user.id)
-    // Breached and over-limit accounts were auto-disconnected; their MetaApi
+    // Breached/passed/over-limit accounts were auto-disconnected; their MetaApi
     // account is gone, so a sync attempt would only produce a confusing error.
     .neq('state', 'breached')
-    .neq('state', 'over_limit');
+    .neq('state', 'over_limit')
+    .neq('state', 'passed');
   if (body.connectionId) query = query.eq('id', body.connectionId);
 
   const { data: connections, error: connErr } = await query;
