@@ -7,13 +7,20 @@ import { UpgradePrompt } from '@/src/components/ui/UpgradePrompt';
 import { TF_VALUES, tfLabel, type Tf } from '@/src/lib/analytics/timeframes';
 
 // Pre-trade Foresight: paste a planned trade, get a grounded read (your own
-// leaks, committed rules, prop buffer, session, pair record, news, R:R) BEFORE
-// you enter. No live market data, so no candle trend read; everything else is
-// the same brain as the live co-pilot. Metered like any AI action.
+// leaks, committed rules, prop buffer, session, pair record, news, R:R + the
+// technical read) BEFORE you enter. The technical half pulls candles from your
+// connected broker; an idle account can be briefly woken for it. Same brain as
+// the live co-pilot. Metered like any AI action.
 
 type Severity = 'info' | 'caution' | 'warning';
 type Sig = { id: string; severity: Severity; title: string; detail: string };
-type Result = { tldr: string; signals: Sig[]; summary: string };
+type Result = {
+  tldr: string;
+  signals: Sig[];
+  summary: string;
+  technicalIncluded?: boolean;
+  technicalNote?: string | null;
+};
 
 const SEV_DOT: Record<string, string> = {
   warning: 'var(--loss)',
@@ -38,6 +45,7 @@ export function PreTradeCheck() {
   const [risk, setRisk] = useState('');
   const [analyzedTf, setAnalyzedTf] = useState<Tf | ''>('');
   const [setupId, setSetupId] = useState('');
+  const [wake, setWake] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -89,6 +97,7 @@ export function PreTradeCheck() {
         riskMoney: num(risk),
         analyzedTf: analyzedTf || undefined,
         setupId: setupId || undefined,
+        wake,
       });
       setResult(r);
     } catch (e) {
@@ -105,8 +114,9 @@ export function PreTradeCheck() {
         Check a planned trade
       </h2>
       <p className='mt-1 text-sm text-[var(--text-secondary)]'>
-        A grounded read before you enter: your own leaks, committed rules, prop
-        buffer, session, pair record, news and reward-to-risk.
+        A grounded read before you enter: trend and structure (where your stop
+        and target sit), your own leaks, committed rules, prop buffer, session,
+        pair record, news and reward-to-risk.
       </p>
 
       <div className='mt-4 grid grid-cols-2 gap-3 md:grid-cols-3'>
@@ -229,11 +239,25 @@ export function PreTradeCheck() {
         ) : null}
       </div>
 
+      <label className='mt-4 flex items-start gap-2 text-xs text-[var(--text-secondary)]'>
+        <input
+          type='checkbox'
+          className='mt-0.5 h-4 w-4 shrink-0'
+          checked={wake}
+          onChange={(e) => setWake(e.target.checked)}
+        />
+        <span>
+          Wake the account for the technical read. If this account is idle, tick
+          this to briefly connect it (about 30s) so I can read live trend and
+          structure. Guarded accounts are always live, so you can leave it off.
+        </span>
+      </label>
+
       <button
         onClick={() => void check()}
         disabled={busy}
         className='mt-4 rounded-lg bg-[var(--accent-cta)] px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60'>
-        {busy ? 'Reading…' : 'Check this trade'}
+        {busy ? (wake ? 'Waking and reading…' : 'Reading…') : 'Check this trade'}
       </button>
 
       {upgradeMsg ? (
@@ -252,6 +276,15 @@ export function PreTradeCheck() {
           <p className='text-sm font-semibold text-[var(--text-primary)]'>
             {result.tldr}
           </p>
+          {result.technicalNote ? (
+            <p className='mt-2 rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--text-secondary)]'>
+              {result.technicalNote}
+            </p>
+          ) : result.technicalIncluded ? (
+            <p className='mt-2 text-xs text-[var(--text-muted)]'>
+              Technical read included (live broker candles).
+            </p>
+          ) : null}
           {result.signals.length > 0 ? (
             <ul className='mt-3 space-y-2'>
               {result.signals.map((s) => (

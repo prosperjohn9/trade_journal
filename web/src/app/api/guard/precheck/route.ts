@@ -10,7 +10,17 @@ import {
   type GuardSide,
 } from '@/src/lib/analytics/tradeGuard';
 import { buildBehavioralGuardContext } from '@/src/lib/analytics/guardBehavioral';
-import { isTf, tfLabel } from '@/src/lib/analytics/timeframes';
+import { isTf, tfLabel, analysisTimeframes } from '@/src/lib/analytics/timeframes';
+import {
+  getAccountStatus,
+  deployAccount,
+  undeployAccount,
+  waitUntilConnected,
+  fetchCandles,
+  fetchTickSize,
+  DEFAULT_MT_REGION,
+} from '@/src/lib/integrations/metaapi';
+import type { GuardTimeframe } from '@/src/lib/analytics/tradeGuard';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -19,10 +29,12 @@ export const maxDuration = 60;
 //
 // Foresight on a PLANNED trade, before you enter. The user supplies the trade
 // (symbol/side/entry/stop/target/size); we add the behavioural half (their own
-// leaks, committed rules, prop buffer, session, pair record) + news + R:R and
-// narrate it with AI. No live market data (no candles/spread), so the technical
-// trend read is skipped; everything else is the same brain. Metered like any
-// other AI action; nothing is logged (it's hypothetical).
+// leaks, committed rules, prop buffer, session, pair record) + news + R:R, plus
+// the TECHNICAL read (trend, ATR-stop, structure/SL-TP) by fetching candles for
+// the symbol from the account's connected broker. The broker fetch is READ-ONLY
+// by default (never deploys); with { wake: true } a cold account is briefly
+// deployed then undeployed to serve candles, the same opt-in as the live panel.
+// Metered like any AI action; nothing is logged (it's hypothetical).
 
 function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
@@ -78,6 +90,7 @@ export async function POST(request: Request) {
   const analyzedTf = isTf(body.analyzedTf) ? body.analyzedTf : null;
   const executedTf = isTf(body.executedTf) ? body.executedTf : null;
   const setupId = typeof body.setupId === 'string' && body.setupId ? body.setupId : null;
+  const wantWake = body.wake === true;
 
   if (!accountId || !symbol || entry == null || volume == null) {
     return NextResponse.json(
@@ -149,6 +162,100 @@ export async function POST(request: Request) {
       }
     }
 
+    // ---- Optional live technical read -------------------------------------
+    // Candles + tick size for the planned symbol, from the account's connected
+    // MetaTrader broker, so the read includes trend, ATR-stop and the SL/TP
+    // structure signals. READ-ONLY by default; wake briefly connects a cold
+    // account then undeploys it.
+    let timeframes: GuardTimeframe[] = [];
+    let pipSize: number | null = null;
+    let technicalNote: string | null = null;
+    let undeployAfter = false;
+    let warming = false;
+    let warmAccountId: string | null = null;
+
+    const { data: rawConns } = await sb
+      .from('mt_connections')
+      .select('metaapi_account_id, region, state')
+      .eq('user_id', user.id)
+      .eq('account_id', accountId);
+    const deadStates = new Set(['breached', 'over_limit']);
+    const conn = ((rawConns ?? []) as Array<{
+      metaapi_account_id: string;
+      region: string | null;
+      state: string | null;
+    }>).find((c) => !deadStates.has(c.state ?? ''));
+
+    if (!conn) {
+      technicalNote =
+        'No live MetaTrader account is linked here, so the technical read (trend, structure, ATR) is skipped.';
+    } else {
+      const region = conn.region ?? DEFAULT_MT_REGION;
+      warmAccountId = conn.metaapi_account_id;
+      try {
+        const status = await getAccountStatus(conn.metaapi_account_id);
+        let live =
+          status.state === 'DEPLOYED' && status.connectionStatus === 'CONNECTED';
+        if (!live && wantWake) {
+          if (status.state !== 'DEPLOYED' && status.state !== 'DEPLOYING') {
+            await deployAccount(conn.metaapi_account_id);
+          }
+          const ok = await waitUntilConnected(conn.metaapi_account_id, {
+            timeoutMs: 35_000,
+          });
+          if (ok) {
+            live = true;
+            undeployAfter = true;
+          } else {
+            warming = true;
+          }
+        }
+        if (live) {
+          const tfs = analysisTimeframes(analyzedTf);
+          const [tickSize, candleResults] = await Promise.all([
+            fetchTickSize(conn.metaapi_account_id, region, symbol),
+            Promise.all(
+              tfs.map((t) =>
+                fetchCandles(conn.metaapi_account_id, region, symbol, t.code, 120),
+              ),
+            ),
+          ]);
+          timeframes = tfs
+            .map((t, i) => ({ tf: t.tf, candles: candleResults[i].candles }))
+            .filter((t) => t.candles.length >= 6);
+          pipSize = tickSize && tickSize > 0 ? tickSize * 10 : null;
+          if (!timeframes.length) {
+            technicalNote = `No candles came back for ${symbol} on this broker, so the technical read is skipped. Check the exact broker symbol.`;
+          }
+        } else if (!warming) {
+          technicalNote =
+            'This account is idle, so the live technical read (trend, structure, ATR) is skipped. Tick "Wake for the technical read" to briefly connect and include it.';
+        }
+      } catch {
+        technicalNote =
+          'Could not reach the broker for the technical read; showing the behavioural read only.';
+      } finally {
+        if (undeployAfter && warmAccountId) {
+          try {
+            await undeployAccount(warmAccountId);
+          } catch {
+            // best-effort; the daily reconcile will undeploy it
+          }
+        }
+      }
+    }
+
+    if (warming) {
+      return NextResponse.json(
+        {
+          error:
+            'Waking your account. The first connect can take a minute; it stays warming up, so tap Check this trade again shortly.',
+          code: 'warming_up',
+        },
+        { status: 409 },
+      );
+    }
+
     const ctx: GuardContext = {
       symbol,
       side,
@@ -160,8 +267,8 @@ export async function POST(request: Request) {
       currency,
       riskMoney,
       riskRulePct: behavioral.riskRulePct,
-      timeframes: [],
-      pipSize: null,
+      timeframes,
+      pipSize,
       spreadNow: null,
       spreadAvg: null,
       news: behavioral.news,
@@ -185,6 +292,8 @@ export async function POST(request: Request) {
       signals,
       summary,
       model: AI_MODEL,
+      technicalIncluded: timeframes.length > 0,
+      technicalNote,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Pre-trade check failed.';
