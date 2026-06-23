@@ -82,6 +82,9 @@ type Usage = {
   aiLimit: number;
   refreshesUsed: number;
   refreshesLimit: number;
+  foresightUsed: number;
+  foresightLimit: number;
+  hasForesight: boolean;
   daysLeft: number | null;
   willRenew: boolean;
   provider: string | null;
@@ -153,7 +156,8 @@ function CurrentPlanCard({ e, usage }: { e: Entitlements; usage: Usage | null })
       </div>
 
       {e.entitled ? (
-        <div className='mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4'>
+        <>
+        <div className='mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3'>
           <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
             <div className='text-xs text-[var(--text-muted)]'>
               MetaTrader accounts
@@ -186,6 +190,9 @@ function CurrentPlanCard({ e, usage }: { e: Entitlements; usage: Usage | null })
             <div className='text-xs text-[var(--text-muted)]'>
               AI actions / mo
             </div>
+            <div className='text-[11px] text-[var(--text-muted)]'>
+              you run (insights, reviews, chat, pre-trade)
+            </div>
             <div className='text-lg font-semibold text-[var(--text-primary)]'>
               {e.limits.aiActionsPerMonth.toLocaleString()}
             </div>
@@ -196,7 +203,31 @@ function CurrentPlanCard({ e, usage }: { e: Entitlements; usage: Usage | null })
               />
             ) : null}
           </div>
+          <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
+            <div className='text-xs text-[var(--text-muted)]'>
+              cTrader Foresight / mo
+            </div>
+            <div className='text-[11px] text-[var(--text-muted)]'>
+              automated always-on reads (free lane)
+            </div>
+            <div className='text-lg font-semibold text-[var(--text-primary)]'>
+              {e.limits.foresightReadsPerMonth.toLocaleString()}
+            </div>
+            {usage ? (
+              <Meter
+                used={usage.foresightUsed}
+                limit={usage.foresightLimit || e.limits.foresightReadsPerMonth}
+              />
+            ) : null}
+          </div>
         </div>
+        <p className='mt-3 text-xs leading-relaxed text-[var(--text-muted)]'>
+          Two separate AI budgets: <strong>AI actions</strong> are the analyses
+          you trigger yourself; <strong>cTrader Foresight</strong> reads are the
+          automated always-on reads on your cTrader accounts. They never draw from
+          each other. MetaTrader Foresight (the paid guardrail) is uncapped.
+        </p>
+        </>
       ) : (
         <p className='mt-3 text-sm text-[var(--text-secondary)]'>
           You do not have an active plan. Subscribe to unlock broker sync, the

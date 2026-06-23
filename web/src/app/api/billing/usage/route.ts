@@ -3,6 +3,7 @@ import { createSupabaseWithToken, getToken } from '@/src/lib/supabase/server';
 import { getServerEntitlements } from '@/src/lib/billing/server';
 import { monthlyUsageCount } from '@/src/lib/ai/usage';
 import { manualRefreshCount } from '@/src/lib/integrations/sync';
+import { ctraderReadUsage } from '@/src/lib/analytics/foresightCap';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -26,15 +27,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const [entitlements, aiUsed, refreshesUsed, { data: sub }] = await Promise.all([
-    getServerEntitlements(sb),
-    monthlyUsageCount(sb, user.id),
-    manualRefreshCount(sb, user.id),
-    sb
-      .from('subscriptions')
-      .select('cancel_at_period_end, provider, status')
-      .maybeSingle(),
-  ]);
+  const [entitlements, aiUsed, refreshesUsed, foresight, { data: sub }] =
+    await Promise.all([
+      getServerEntitlements(sb),
+      monthlyUsageCount(sb, user.id),
+      manualRefreshCount(sb, user.id),
+      ctraderReadUsage(sb, user.id),
+      sb
+        .from('subscriptions')
+        .select('cancel_at_period_end, provider, status')
+        .maybeSingle(),
+    ]);
 
   const row = (sub ?? null) as {
     cancel_at_period_end?: boolean;
@@ -59,6 +62,9 @@ export async function GET(request: Request) {
     aiLimit: entitlements.limits.aiActionsPerMonth,
     refreshesUsed,
     refreshesLimit: entitlements.limits.manualRefreshesPerMonth,
+    foresightUsed: foresight.used,
+    foresightLimit: foresight.cap,
+    hasForesight: foresight.hasCtrader,
     daysLeft: lifetime ? null : entitlements.daysLeft,
     endsAt: lifetime ? null : entitlements.currentPeriodEnd,
     willRenew,
