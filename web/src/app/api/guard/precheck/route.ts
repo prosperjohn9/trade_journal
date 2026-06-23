@@ -198,8 +198,9 @@ export async function POST(request: Request) {
         symbol,
         analyzedTf,
       );
-      if (ct.length) {
-        timeframes = ct;
+      if (ct.timeframes.length) {
+        timeframes = ct.timeframes;
+        pipSize = ct.pipSize;
       } else {
         technicalNote =
           'No live broker data for this account, so the technical read (trend, structure, ATR) is skipped. Connect MetaTrader or cTrader, or check the exact symbol name.';

@@ -18,6 +18,7 @@ const PT = {
   ACCOUNT_AUTH_REQ: 2102,
   ASSET_LIST_REQ: 2112,
   SYMBOLS_LIST_REQ: 2114,
+  SYMBOL_BY_ID_REQ: 2116,
   TRADER_REQ: 2121,
   DEAL_LIST_REQ: 2133,
   GET_TRENDBARS_REQ: 2137,
@@ -328,6 +329,25 @@ export class CtraderSession {
           : null,
       };
     });
+  }
+
+  /** Pip size (price value of one pip) for a symbol, from its pip position.
+   *  e.g. pipPosition 4 -> 0.0001 (EURUSD), 2 -> 0.01 (JPY pairs). */
+  async getSymbolPipSize(
+    ctidTraderAccountId: number,
+    symbolId: number,
+  ): Promise<number | null> {
+    const bytes = await this.request('ProtoOASymbolByIdReq', PT.SYMBOL_BY_ID_REQ, {
+      ctidTraderAccountId,
+      symbolId: [symbolId],
+    });
+    const Res = root.lookupType('ProtoOASymbolByIdRes');
+    const res = Res.decode(bytes) as unknown as {
+      symbol?: Array<{ pipPosition?: unknown }>;
+    };
+    const sym = (res.symbol ?? [])[0];
+    if (!sym || sym.pipPosition == null) return null;
+    return Math.pow(10, -toNum(sym.pipPosition));
   }
 
   /** OHLC candles for a symbol/period. cTrader encodes each bar relative to its

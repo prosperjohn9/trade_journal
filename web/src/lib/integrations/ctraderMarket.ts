@@ -21,20 +21,27 @@ const PERIOD_MINUTES: Record<number, number> = {
   12: 1440,
 };
 
+export type CtraderMarketRead = {
+  timeframes: GuardTimeframe[];
+  pipSize: number | null;
+};
+
+const EMPTY: CtraderMarketRead = { timeframes: [], pipSize: null };
+
 export async function fetchCtraderTimeframes(
   sb: SupabaseClient,
   userId: string,
   accountId: string,
   symbol: string,
   analyzedTf: Tf | null,
-): Promise<GuardTimeframe[]> {
+): Promise<CtraderMarketRead> {
   const { data: connRow } = await sb
     .from('ctrader_connections')
     .select('ctid_trader_account_id, environment')
     .eq('user_id', userId)
     .eq('account_id', accountId)
     .maybeSingle();
-  if (!connRow) return [];
+  if (!connRow) return EMPTY;
   const conn = connRow as {
     ctid_trader_account_id: number;
     environment?: string | null;
@@ -47,7 +54,7 @@ export async function fetchCtraderTimeframes(
     .select('access_token, refresh_token, token_expires_at')
     .eq('user_id', userId)
     .maybeSingle();
-  if (!oauthRow) return [];
+  if (!oauthRow) return EMPTY;
   const oauth = oauthRow as {
     access_token: string;
     refresh_token: string;
@@ -79,7 +86,7 @@ export async function fetchCtraderTimeframes(
 
   const clientId = process.env.CTRADER_CLIENT_ID ?? '';
   const clientSecret = process.env.CTRADER_CLIENT_SECRET ?? '';
-  if (!clientId || !clientSecret) return [];
+  if (!clientId || !clientSecret) return EMPTY;
 
   const session = new CtraderSession(env);
   try {
@@ -105,7 +112,15 @@ export async function fetchCtraderTimeframes(
         }
       }
     }
-    if (symbolId == null) return [];
+    if (symbolId == null) return EMPTY;
+
+    // Pip size for the ATR-in-pips and round-number reads (best-effort).
+    let pipSize: number | null = null;
+    try {
+      pipSize = await session.getSymbolPipSize(ctid, symbolId);
+    } catch {
+      // leave null; trend + structure + R:R still work without it
+    }
 
     const tfs = ctraderTimeframes(analyzedTf);
     const now = Date.now();
@@ -126,9 +141,9 @@ export async function fetchCtraderTimeframes(
         // Skip this timeframe; the others may still come back.
       }
     }
-    return out;
+    return { timeframes: out, pipSize };
   } catch {
-    return [];
+    return EMPTY;
   } finally {
     session.close();
   }
