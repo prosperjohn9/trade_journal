@@ -18,6 +18,7 @@ import {
   loadNewTradeBootstrap,
 } from '@/src/lib/services/newTrade.service';
 import { toNumberSafe } from '@/src/lib/utils/number';
+import { getOrCreateProfile } from '@/src/lib/db/profiles.repo';
 
 export type Direction = 'BUY' | 'SELL';
 export type Outcome = 'WIN' | 'LOSS' | 'BREAKEVEN';
@@ -155,6 +156,10 @@ export function useNewTrade() {
 
   const [accounts, setAccounts] = useState<AccountLite[]>([]);
   const [accountId, setAccountId] = useState<string>('');
+  // The trader's defined risk-per-trade limit (Settings -> Profile). Falls back
+  // to the default until the profile loads, so the warning reflects THEIR rule
+  // rather than a hardcoded number.
+  const [maxRiskPercent, setMaxRiskPercent] = useState<number>(MAX_RISK_PERCENT);
 
   const [templates, setTemplates] = useState<SetupTemplate[]>([]);
   const [templateId, setTemplateId] = useState<string>('');
@@ -216,8 +221,8 @@ export function useNewTrade() {
     () =>
       riskPercentOfAccount !== null &&
       Number.isFinite(riskPercentOfAccount) &&
-      riskPercentOfAccount > MAX_RISK_PERCENT,
-    [riskPercentOfAccount],
+      riskPercentOfAccount > maxRiskPercent,
+    [riskPercentOfAccount, maxRiskPercent],
   );
 
   const favoriteInstruments = useMemo(() => FAVORITE_INSTRUMENTS, []);
@@ -400,6 +405,12 @@ export function useNewTrade() {
 
         setTemplates(boot.templates);
         setTemplateId((prev) => prev || boot.defaultTemplateId);
+
+        const { profile } = await getOrCreateProfile();
+        if (cancelled) return;
+        const rpt = (profile as { risk_per_trade_percent?: number | null })
+          .risk_per_trade_percent;
+        if (typeof rpt === 'number' && rpt > 0) setMaxRiskPercent(rpt);
       } catch (e: unknown) {
         const m = getErr(e, 'Failed to load Add Trade');
         setMsg(m);
@@ -487,7 +498,7 @@ export function useNewTrade() {
     selectedAccountBalance,
     riskPercentOfAccount,
     riskExceedsPolicy,
-    maxRiskPercent: MAX_RISK_PERCENT,
+    maxRiskPercent,
 
     favoriteInstruments,
     recentInstruments,
