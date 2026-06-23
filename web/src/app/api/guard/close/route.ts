@@ -8,9 +8,10 @@ import { AI_MODEL, isAiConfigured } from '@/src/lib/ai/client';
 import { logUsage } from '@/src/lib/ai/usage';
 import { narrateClose } from '@/src/lib/ai/guard';
 import { sendTelegram } from '@/src/lib/integrations/telegram';
+import { syncConnection } from '@/src/lib/integrations/sync';
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 // POST /api/guard/close  (worker-only)
 //
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
   // Resolve the connection -> owner + MetaApi account.
   let q = sb
     .from('mt_connections')
-    .select('id, account_id, metaapi_account_id, region, user_id');
+    .select('id, account_id, metaapi_account_id, region, user_id, guard_enabled');
   if (connectionId) q = q.eq('id', connectionId);
   else if (accountIdIn) q = q.eq('account_id', accountIdIn);
   const { data: conn } = await q.maybeSingle();
@@ -67,9 +68,31 @@ export async function POST(request: Request) {
     metaapi_account_id: string | null;
     region: string | null;
     user_id: string;
+    guard_enabled: boolean | null;
   } | null;
   if (!c?.metaapi_account_id) {
     return NextResponse.json({ ok: true, skipped: 'no-connection' });
+  }
+
+  // A guarded account is already deployed, so the worker seeing a close means the
+  // closed trade can land in the journal NOW rather than waiting for the daily
+  // cron. syncConnection won't undeploy a guard_enabled account, so this is safe
+  // and adds no hosting cost. It also runs the breach/passed check, so a finishing
+  // challenge auto-disconnects in real time. Best-effort; the cron still backstops.
+  try {
+    await syncConnection(
+      sb,
+      {
+        id: c.id,
+        account_id: c.account_id,
+        metaapi_account_id: c.metaapi_account_id,
+        region: c.region,
+        guard_enabled: c.guard_enabled,
+      },
+      c.user_id,
+    );
+  } catch {
+    // ignore; the daily cron will still pick up this trade
   }
 
   // The read we logged at entry (still open = outcome null). No read means we
