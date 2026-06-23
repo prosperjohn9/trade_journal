@@ -26,6 +26,12 @@ type ReadRow = {
   cautions: number | null;
   tldr: string | null;
   summary: string | null;
+  signals: Array<{
+    id: string;
+    severity: string;
+    title: string;
+    detail: string;
+  }> | null;
   outcome: string | null;
   outcome_note: string | null;
   closed_pnl: number | null;
@@ -34,6 +40,13 @@ type ReadRow = {
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
+
+// Same severity colours as the on-demand Foresight panel.
+const SEV_DOT: Record<string, string> = {
+  warning: 'var(--loss)',
+  caution: '#f59e0b',
+  info: 'var(--text-muted)',
+};
 
 function money(n: number, currency: string): string {
   const v = Math.round(n * 100) / 100;
@@ -49,6 +62,16 @@ export function ForesightLogClient() {
     Map<string, { name: string; currency: string }>
   >(new Map());
   const [usage, setUsage] = useState<Usage | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  function toggleFlags(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -71,7 +94,7 @@ export function ForesightLogClient() {
         supabase
           .from('foresight_reads')
           .select(
-            'id, account_id, symbol, side, volume, warnings, cautions, tldr, summary, outcome, outcome_note, closed_pnl, created_at',
+            'id, account_id, symbol, side, volume, warnings, cautions, tldr, summary, signals, outcome, outcome_note, closed_pnl, created_at',
           )
           .order('created_at', { ascending: false })
           .limit(100),
@@ -204,6 +227,42 @@ export function ForesightLogClient() {
                     <p className='mt-1 text-sm leading-relaxed text-[var(--text-secondary)]'>
                       {r.summary}
                     </p>
+                  ) : null}
+
+                  {r.signals && r.signals.length > 0 ? (
+                    <div className='mt-3'>
+                      <button
+                        onClick={() => toggleFlags(r.id)}
+                        className='text-xs font-medium text-[var(--accent-cta)] transition-opacity hover:opacity-80'>
+                        {expanded.has(r.id) ? 'Hide' : 'View'} {r.signals.length}{' '}
+                        flag{r.signals.length === 1 ? '' : 's'}
+                      </button>
+                      {expanded.has(r.id) ? (
+                        <ul className='mt-2 space-y-2'>
+                          {r.signals.map((s) => (
+                            <li
+                              key={s.id}
+                              className='flex gap-2.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
+                              <span
+                                className='mt-1.5 h-2 w-2 shrink-0 rounded-full'
+                                style={{
+                                  backgroundColor:
+                                    SEV_DOT[s.severity] ?? 'var(--text-muted)',
+                                }}
+                              />
+                              <div>
+                                <div className='text-sm font-medium text-[var(--text-primary)]'>
+                                  {s.title}
+                                </div>
+                                <div className='text-xs text-[var(--text-muted)]'>
+                                  {s.detail}
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
                   ) : null}
 
                   {r.outcome_note ? (
