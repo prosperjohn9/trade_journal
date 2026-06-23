@@ -3,12 +3,22 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/src/lib/supabase/client';
 
-// Opt-out for the weekly Hindsight digest (email + Telegram). Reads/writes
-// profiles.weekly_digest_enabled directly under RLS, so it stays out of the
-// shared profile form.
+// Opt-outs for the proactive updates (weekly Hindsight digest + daily news
+// briefing). Reads/writes the profiles flags directly under RLS, so it stays out
+// of the shared profile form.
+
+type Flags = {
+  weekly_digest_enabled: boolean;
+  news_briefing_enabled: boolean;
+};
+
+const DEFAULTS: Flags = {
+  weekly_digest_enabled: true,
+  news_briefing_enabled: true,
+};
 
 export function WeeklyDigestToggle() {
-  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [flags, setFlags] = useState<Flags | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -20,14 +30,15 @@ export function WeeklyDigestToggle() {
       if (!user || cancelled) return;
       const { data } = await supabase
         .from('profiles')
-        .select('weekly_digest_enabled')
+        .select('weekly_digest_enabled, news_briefing_enabled')
         .eq('id', user.id)
         .maybeSingle();
       if (!cancelled) {
-        setEnabled(
-          (data as { weekly_digest_enabled?: boolean } | null)
-            ?.weekly_digest_enabled ?? true,
-        );
+        const d = (data ?? {}) as Partial<Flags>;
+        setFlags({
+          weekly_digest_enabled: d.weekly_digest_enabled ?? true,
+          news_briefing_enabled: d.news_briefing_enabled ?? true,
+        });
       }
     })();
     return () => {
@@ -35,42 +46,63 @@ export function WeeklyDigestToggle() {
     };
   }, []);
 
-  async function toggle(next: boolean) {
+  async function set(key: keyof Flags, value: boolean) {
+    if (!flags) return;
     setSaving(true);
-    setEnabled(next);
+    setFlags({ ...flags, [key]: value });
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (user) {
-      await supabase
-        .from('profiles')
-        .update({ weekly_digest_enabled: next })
-        .eq('id', user.id);
+      await supabase.from('profiles').update({ [key]: value }).eq('id', user.id);
     }
     setSaving(false);
   }
 
+  const f = flags ?? DEFAULTS;
+  const disabled = flags === null || saving;
+
   return (
-    <section className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
+    <section className='space-y-4 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
       <h2 className='text-lg font-semibold text-[var(--text-primary)]'>
-        Weekly digest
+        Email &amp; Telegram updates
       </h2>
-      <label className='mt-4 flex items-center justify-between gap-3'>
+
+      <label className='flex items-center justify-between gap-3'>
         <span>
           <span className='font-medium text-[var(--text-primary)]'>
             Weekly Hindsight digest
           </span>
           <span className='mt-0.5 block text-xs text-[var(--text-secondary)]'>
-            A short Monday recap of last week&apos;s behavioural leaks and net
-            result, sent to your Telegram and email.
+            A Monday recap of last week&apos;s behavioural leaks and net result,
+            to your Telegram and email.
           </span>
         </span>
         <input
           type='checkbox'
           className='h-4 w-4 shrink-0'
-          checked={enabled ?? true}
-          onChange={(e) => void toggle(e.target.checked)}
-          disabled={enabled === null || saving}
+          checked={f.weekly_digest_enabled}
+          onChange={(e) => void set('weekly_digest_enabled', e.target.checked)}
+          disabled={disabled}
+        />
+      </label>
+
+      <label className='flex items-center justify-between gap-3 border-t border-[var(--border-default)] pt-4'>
+        <span>
+          <span className='font-medium text-[var(--text-primary)]'>
+            Daily news briefing
+          </span>
+          <span className='mt-0.5 block text-xs text-[var(--text-secondary)]'>
+            Each morning, today&apos;s high-impact events for the pairs you trade,
+            to your Telegram. (Requires Telegram linked above.)
+          </span>
+        </span>
+        <input
+          type='checkbox'
+          className='h-4 w-4 shrink-0'
+          checked={f.news_briefing_enabled}
+          onChange={(e) => void set('news_briefing_enabled', e.target.checked)}
+          disabled={disabled}
         />
       </label>
     </section>
