@@ -12,6 +12,7 @@ import { DashboardTradeTable } from './DashboardTradeTable';
 import { PropChallengeWidget } from './PropChallengeWidget';
 import { PropCareerCard } from './PropCareerCard';
 import { LiveGuardPanel } from './LiveGuardPanel';
+import { PreTradeCheck } from './PreTradeCheck';
 import { PlanExpiryBanner } from '@/src/components/billing/PlanExpiryBanner';
 
 type DashboardTheme = 'light' | 'dark';
@@ -382,6 +383,9 @@ export default function DashboardClient() {
 
             {/* Foresight: on-demand second opinion on an open position */}
             <LiveGuardPanel accountId={s.accountId} />
+
+            {/* Foresight on a planned trade, before you enter */}
+            <PreTradeCheck />
 
             {/* Prop career ROI (renders nothing for non-prop users) */}
             <PropCareerCard />
