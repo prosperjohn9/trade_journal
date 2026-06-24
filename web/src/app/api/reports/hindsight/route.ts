@@ -20,7 +20,7 @@ export const maxDuration = 60;
 // the user's display currency so mixed-currency accounts don't blend.
 
 const TRADE_SELECT =
-  'account_id, opened_at, closed_at, outcome, pnl_amount, net_pnl, commission, volume, emotion_tag';
+  'account_id, opened_at, closed_at, outcome, pnl_amount, net_pnl, commission, volume, instrument, emotion_tag';
 const DEFAULT_DAYS = 30;
 const MIN_TRADES = 10;
 
@@ -33,6 +33,7 @@ type Row = {
   net_pnl: number | null;
   commission: number | null;
   volume: number | null;
+  instrument: string | null;
   emotion_tag: string | null;
 };
 
@@ -48,6 +49,7 @@ function toHindsightTrade(r: Row, fx: PnlNormalizer): HindsightTrade {
     outcome: r.outcome,
     pnl: Number.isFinite(pnl) ? pnl : 0,
     volume: r.volume,
+    instrument: r.instrument,
     emotion_tag: r.emotion_tag,
   };
 }

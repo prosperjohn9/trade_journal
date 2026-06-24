@@ -9,8 +9,8 @@ import {
   OVERSIZE_FACTOR,
   sessionOf,
   WEEKDAYS,
-  median,
   dayKey,
+  medianVolumeByInstrument,
   type HindsightTrade,
   type LeakKind,
 } from './hindsight';
@@ -45,7 +45,7 @@ type Breach = { at: number; impact: number };
 function scanBreaches(
   rule: CommitmentRule,
   trades: HindsightTrade[],
-  med: number | null,
+  medByInstrument: Map<string, number>,
   tz: string,
 ): Breach[] {
   const sorted = [...trades].sort((a, b) =>
@@ -90,6 +90,8 @@ function scanBreaches(
       }
       case 'oversized': {
         const vol = t.volume ?? 0;
+        // Same-instrument "usual size" only (lots aren't comparable across markets).
+        const med = medByInstrument.get((t.instrument ?? '').toUpperCase());
         if (prev?.outcome === 'LOSS' && med && vol >= med * OVERSIZE_FACTOR) {
           breach = true;
           impact = t.pnl - t.pnl * (med / vol); // extra P&L from the bigger size
@@ -140,8 +142,8 @@ export function computeRuleProgress(
   now: number = Date.now(),
   tz = 'UTC',
 ): RuleProgress {
-  const med = median(trades.map((t) => t.volume ?? 0).filter((v) => v > 0));
-  const breaches = scanBreaches(rule, trades, med, tz);
+  const medByInstrument = medianVolumeByInstrument(trades);
+  const breaches = scanBreaches(rule, trades, medByInstrument, tz);
   const commitMs = new Date(rule.committedAt).getTime();
 
   const baseline = breaches.filter((b) => b.at < commitMs);

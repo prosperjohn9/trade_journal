@@ -27,7 +27,7 @@ export const maxDuration = 60;
 
 const APP_ORIGIN = 'https://tradershindsight.com';
 const TRADE_SELECT =
-  'account_id, opened_at, closed_at, outcome, pnl_amount, net_pnl, commission, volume, emotion_tag';
+  'account_id, opened_at, closed_at, outcome, pnl_amount, net_pnl, commission, volume, instrument, emotion_tag';
 const MAX_PER_RUN = 200;
 
 function authorized(request: Request): boolean {
@@ -47,6 +47,7 @@ type Row = {
   net_pnl: number | null;
   commission: number | null;
   volume: number | null;
+  instrument: string | null;
   emotion_tag: string | null;
 };
 
@@ -62,6 +63,7 @@ function toTrade(r: Row, fx: PnlNormalizer): HindsightTrade {
     outcome: r.outcome,
     pnl: Number.isFinite(pnl) ? pnl : 0,
     volume: r.volume,
+    instrument: r.instrument,
     emotion_tag: r.emotion_tag,
   };
 }

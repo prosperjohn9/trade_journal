@@ -10,6 +10,7 @@ export type HindsightTrade = {
   outcome: string | null; // WIN | LOSS | BREAKEVEN
   pnl: number; // net
   volume: number | null;
+  instrument: string | null; // for same-instrument size comparison
   emotion_tag: string | null;
 };
 
@@ -85,6 +86,31 @@ export function median(values: number[]): number | null {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
+// Median lot size PER INSTRUMENT. Lots aren't comparable across markets (7 lots
+// of CADJPY is nothing like 7 lots of BTCUSD), so "usual size" is only meaningful
+// within one instrument; an instrument needs `minCount` trades to qualify.
+export function medianVolumeByInstrument(
+  trades: HindsightTrade[],
+  minCount = 4,
+): Map<string, number> {
+  const byInst = new Map<string, number[]>();
+  for (const t of trades) {
+    const inst = (t.instrument ?? '').toUpperCase();
+    const v = t.volume ?? 0;
+    if (!inst || v <= 0) continue;
+    const arr = byInst.get(inst) ?? [];
+    arr.push(v);
+    byInst.set(inst, arr);
+  }
+  const out = new Map<string, number>();
+  for (const [inst, vs] of byInst) {
+    if (vs.length < minCount) continue;
+    const m = median(vs);
+    if (m && m > 0) out.set(inst, m);
+  }
+  return out;
+}
+
 function groupCost(
   trades: HindsightTrade[],
   key: (t: HindsightTrade) => string | null,
@@ -155,19 +181,20 @@ export function computeHindsightReport(
     });
   }
 
-  // 2) Oversizing after a loss: post-loss positions at 1.5x+ the median size,
-  //    counterfactually scaled back to median size.
-  const med = median(
-    trades.map((t) => t.volume ?? 0).filter((v) => v > 0),
-  );
-  if (med && med > 0) {
+  // 2) Oversizing after a loss: post-loss positions at 1.5x+ the median size
+  //    FOR THE SAME INSTRUMENT (lots aren't comparable across markets), scaled
+  //    back to that instrument's median. An instrument needs a few trades to
+  //    have a meaningful "usual size", else it is skipped.
+  const medByInstrument = medianVolumeByInstrument(trades);
+  {
     let oversizedCost = 0;
     let oversizedCount = 0;
     for (let i = 1; i < trades.length; i++) {
       const t = trades[i];
       const prev = trades[i - 1];
       const vol = t.volume ?? 0;
-      if (prev.outcome !== 'LOSS' || vol < med * OVERSIZE_FACTOR) continue;
+      const med = medByInstrument.get((t.instrument ?? '').toUpperCase());
+      if (!med || prev.outcome !== 'LOSS' || vol < med * OVERSIZE_FACTOR) continue;
       const scaledPnl = t.pnl * (med / vol);
       oversizedCost += scaledPnl - t.pnl; // >0 when the extra size lost money
       oversizedCount += 1;
@@ -176,7 +203,7 @@ export function computeHindsightReport(
       findings.push({
         kind: 'oversized',
         label: 'Oversizing after losses',
-        detail: `Post-loss positions at ${OVERSIZE_FACTOR}x+ your median size, scaled back to normal`,
+        detail: `Post-loss positions at ${OVERSIZE_FACTOR}x+ your usual size on that instrument, scaled back to normal`,
         tradeCount: oversizedCount,
         cost: oversizedCost,
         counterfactualPnl: actualPnl + oversizedCost,

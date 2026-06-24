@@ -387,10 +387,15 @@ export async function POST(request: Request) {
     const minutesSinceLastLoss = lastLoss?.closed_at
       ? Math.max(0, (Date.now() - new Date(lastLoss.closed_at).getTime()) / 60_000)
       : null;
+    // "Usual size" must be SAME-INSTRUMENT: lots aren't comparable across
+    // markets (7 lots of CADJPY is nothing like 7 lots of BTCUSD), so a
+    // cross-instrument median produces a nonsense "Nx your usual size". Require a
+    // few same-symbol trades, else null so the oversizing read simply doesn't fire.
     const vols = rows
+      .filter((t) => (t.instrument ?? '').toUpperCase() === pos.symbol)
       .map((t) => (typeof t.volume === 'number' ? t.volume : null))
       .filter((v): v is number => v != null && v > 0);
-    const medianVolumeLots = vols.length ? median(vols) : null;
+    const medianVolumeLots = vols.length >= 4 ? median(vols) : null;
 
     // Their record on this exact pair.
     const pairRows = rows.filter(
