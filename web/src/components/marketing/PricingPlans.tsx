@@ -38,7 +38,7 @@ function Check() {
       viewBox='0 0 20 20'
       fill='none'
       aria-hidden='true'
-      className='mt-0.5 h-4 w-4 shrink-0 text-indigo-400'>
+      className='mt-0.5 h-4 w-4 shrink-0 text-[var(--accent)]'>
       <path
         d='M4 10.5l3.5 3.5L16 6'
         stroke='currentColor'
@@ -73,13 +73,13 @@ export function PricingPlans() {
   return (
     <div>
       {/* Billing-cycle toggle */}
-      <div className='mx-auto mb-10 flex w-fit items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1 text-sm'>
+      <div className='mx-auto mb-10 flex w-fit items-center gap-1 rounded-full border border-[var(--border-default)] bg-[var(--bg-surface)] p-1 text-sm'>
         <button
           onClick={() => setCycle('monthly')}
           className={`rounded-full px-4 py-1.5 font-medium transition-colors ${
             cycle === 'monthly'
-              ? 'bg-indigo-500 text-white'
-              : 'text-slate-300 hover:text-white'
+              ? 'bg-[var(--accent-cta)] text-white'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           }`}>
           Monthly
         </button>
@@ -87,11 +87,13 @@ export function PricingPlans() {
           onClick={() => setCycle('yearly')}
           className={`rounded-full px-4 py-1.5 font-medium transition-colors ${
             cycle === 'yearly'
-              ? 'bg-indigo-500 text-white'
-              : 'text-slate-300 hover:text-white'
+              ? 'bg-[var(--accent-cta)] text-white'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           }`}>
           Yearly
-          <span className='ml-1.5 text-xs text-emerald-300'>2 months free</span>
+          <span className='ml-1.5 text-xs text-[var(--profit)]'>
+            2 months free
+          </span>
         </button>
       </div>
 
@@ -106,25 +108,27 @@ export function PricingPlans() {
               key={id}
               className={`relative flex flex-col rounded-2xl border p-6 ${
                 popular
-                  ? 'border-indigo-400/60 bg-indigo-500/[0.07]'
-                  : 'border-white/10 bg-white/[0.03]'
+                  ? 'border-[var(--accent)] bg-[var(--accent-strip-bg)]'
+                  : 'border-[var(--border-default)] bg-[var(--bg-surface)]'
               }`}>
               {popular ? (
-                <span className='absolute -top-3 left-6 rounded-full bg-indigo-500 px-3 py-1 text-xs font-semibold text-white'>
+                <span className='absolute -top-3 left-6 rounded-full bg-[var(--accent-cta)] px-3 py-1 text-xs font-semibold text-white'>
                   Most popular
                 </span>
               ) : null}
 
-              <h3 className='text-lg font-semibold text-white'>{p.name}</h3>
-              <p className='mt-1 text-sm text-slate-400'>{p.blurb}</p>
+              <h3 className='text-lg font-semibold text-[var(--text-primary)]'>
+                {p.name}
+              </h3>
+              <p className='mt-1 text-sm text-[var(--text-muted)]'>{p.blurb}</p>
 
               <div className='mt-5 flex items-baseline gap-1'>
-                <span className='text-4xl font-semibold tracking-tight text-white'>
+                <span className='text-4xl font-semibold tracking-tight text-[var(--text-primary)]'>
                   ${price}
                 </span>
-                <span className='text-sm text-slate-400'>{unit}</span>
+                <span className='text-sm text-[var(--text-muted)]'>{unit}</span>
               </div>
-              <p className='mt-1 text-xs text-slate-500'>
+              <p className='mt-1 text-xs text-[var(--text-muted)]'>
                 {cycle === 'yearly'
                   ? `Billed $${p.priceYearly} per year`
                   : `or $${p.priceYearly}/yr (2 months free)`}
@@ -135,21 +139,23 @@ export function PricingPlans() {
                 onClick={getStarted}
                 className={`mt-6 inline-flex w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${
                   popular
-                    ? 'bg-indigo-500 text-white hover:bg-indigo-400'
-                    : 'border border-white/15 text-white hover:bg-white/5'
+                    ? 'bg-[var(--accent-cta)] text-white hover:opacity-90'
+                    : 'border border-[var(--border-strong)] text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]'
                 }`}>
                 Get started
               </button>
 
               <ul className='mt-6 space-y-2.5 text-sm'>
                 {highlights(p).map((h) => (
-                  <li key={h} className='flex gap-2 font-medium text-slate-100'>
+                  <li
+                    key={h}
+                    className='flex gap-2 font-medium text-[var(--text-primary)]'>
                     <Check />
                     {h}
                   </li>
                 ))}
                 {COMMON_FEATURES.map((f) => (
-                  <li key={f} className='flex gap-2 text-slate-300'>
+                  <li key={f} className='flex gap-2 text-[var(--text-secondary)]'>
                     <Check />
                     {f}
                   </li>
@@ -160,23 +166,27 @@ export function PricingPlans() {
         })}
       </div>
 
-      <div className='mx-auto mt-8 max-w-2xl space-y-2 text-center text-xs text-slate-500'>
+      <div className='mx-auto mt-8 max-w-2xl space-y-2 text-center text-xs text-[var(--text-muted)]'>
         <p>
           Prices are in US dollars. Your bank or card network shows the amount
           in your local currency at checkout. Extra MetaTrader accounts are $
-          {EXTRA_SYNC_PRICE_MONTHLY}/account each; real-time Foresight (AI co-pilot) is
-          ${GUARDRAIL_PRICE_MONTHLY}/account (free for cTrader). cTrader auto-sync
-          is always free.
+          {EXTRA_SYNC_PRICE_MONTHLY}/account each; real-time Foresight (AI
+          co-pilot) is ${GUARDRAIL_PRICE_MONTHLY}/account (free for cTrader).
+          cTrader auto-sync is always free.
         </p>
         <p>
-          <span className='font-medium text-slate-400'>Billing & renewal:</span>{' '}
+          <span className='font-medium text-[var(--text-secondary)]'>
+            Billing &amp; renewal:
+          </span>{' '}
           plans bill on the frequency you pick, monthly or yearly. Card
           subscriptions renew automatically each period until you cancel. Crypto
           payments and add-ons are charged once per period and do not auto-renew.
         </p>
         <p>
-          <span className='font-medium text-slate-400'>Cancel anytime:</span> go
-          to Settings, then Billing, and choose Cancel plan. Your access
+          <span className='font-medium text-[var(--text-secondary)]'>
+            Cancel anytime:
+          </span>{' '}
+          go to Settings, then Billing, and choose Cancel plan. Your access
           continues until the end of the period you already paid for; no further
           charges are made.
         </p>

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { MarketingShell } from '@/src/components/marketing/MarketingShell';
 import { AuthCodeHandler } from '@/src/components/auth/AuthCodeHandler';
@@ -6,14 +7,18 @@ import { AuthCodeHandler } from '@/src/components/auth/AuthCodeHandler';
 //
 // Positioned around the wedge: the journal that shows, in money, what your
 // trading habits cost you, then helps you stop and proves what you saved.
-// Server component (no client interactivity), always dark like a trader's tool.
+// Three pillars on show: Hindsight (diagnose the cost), Foresight (a co-pilot
+// at the entry), and the Commitment loop (prove what you kept). Server
+// component; theming follows the global light / dark / system tokens.
 
 export default function LandingPage() {
   return (
     <MarketingShell>
       <AuthCodeHandler />
       <Hero />
-      <StatsStrip />
+      <BrokersStrip />
+      <ProblemStrip />
+      <Pillars />
       <HowItWorks />
       <Features />
       <PhilosophyStrip />
@@ -22,29 +27,31 @@ export default function LandingPage() {
   );
 }
 
+/* ------------------------------------------------------------------ Hero -- */
+
 function Hero() {
   return (
-    <section className='relative overflow-hidden border-b border-white/5'>
+    <section className='relative overflow-hidden border-b border-[var(--border-default)]'>
       <div
         aria-hidden
-        className='absolute left-1/2 top-0 -z-0 h-[640px] w-[1120px] -translate-x-1/2 opacity-[0.22]'
+        className='absolute left-1/2 top-[-80px] -z-0 h-[560px] w-[1040px] -translate-x-1/2 opacity-[0.18]'
         style={{
           background:
-            'radial-gradient(closest-side, #6366f1 0%, rgba(99,102,241,0) 70%)',
+            'radial-gradient(closest-side, var(--accent) 0%, transparent 70%)',
         }}
       />
       <div className='relative mx-auto max-w-5xl px-6 py-20 text-center sm:py-28'>
-        <p className='mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium uppercase tracking-[0.14em] text-slate-300'>
-          <span className='inline-block h-1.5 w-1.5 rounded-full bg-indigo-400' />
+        <p className='mb-4 inline-flex items-center gap-2 rounded-full border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-medium uppercase tracking-[0.14em] text-[var(--text-secondary)]'>
+          <span className='inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]' />
           For forex &amp; prop-firm traders
         </p>
-        <h1 className='mx-auto max-w-3xl text-4xl font-semibold tracking-tight sm:text-6xl'>
+        <h1 className='mx-auto max-w-3xl text-4xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-6xl'>
           See what your habits cost you.{' '}
-          <span className='bg-gradient-to-r from-indigo-300 via-indigo-200 to-white bg-clip-text text-transparent'>
+          <span className='bg-gradient-to-r from-[var(--accent)] to-[var(--text-primary)] bg-clip-text text-transparent'>
             In money.
           </span>
         </h1>
-        <p className='mx-auto mt-5 max-w-2xl text-base text-slate-300 sm:text-lg'>
+        <p className='mx-auto mt-5 max-w-2xl text-base text-[var(--text-secondary)] sm:text-lg'>
           The Trader&apos;s Hindsight reads your synced trades, finds the one
           habit quietly draining your account, and shows you in dollars what it
           cost. Then it helps you stop, and proves what you saved.
@@ -52,16 +59,16 @@ function Hero() {
         <div className='mt-9 flex flex-wrap items-center justify-center gap-3'>
           <Link
             href='/auth?mode=signup'
-            className='rounded-lg bg-indigo-500 px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-indigo-400'>
+            className='rounded-lg bg-[var(--accent-cta)] px-6 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90'>
             Start free
           </Link>
           <a
             href='#how-it-works'
-            className='rounded-lg border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-medium text-slate-200 transition-colors hover:bg-white/[0.08]'>
+            className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-5 py-3 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-subtle)]'>
             See how it works
           </a>
         </div>
-        <p className='mt-5 text-xs text-slate-400'>
+        <p className='mt-5 text-xs text-[var(--text-muted)]'>
           Free statement import. cTrader auto-sync free. Cancel anytime.
         </p>
 
@@ -71,59 +78,92 @@ function Hero() {
   );
 }
 
-// A sample of the shareable Hindsight card, the product's core "aha".
+// The shareable Hindsight card, the product's core "aha".
 function ReceiptCard() {
   return (
-    <div className='mx-auto mt-14 max-w-md rounded-2xl border border-white/10 bg-[#0E1428] p-8 text-left shadow-2xl'>
-      <div className='flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400'>
-        <span className='inline-block h-1.5 w-1.5 rounded-full bg-indigo-400' />
+    <div className='mx-auto mt-14 max-w-md rounded-2xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-8 text-left shadow-xl'>
+      <div className='flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]'>
+        <span className='inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]' />
         The Trader&apos;s Hindsight
       </div>
       <div className='mt-6 text-center'>
-        <div className='text-lg font-medium text-slate-200'>
+        <div className='text-lg font-medium text-[var(--text-secondary)]'>
           Trading on Thursdays
         </div>
-        <div className='mt-2 text-6xl font-extrabold text-rose-400'>
+        <div className='mt-2 text-6xl font-extrabold text-[var(--loss)]'>
           -$1,687
         </div>
-        <div className='mt-2 text-sm text-slate-400'>
+        <div className='mt-2 text-sm text-[var(--text-muted)]'>
           is what this one habit cost me in the last 30 days.
         </div>
       </div>
-      <div className='mt-6 border-t border-white/10 pt-4 text-center text-sm text-slate-400'>
-        My P&amp;L: <span className='font-semibold text-rose-400'>-$1,437</span>
+      <div className='mt-6 border-t border-[var(--border-default)] pt-4 text-center text-sm text-[var(--text-secondary)]'>
+        My P&amp;L:{' '}
+        <span className='font-semibold text-[var(--loss)]'>-$1,437</span>
         {'  →  '}Without this habit:{' '}
-        <span className='font-semibold text-emerald-400'>+$250</span>
+        <span className='font-semibold text-[var(--profit)]'>+$250</span>
       </div>
-      <p className='mt-4 text-center text-[11px] text-slate-500'>
+      <p className='mt-4 text-center text-[11px] text-[var(--text-muted)]'>
         Illustrative. Your report is built from your own trades.
       </p>
     </div>
   );
 }
 
-function StatsStrip() {
+/* -------------------------------------------------------------- Brokers -- */
+
+function BrokersStrip() {
+  const brokers = [
+    'MetaTrader 4 & 5',
+    'cTrader',
+    'TradeLocker',
+    'DXtrade',
+    'MatchTrader',
+  ];
+  return (
+    <section className='border-b border-[var(--border-default)] bg-[var(--bg-subtle)]'>
+      <div className='mx-auto max-w-5xl px-6 py-8'>
+        <p className='text-center text-xs font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]'>
+          Auto-sync MetaTrader &amp; cTrader. Import from anywhere.
+        </p>
+        <div className='mt-4 flex flex-wrap items-center justify-center gap-x-8 gap-y-3'>
+          {brokers.map((b) => (
+            <span
+              key={b}
+              className='text-sm font-semibold text-[var(--text-secondary)]'>
+              {b}
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* -------------------------------------------------------------- Problem -- */
+
+function ProblemStrip() {
   const stats = [
     { big: '$4,270', small: 'average spend on challenge fees before payout' },
     { big: '~1 in 14', small: 'traders pass a prop evaluation' },
     { big: '71%', small: 'of first-phase failures are a daily-drawdown breach' },
   ];
   return (
-    <section className='border-b border-white/5 bg-[#0d1426]'>
+    <section className='border-b border-[var(--border-default)]'>
       <div className='mx-auto max-w-5xl px-6 py-16'>
         <div className='grid gap-6 sm:grid-cols-3'>
           {stats.map((s) => (
             <div key={s.big} className='text-center'>
-              <div className='text-3xl font-bold text-white sm:text-4xl'>
+              <div className='text-3xl font-bold text-[var(--text-primary)] sm:text-4xl'>
                 {s.big}
               </div>
-              <div className='mx-auto mt-2 max-w-[14rem] text-sm text-slate-400'>
+              <div className='mx-auto mt-2 max-w-[14rem] text-sm text-[var(--text-muted)]'>
                 {s.small}
               </div>
             </div>
           ))}
         </div>
-        <p className='mx-auto mt-10 max-w-2xl text-center text-sm text-slate-300 sm:text-base'>
+        <p className='mx-auto mt-10 max-w-2xl text-center text-sm text-[var(--text-secondary)] sm:text-base'>
           Most blown accounts are not a strategy problem. They are a habit you
           cannot see, revenge trading, sizing up after a loss, a session that
           bleeds you. We make that habit visible, and put a price on it.
@@ -132,6 +172,180 @@ function StatsStrip() {
     </section>
   );
 }
+
+/* --------------------------------------------------------------- Pillars -- */
+
+// The three things the product actually does, each with a concrete mock so a
+// visitor sees it, not just reads about it.
+function Pillars() {
+  return (
+    <section className='border-b border-[var(--border-default)]'>
+      <div className='mx-auto max-w-6xl space-y-20 px-6 py-20 sm:py-24'>
+        <PillarRow
+          eyebrow='Hindsight · Diagnose'
+          title='The one habit costing you the most, priced in dollars.'
+          body='We replay your month without each leak and rank them by the money they cost. Not "you revenge-trade", but "revenge trading cost you $1,687 in 30 days". Then we show the same trades the way they should have gone.'
+          card={<LeaksCard />}
+        />
+        <PillarRow
+          reverse
+          eyebrow='Foresight · Before you click buy'
+          title='An optional co-pilot that reads the trade before you take it.'
+          body='Paste a planned trade, or let it watch a live account. It checks your risk and reward, whether the entry fits your own trend, your prop firm news rule, and the behavioral traps, revenge, tilt, sizing up. One calm heads-up before the click, not a lecture after the loss.'
+          card={<ForesightCard />}
+        />
+        <PillarRow
+          eyebrow='Commitment · Prove it'
+          title='Commit to one rule. We prove what you kept.'
+          body='Turn any finding into a rule with one tap. We track it automatically from every new trade, count the breaches you avoided, and add up the dollars you saved by sticking to it. Receipts no other journal can show you.'
+          card={<CommitmentCard />}
+        />
+      </div>
+    </section>
+  );
+}
+
+function PillarRow({
+  eyebrow,
+  title,
+  body,
+  card,
+  reverse,
+}: {
+  eyebrow: string;
+  title: string;
+  body: string;
+  card: ReactNode;
+  reverse?: boolean;
+}) {
+  return (
+    <div className='grid items-center gap-10 lg:grid-cols-2'>
+      <div className={reverse ? 'lg:order-2' : ''}>
+        <p className='text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent)]'>
+          {eyebrow}
+        </p>
+        <h3 className='mt-3 text-2xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-3xl'>
+          {title}
+        </h3>
+        <p className='mt-4 text-base leading-relaxed text-[var(--text-secondary)]'>
+          {body}
+        </p>
+      </div>
+      <div className={reverse ? 'lg:order-1' : ''}>{card}</div>
+    </div>
+  );
+}
+
+function LeaksCard() {
+  const leaks = [
+    { name: 'Trading on Thursdays', cost: '-$1,687' },
+    { name: 'Revenge trades after a loss', cost: '-$910' },
+    { name: 'Sizing up after a loss', cost: '-$642' },
+    { name: 'Asian session', cost: '-$418' },
+  ];
+  return (
+    <div className='rounded-2xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-6 shadow-xl'>
+      <div className='text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]'>
+        Your costliest habits · last 30 days
+      </div>
+      <ul className='mt-4 space-y-2.5'>
+        {leaks.map((l, i) => (
+          <li
+            key={l.name}
+            className='flex items-center justify-between rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3'>
+            <span className='flex items-center gap-3 text-sm text-[var(--text-primary)]'>
+              <span className='font-mono text-xs text-[var(--text-muted)]'>
+                {i + 1}
+              </span>
+              {l.name}
+            </span>
+            <span className='text-sm font-semibold text-[var(--loss)]'>
+              {l.cost}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ForesightCard() {
+  return (
+    <div className='rounded-2xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-6 shadow-xl'>
+      <div className='flex items-center justify-between'>
+        <div className='text-sm font-semibold text-[var(--text-primary)]'>
+          Foresight read · EURUSD short
+        </div>
+        <span className='inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--profit)]'>
+          <span className='inline-block h-1.5 w-1.5 rounded-full bg-[var(--profit)]' />
+          Live
+        </span>
+      </div>
+      <div className='mt-2 text-xs text-[var(--text-muted)]'>
+        Risk 1.8% · 2.1R to target
+      </div>
+      <ul className='mt-4 space-y-2 text-sm'>
+        <li className='flex items-start gap-2 text-[var(--text-secondary)]'>
+          <span className='mt-0.5 text-[var(--loss)]'>⚠</span>
+          18 minutes to red-folder USD news
+        </li>
+        <li className='flex items-start gap-2 text-[var(--text-secondary)]'>
+          <span className='mt-0.5 text-[var(--loss)]'>⚠</span>
+          3rd trade today after two losses (tilt)
+        </li>
+        <li className='flex items-start gap-2 text-[var(--text-secondary)]'>
+          <span className='mt-0.5 text-[var(--profit)]'>✓</span>
+          Aligned with your 4H downtrend
+        </li>
+      </ul>
+      <p className='mt-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3 text-sm text-[var(--text-primary)]'>
+        Two reasons to wait: news in 18 minutes and you&apos;re on tilt. Let the
+        print pass or size down.
+      </p>
+    </div>
+  );
+}
+
+function CommitmentCard() {
+  return (
+    <div className='rounded-2xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-6 shadow-xl'>
+      <div className='text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]'>
+        Committed rule · 3 weeks
+      </div>
+      <div className='mt-3 text-base font-semibold text-[var(--text-primary)]'>
+        No trades within an hour of a loss
+      </div>
+      <div className='mt-5 grid grid-cols-2 gap-4'>
+        <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3'>
+          <div className='text-xs text-[var(--text-muted)]'>Breaches / week</div>
+          <div className='mt-1 text-xl font-bold text-[var(--text-primary)]'>
+            0{' '}
+            <span className='text-xs font-medium text-[var(--text-muted)]'>
+              was 2.4
+            </span>
+          </div>
+        </div>
+        <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3'>
+          <div className='text-xs text-[var(--text-muted)]'>Kept so far</div>
+          <div className='mt-1 text-xl font-bold text-[var(--profit)]'>
+            +$1,120
+          </div>
+        </div>
+      </div>
+      <div className='mt-4 h-2 overflow-hidden rounded-full bg-[var(--bg-surface)]'>
+        <div
+          className='h-full rounded-full bg-[var(--profit)]'
+          style={{ width: '86%' }}
+        />
+      </div>
+      <p className='mt-2 text-xs text-[var(--text-muted)]'>
+        86% adherence since you committed.
+      </p>
+    </div>
+  );
+}
+
+/* --------------------------------------------------------- How it works -- */
 
 function HowItWorks() {
   const steps: Array<{ n: string; title: string; body: string }> = [
@@ -158,13 +372,15 @@ function HowItWorks() {
   ];
 
   return (
-    <section id='how-it-works' className='border-b border-white/5'>
+    <section
+      id='how-it-works'
+      className='border-b border-[var(--border-default)] bg-[var(--bg-subtle)]'>
       <div className='mx-auto max-w-5xl px-6 py-20 sm:py-24'>
         <div className='text-center'>
-          <p className='text-xs font-semibold uppercase tracking-[0.16em] text-indigo-300'>
+          <p className='text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent)]'>
             How it works
           </p>
-          <h2 className='mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-3xl font-semibold tracking-tight sm:text-4xl'>
+          <h2 className='mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-3xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-4xl'>
             <span>Connect</span>
             <FlowArrow />
             <span>Diagnose</span>
@@ -173,7 +389,7 @@ function HowItWorks() {
             <FlowArrow />
             <span>Prove</span>
           </h2>
-          <p className='mx-auto mt-4 max-w-2xl text-sm text-slate-300 sm:text-base'>
+          <p className='mx-auto mt-4 max-w-2xl text-sm text-[var(--text-secondary)] sm:text-base'>
             Get your trades in, see what your habits cost you, commit to fixing
             the biggest one, and watch the money you keep add up.
           </p>
@@ -183,14 +399,14 @@ function HowItWorks() {
           {steps.map((step) => (
             <li
               key={step.n}
-              className='rounded-2xl border border-white/10 bg-white/[0.03] p-5'>
-              <div className='font-mono text-xs font-semibold tracking-wider text-indigo-300'>
+              className='rounded-2xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
+              <div className='font-mono text-xs font-semibold tracking-wider text-[var(--accent)]'>
                 {step.n}
               </div>
-              <div className='mt-2 text-lg font-semibold text-white'>
+              <div className='mt-2 text-lg font-semibold text-[var(--text-primary)]'>
                 {step.title}
               </div>
-              <p className='mt-2 text-sm leading-relaxed text-slate-300'>
+              <p className='mt-2 text-sm leading-relaxed text-[var(--text-secondary)]'>
                 {step.body}
               </p>
             </li>
@@ -205,7 +421,7 @@ function FlowArrow() {
   return (
     <span
       aria-hidden
-      className='hidden text-indigo-300/80 sm:inline-flex sm:items-center'>
+      className='hidden text-[var(--accent)] sm:inline-flex sm:items-center'>
       <svg
         width='22'
         height='14'
@@ -224,17 +440,19 @@ function FlowArrow() {
   );
 }
 
+/* ------------------------------------------------------------- Features -- */
+
 function Features() {
   const features: Array<{ icon: string; title: string; body: string }> = [
     {
       icon: '💸',
       title: 'Cost in dollars, not vibes',
-      body: 'Not just "you revenge-trade." We recalculate your month without the habit and show you exactly what it cost.',
+      body: 'We recalculate your month without each habit and rank them by what they cost, so you fix the most expensive one first.',
     },
     {
-      icon: '✅',
-      title: 'The commitment loop',
-      body: 'Commit to one rule, we auto-track whether you keep it from your trades, and prove the money you saved.',
+      icon: '🏷️',
+      title: 'Auto-tagged trades',
+      body: 'Every trade is labeled the moment it lands, session, instrument, and the behavioral traps like revenge, oversized, and tilt.',
     },
     {
       icon: '🔌',
@@ -244,28 +462,28 @@ function Features() {
     {
       icon: '🏆',
       title: 'Built for prop firms',
-      body: 'Challenge drawdown tracking, automatic protection when you breach, and a Prop Career ledger of fees paid versus payouts.',
+      body: 'Challenge and funded drawdown tracking, automatic protection when you breach, and a Prop Career ledger of fees paid versus payouts.',
     },
     {
       icon: '🤖',
       title: 'An AI coach for your journal',
-      body: 'A read of your whole history: where your edge is, the habits bleeding you, and the single pattern to break next.',
+      body: 'A read of your whole history: where your edge is, the habits bleeding you, and a full debrief when a challenge passes or breaches.',
     },
     {
       icon: '🔒',
       title: 'Your data, private',
-      body: 'Encrypted at rest, export anything anytime. We never sell or analyze your trades.',
+      body: 'Encrypted at rest, two-factor sign-in, export anything anytime. We never sell or analyze your trades.',
     },
   ];
 
   return (
-    <section className='border-b border-white/5'>
+    <section className='border-b border-[var(--border-default)]'>
       <div className='mx-auto max-w-6xl px-6 py-20 sm:py-24'>
         <div className='text-center'>
-          <p className='text-xs font-semibold uppercase tracking-[0.16em] text-indigo-300'>
+          <p className='text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent)]'>
             What you get
           </p>
-          <h2 className='mt-2 text-3xl font-semibold tracking-tight sm:text-4xl'>
+          <h2 className='mt-2 text-3xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-4xl'>
             More than a record. A reason you get better.
           </h2>
         </div>
@@ -274,14 +492,14 @@ function Features() {
           {features.map((f) => (
             <div
               key={f.title}
-              className='rounded-2xl border border-white/10 bg-white/[0.03] p-6 transition-colors hover:bg-white/[0.05]'>
-              <div className='mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.05] text-xl'>
+              className='rounded-2xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-6 transition-colors hover:border-[var(--border-strong)]'>
+              <div className='mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-default)] bg-[var(--bg-subtle)] text-xl'>
                 {f.icon}
               </div>
-              <div className='text-base font-semibold text-white'>
+              <div className='text-base font-semibold text-[var(--text-primary)]'>
                 {f.title}
               </div>
-              <p className='mt-2 text-sm leading-relaxed text-slate-300'>
+              <p className='mt-2 text-sm leading-relaxed text-[var(--text-secondary)]'>
                 {f.body}
               </p>
             </div>
@@ -292,19 +510,21 @@ function Features() {
   );
 }
 
+/* ----------------------------------------------------------- Philosophy -- */
+
 function PhilosophyStrip() {
   return (
-    <section className='border-b border-white/5 bg-[#0d1426]'>
+    <section className='border-b border-[var(--border-default)] bg-[var(--bg-subtle)]'>
       <div className='mx-auto max-w-3xl px-6 py-20 text-center sm:py-24'>
-        <p className='text-xs font-semibold uppercase tracking-[0.16em] text-indigo-300'>
+        <p className='text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent)]'>
           Why we built this
         </p>
-        <p className='mt-5 text-2xl font-medium leading-snug text-white sm:text-3xl'>
+        <p className='mt-5 text-2xl font-medium leading-snug text-[var(--text-primary)] sm:text-3xl'>
           &ldquo;Most journals are a mirror. They show you the past and change
           nothing. We built the one that names the habit costing you money,
           helps you stop, and shows you what you saved.&rdquo;
         </p>
-        <p className='mt-4 text-sm text-slate-400'>
+        <p className='mt-4 text-sm text-[var(--text-muted)]'>
           Built by a prop trader who lost the fees first.
         </p>
       </div>
@@ -312,26 +532,28 @@ function PhilosophyStrip() {
   );
 }
 
+/* -------------------------------------------------------------- Final CTA -- */
+
 function FinalCta() {
   return (
-    <section className='border-b border-white/5'>
+    <section className='border-b border-[var(--border-default)]'>
       <div className='relative mx-auto max-w-4xl px-6 py-20 text-center sm:py-24'>
         <div
           aria-hidden
-          className='absolute inset-0 -z-0 opacity-25'
+          className='absolute inset-0 -z-0 opacity-[0.15]'
           style={{
             background:
-              'radial-gradient(closest-side, #6366f1 0%, rgba(99,102,241,0) 70%)',
+              'radial-gradient(closest-side, var(--accent) 0%, transparent 70%)',
           }}
         />
         <div className='relative'>
-          <h2 className='text-3xl font-semibold tracking-tight sm:text-5xl'>
+          <h2 className='text-3xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-5xl'>
             Find the leak before it blows{' '}
-            <span className='bg-gradient-to-r from-indigo-300 to-white bg-clip-text text-transparent'>
+            <span className='bg-gradient-to-r from-[var(--accent)] to-[var(--text-primary)] bg-clip-text text-transparent'>
               another challenge.
             </span>
           </h2>
-          <p className='mx-auto mt-4 max-w-xl text-sm text-slate-300 sm:text-base'>
+          <p className='mx-auto mt-4 max-w-xl text-sm text-[var(--text-secondary)] sm:text-base'>
             One blown challenge costs around $530. Finding the habit behind it
             costs $12 a month. Start free, import your trades, and see your
             first Hindsight Report today.
@@ -339,12 +561,12 @@ function FinalCta() {
           <div className='mt-8 flex flex-wrap items-center justify-center gap-3'>
             <Link
               href='/auth?mode=signup'
-              className='rounded-lg bg-indigo-500 px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-indigo-400'>
+              className='rounded-lg bg-[var(--accent-cta)] px-6 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90'>
               Start free
             </Link>
             <Link
               href='/pricing'
-              className='rounded-lg border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-medium text-slate-200 transition-colors hover:bg-white/[0.08]'>
+              className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-5 py-3 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-subtle)]'>
               See pricing
             </Link>
           </div>

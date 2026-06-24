@@ -17,9 +17,9 @@ const REQUEST_TYPES = [
 type SubmitState = 'idle' | 'submitting' | 'success' | 'error';
 
 const inputClass =
-  'w-full rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-indigo-400/60 focus:outline-none focus:ring-2 focus:ring-indigo-400/20';
+  'w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3.5 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-colors focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-soft)]';
 
-const labelClass = 'block text-sm font-medium text-slate-200';
+const labelClass = 'block text-sm font-medium text-[var(--text-primary)]';
 
 export function ContactForm() {
   const [name, setName] = useState('');
@@ -82,11 +82,11 @@ export function ContactForm() {
 
   if (state === 'success') {
     return (
-      <div className='rounded-xl border border-indigo-400/30 bg-indigo-400/5 p-6'>
-        <h2 className='text-lg font-semibold text-indigo-200'>
+      <div className='rounded-xl border border-[var(--accent)] bg-[var(--accent-strip-bg)] p-6'>
+        <h2 className='text-lg font-semibold text-[var(--text-primary)]'>
           Message received.
         </h2>
-        <p className='mt-2 text-sm leading-relaxed text-slate-300'>
+        <p className='mt-2 text-sm leading-relaxed text-[var(--text-secondary)]'>
           Thanks for reaching out. We&apos;ve got your message and will get
           back to you within 2 business days. For urgent privacy requests, we
           aim to respond sooner.
@@ -94,7 +94,7 @@ export function ContactForm() {
         <button
           type='button'
           onClick={() => setState('idle')}
-          className='mt-4 text-sm text-indigo-300 underline-offset-4 hover:underline'>
+          className='mt-4 text-sm text-[var(--accent)] underline-offset-4 hover:underline'>
           Send another message
         </button>
       </div>
@@ -107,7 +107,7 @@ export function ContactForm() {
     <form onSubmit={handleSubmit} className='space-y-5' noValidate>
       <div>
         <label htmlFor='contact-name' className={labelClass}>
-          Name <span className='text-slate-500'>(optional)</span>
+          Name <span className='text-[var(--text-muted)]'>(optional)</span>
         </label>
         <input
           id='contact-name'
@@ -151,7 +151,10 @@ export function ContactForm() {
           onChange={(e) => setRequestType(e.target.value)}
           className={`${inputClass} mt-1.5`}>
           {REQUEST_TYPES.map((t) => (
-            <option key={t.value} value={t.value} className='bg-[#0b1220]'>
+            <option
+              key={t.value}
+              value={t.value}
+              className='bg-[var(--bg-surface)] text-[var(--text-primary)]'>
               {t.label}
             </option>
           ))}
@@ -174,13 +177,13 @@ export function ContactForm() {
           className={`${inputClass} mt-1.5 resize-y`}
           placeholder='Tell us what you need...'
         />
-        <p className='mt-1.5 text-xs text-slate-500'>
+        <p className='mt-1.5 text-xs text-[var(--text-muted)]'>
           {message.trim().length}/5000 characters
         </p>
       </div>
 
       {state === 'error' && errorMessage && (
-        <div className='rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-100'>
+        <div className='rounded-lg border border-[var(--loss)] bg-[var(--loss-soft)] px-4 py-3 text-sm text-[var(--text-primary)]'>
           {errorMessage}
         </div>
       )}
@@ -188,15 +191,15 @@ export function ContactForm() {
       <button
         type='submit'
         disabled={isSubmitting}
-        className='rounded-lg bg-indigo-500 px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60'>
+        className='rounded-lg bg-[var(--accent-cta)] px-6 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60'>
         {isSubmitting ? 'Sending...' : 'Send message'}
       </button>
 
-      <p className='text-xs text-slate-500'>
+      <p className='text-xs text-[var(--text-muted)]'>
         By submitting, you agree to our{' '}
         <a
           href='/privacy'
-          className='text-slate-400 underline-offset-4 hover:underline'>
+          className='text-[var(--text-secondary)] underline-offset-4 hover:underline'>
           Privacy Policy
         </a>
         . We&apos;ll only use this info to respond to your message.

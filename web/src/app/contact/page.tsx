@@ -11,32 +11,32 @@ export const metadata: Metadata = {
 export default function ContactPage() {
   return (
     <MarketingShell>
-      <section className='border-b border-white/5'>
+      <section className='border-b border-[var(--border-default)]'>
         <article className='mx-auto max-w-2xl px-6 py-16 sm:py-20'>
-          <h1 className='text-3xl font-semibold tracking-tight sm:text-4xl'>
+          <h1 className='text-3xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-4xl'>
             Contact us
           </h1>
-          <p className='mt-4 text-base text-slate-300'>
+          <p className='mt-4 text-base text-[var(--text-secondary)]'>
             Questions, concerns, privacy requests, or just want to say hi?
             Send us a message and we&apos;ll get back to you within 2 business
             days.
           </p>
-          <p className='mt-2 text-sm text-slate-400'>
+          <p className='mt-2 text-sm text-[var(--text-muted)]'>
             You can also email us directly at{' '}
             <a
               href='mailto:support@tradershindsight.com'
-              className='text-indigo-300 underline-offset-4 hover:underline'>
+              className='text-[var(--accent)] underline-offset-4 hover:underline'>
               support@tradershindsight.com
             </a>{' '}
             or call us at{' '}
             <a
               href='tel:+2348118698266'
-              className='text-indigo-300 underline-offset-4 hover:underline'>
+              className='text-[var(--accent)] underline-offset-4 hover:underline'>
               +234 811 869 8266
             </a>
             .
           </p>
-          <p className='mt-2 text-sm text-slate-400'>
+          <p className='mt-2 text-sm text-[var(--text-muted)]'>
             The Trader&apos;s Hindsight, Delta State, Nigeria.
           </p>
 

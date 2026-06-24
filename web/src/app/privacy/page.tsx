@@ -33,8 +33,8 @@ export default function PrivacyPage() {
         </p>
 
         {/* ─── Brand-voice intro callout — our differentiator vs. typical SaaS ─── */}
-        <div className='mt-8 rounded-xl border border-indigo-400/30 bg-indigo-400/5 p-5 text-sm leading-relaxed text-slate-200'>
-          <strong className='block font-semibold text-indigo-200'>
+        <div className='mt-8 rounded-xl border border-[var(--accent)] bg-[var(--accent-strip-bg)] p-5 text-sm leading-relaxed text-[var(--text-secondary)]'>
+          <strong className='block font-semibold text-[var(--accent)]'>
             Built by traders, for traders.
           </strong>
           <p className='mt-2'>
