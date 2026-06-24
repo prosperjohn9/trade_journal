@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import * as Sentry from '@sentry/nextjs';
 
 type DashboardTheme = 'light' | 'dark';
 const THEME_STORAGE_KEY = 'dashboard-theme';
@@ -35,9 +36,10 @@ export default function GlobalError({
   }, []);
 
   useEffect(() => {
-    // Log to the browser console so the user / a future error-monitoring
-    // service can inspect what blew up.
+    // Log to the browser console, and report to Sentry (a no-op when no DSN is
+    // configured) so crashes are visible in production.
     console.error('Caught by global error boundary:', error);
+    Sentry.captureException(error);
   }, [error]);
 
   return (

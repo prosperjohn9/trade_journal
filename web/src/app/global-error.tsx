@@ -1,5 +1,8 @@
 'use client';
 
+import { useEffect } from 'react';
+import * as Sentry from '@sentry/nextjs';
+
 // Root-layout-level error boundary. Only triggered when the error happens
 // inside the root layout itself (extremely rare). Because it replaces the
 // layout when it renders, it must include its own <html> and <body>.
@@ -7,11 +10,17 @@
 // Keeping this minimal and inline-styled — at the point this renders we
 // can't rely on globals.css having loaded.
 export default function GlobalError({
+  error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // Report the crash. No-op when Sentry isn't configured (no DSN).
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
+
   return (
     <html lang='en'>
       <body
