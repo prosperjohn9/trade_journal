@@ -110,11 +110,16 @@ export function AiInsightsCard() {
             the one pattern to break.
           </p>
         </div>
-        {insights ? (
-          <span className='text-xs text-[var(--text-muted)]'>
-            {loading ? 'Refreshing...' : `Updated ${timeAgo(generatedAt)}`}
+        <div className='flex items-center gap-2'>
+          <span className='rounded-full border border-[var(--border-default)] px-2 py-0.5 text-xs text-[var(--text-muted)]'>
+            All-time
           </span>
-        ) : null}
+          {insights ? (
+            <span className='text-xs text-[var(--text-muted)]'>
+              {loading ? 'Refreshing...' : `Updated ${timeAgo(generatedAt)}`}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {checking ? (
