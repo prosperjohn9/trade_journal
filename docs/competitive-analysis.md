@@ -45,9 +45,11 @@ auto-sync from cTrader/TradeLocker/MT5), **Chartlog** (clean, stock-focused),
 **Table-stakes missing:**
 1. **Import (CSV first, then auto-sync)** — the non-negotiable gap.
 2. **CSV export** — users expect to own their data; easy win.
-3. **Advanced analytics** — MFE/MAE, session analysis (London/NY/Asia), R-multiple
-   distribution, best-exit simulation. (MFE/MAE needs intra-trade price data → another reason
-   import matters.)
+3. **Advanced analytics** — session analysis (London/NY/Asia) and R-multiple
+   distribution are **built**. **MFE/MAE and best-exit simulation are DROPPED (not
+   feasible):** they need the intra-trade price path, and broker deal history
+   (MetaApi/cTrader) only returns entry/exit/P&L, never the path. Manual entry
+   doesn't capture it either. Not on the roadmap.
 4. **Prop-firm challenge tracking** — drawdown limits, profit targets, days remaining across
    accounts. Copy Trade is already halfway there.
 
