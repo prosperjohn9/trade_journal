@@ -7,7 +7,7 @@ import { ConnectCtraderButton } from './ConnectCtraderButton';
 
 type AccountsState = Pick<
   ReturnType<typeof useAccounts>,
-  'openAdd' | 'reload'
+  'openAdd' | 'reload' | 'flagAutoOpenPropRules'
 >;
 
 export function AccountsHeader({ state: s }: { state: AccountsState }) {
@@ -31,7 +31,14 @@ export function AccountsHeader({ state: s }: { state: AccountsState }) {
           Back
         </button>
 
-        <ConnectBrokerButton onCreated={s.reload} />
+        <ConnectBrokerButton
+          onCreated={async (id, type) => {
+            await s.reload();
+            if (id && (type === 'Challenge' || type === 'Funded')) {
+              s.flagAutoOpenPropRules(id);
+            }
+          }}
+        />
 
         <ConnectCtraderButton />
 

@@ -14,7 +14,11 @@ const inputClass =
 
 /** Header action: create a brand-new trading account AND link it to a broker
  *  for auto-sync in one step (the user just adds an account name). */
-export function ConnectBrokerButton({ onCreated }: { onCreated?: () => void }) {
+export function ConnectBrokerButton({
+  onCreated,
+}: {
+  onCreated?: (accountId?: string, accountType?: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [login, setLogin] = useState('');
@@ -67,7 +71,7 @@ export function ConnectBrokerButton({ onCreated }: { onCreated?: () => void }) {
       setMsg(
         'Account created and linking to your broker. Give it a minute, then open the account below and tap "Sync now".',
       );
-      onCreated?.();
+      onCreated?.(account.id, accountType);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Could not connect.');
     } finally {

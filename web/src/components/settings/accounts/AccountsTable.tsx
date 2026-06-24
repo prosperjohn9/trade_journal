@@ -31,6 +31,8 @@ type AccountsState = Pick<
   | 'openAdd'
   | 'reload'
   | 'onToggleArchive'
+  | 'autoOpenPropRules'
+  | 'clearAutoOpenPropRules'
 >;
 
 export function AccountsTable({ state: s }: { state: AccountsState }) {
@@ -371,8 +373,11 @@ function AccountCard({ a, s }: { a: Account; s: AccountsState }) {
           {a.account_type === 'Challenge' || a.account_type === 'Funded' ? (
             <PropRulesButton
               accountId={a.id}
+              accountType={a.account_type}
               startingBalance={startingBalance}
               onChanged={s.reload}
+              autoOpen={s.autoOpenPropRules === a.id}
+              onAutoOpened={s.clearAutoOpenPropRules}
             />
           ) : null}
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { mutate } from 'swr';
 import { supabase } from '@/src/lib/supabase/client';
 import {
@@ -90,13 +90,22 @@ function Objective({
 
 export function PropRulesButton({
   accountId,
+  accountType,
   startingBalance,
   onChanged,
+  autoOpen,
+  onAutoOpened,
 }: {
   accountId: string;
+  accountType?: string;
   startingBalance: number;
   onChanged?: () => void;
+  autoOpen?: boolean;
+  onAutoOpened?: () => void;
 }) {
+  // A funded account has no profit target to "pass", just drawdown rules that can
+  // breach it. So the funded form drops target / min days / phase / templates.
+  const isFunded = (accountType ?? '').trim().toLowerCase() === 'funded';
   const [open, setOpen] = useState(false);
   const [rules, setRules] = useState<PropRules | null>(null);
   const [status, setStatus] = useState<PropStatus | null>(null);
@@ -188,7 +197,7 @@ export function PropRulesButton({
     setFirm('');
     setAccountSize(String(startingBalance > 0 ? startingBalance : 10000));
     setPhase('');
-    setProfitTargetPct('8');
+    setProfitTargetPct(isFunded ? '' : '8'); // funded has no profit target
     setMaxDrawdownPct('10');
     setDailyLossPct('5');
     setMinTradingDays('');
@@ -265,6 +274,25 @@ export function PropRulesButton({
     setOpen(true);
     void loadAll();
   }
+
+  // Auto-open right after a prop/funded account is created (parent flips autoOpen
+  // for the new account's id). One-shot: we clear the signal as we open.
+  useEffect(() => {
+    if (!autoOpen) return;
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setMsg(null);
+      setOpen(true);
+      onAutoOpened?.();
+      await loadAll();
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpen]);
 
   function numOrUndef(s: string): number | undefined {
     const n = Number(s);
@@ -433,7 +461,9 @@ export function PropRulesButton({
             className='flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[var(--border-default)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-xl'
             onClick={(e) => e.stopPropagation()}>
             <div className='flex items-center justify-between border-b border-[var(--border-default)] px-5 py-3'>
-              <h3 className='text-base font-semibold'>Prop-firm challenge</h3>
+              <h3 className='text-base font-semibold'>
+                {isFunded ? 'Funded account rules' : 'Prop-firm challenge'}
+              </h3>
               <button
                 className='text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                 onClick={() => !busy && setOpen(false)}
@@ -480,25 +510,28 @@ export function PropRulesButton({
               ) : (
                 <>
                   <p className='text-sm text-[var(--text-secondary)]'>
-                    Enter your challenge rules. Percentages are of the account
-                    size. Leave a field blank to skip that rule.
+                    {isFunded
+                      ? 'Enter your funded account rules. A funded account has no profit target, just the drawdown limits that can breach it. Percentages are of the account size; leave a field blank to skip it.'
+                      : 'Enter your challenge rules. Percentages are of the account size. Leave a field blank to skip that rule.'}
                   </p>
-                  <div>
-                    <div className='mb-1 text-[11px] font-medium text-[var(--text-muted)]'>
-                      Quick start (Phase 1 templates, verify against your firm)
+                  {!isFunded ? (
+                    <div>
+                      <div className='mb-1 text-[11px] font-medium text-[var(--text-muted)]'>
+                        Quick start (Phase 1 templates, verify against your firm)
+                      </div>
+                      <div className='flex flex-wrap gap-1.5'>
+                        {PRESETS.map((p) => (
+                          <button
+                            key={p.name}
+                            type='button'
+                            onClick={() => applyPreset(p)}
+                            className='rounded-full border border-[var(--border-default)] px-2.5 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-cta)] hover:text-[var(--text-primary)]'>
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div className='flex flex-wrap gap-1.5'>
-                      {PRESETS.map((p) => (
-                        <button
-                          key={p.name}
-                          type='button'
-                          onClick={() => applyPreset(p)}
-                          className='rounded-full border border-[var(--border-default)] px-2.5 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-cta)] hover:text-[var(--text-primary)]'>
-                          {p.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  ) : null}
                   <div className='grid grid-cols-2 gap-3'>
                     <Field label='Firm'>
                       <input
@@ -508,14 +541,16 @@ export function PropRulesButton({
                         placeholder='FundingPips'
                       />
                     </Field>
-                    <Field label='Phase'>
-                      <input
-                        className={inputClass}
-                        value={phase}
-                        onChange={(e) => setPhase(e.target.value)}
-                        placeholder='Phase 1'
-                      />
-                    </Field>
+                    {!isFunded ? (
+                      <Field label='Phase'>
+                        <input
+                          className={inputClass}
+                          value={phase}
+                          onChange={(e) => setPhase(e.target.value)}
+                          placeholder='Phase 1'
+                        />
+                      </Field>
+                    ) : null}
                     <Field label='Account size'>
                       <input
                         className={inputClass}
@@ -525,15 +560,17 @@ export function PropRulesButton({
                         placeholder={String(startingBalance || 10000)}
                       />
                     </Field>
-                    <Field label='Profit target %'>
-                      <input
-                        className={inputClass}
-                        value={profitTargetPct}
-                        onChange={(e) => setProfitTargetPct(e.target.value)}
-                        inputMode='decimal'
-                        placeholder='8'
-                      />
-                    </Field>
+                    {!isFunded ? (
+                      <Field label='Profit target %'>
+                        <input
+                          className={inputClass}
+                          value={profitTargetPct}
+                          onChange={(e) => setProfitTargetPct(e.target.value)}
+                          inputMode='decimal'
+                          placeholder='8'
+                        />
+                      </Field>
+                    ) : null}
                     <Field label='Max drawdown %'>
                       <input
                         className={inputClass}
@@ -565,15 +602,17 @@ export function PropRulesButton({
                         placeholder='5'
                       />
                     </Field>
-                    <Field label='Min trading days'>
-                      <input
-                        className={inputClass}
-                        value={minTradingDays}
-                        onChange={(e) => setMinTradingDays(e.target.value)}
-                        inputMode='numeric'
-                        placeholder='3'
-                      />
-                    </Field>
+                    {!isFunded ? (
+                      <Field label='Min trading days'>
+                        <input
+                          className={inputClass}
+                          value={minTradingDays}
+                          onChange={(e) => setMinTradingDays(e.target.value)}
+                          inputMode='numeric'
+                          placeholder='3'
+                        />
+                      </Field>
+                    ) : null}
                     <Field label='Daily reset (UTC hour)'>
                       <input
                         className={inputClass}

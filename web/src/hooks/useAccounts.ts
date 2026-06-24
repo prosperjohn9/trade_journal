@@ -84,6 +84,10 @@ export function useAccounts() {
 
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
 
+  // After creating a Challenge/Funded account, auto-open its prop-rules setup.
+  // One id at a time so two modals never stack.
+  const [autoOpenPropRules, setAutoOpenPropRules] = useState<string | null>(null);
+
   const defaultAccountId = useMemo(
     () => accounts.find((a) => a.is_default)?.id ?? null,
     [accounts],
@@ -216,6 +220,11 @@ export function useAccounts() {
       setAddStartingBalance('0');
       setAddCurrency('');
       await reload();
+      // Prop/funded accounts need rules to track breach + power Foresight, so
+      // walk the user straight into setting them.
+      if (accountType === 'Challenge' || accountType === 'Funded') {
+        setAutoOpenPropRules(created.id);
+      }
     } catch (e: unknown) {
       setAddMsg(getErr(e, 'Failed to create account'));
     } finally {
@@ -394,6 +403,10 @@ export function useAccounts() {
 
     settingDefaultId,
     allTagSuggestions,
+
+    autoOpenPropRules,
+    clearAutoOpenPropRules: () => setAutoOpenPropRules(null),
+    flagAutoOpenPropRules: (id: string) => setAutoOpenPropRules(id),
 
     reload,
     onToggleArchive,
