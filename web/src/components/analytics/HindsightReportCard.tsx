@@ -128,6 +128,12 @@ function copyFor(
         advice:
           'When you notice that feeling, write it down and stop trading for the session.',
       };
+    case 'cold_streak':
+      return {
+        explanation: `After two or more losses in a row you kept trading, and those tilt trades lost ${cost} across ${n}. Trading to win it back while you are cold is when discipline is hardest, and it is exactly when it costs the most.`,
+        advice:
+          'After two losses in a row, stop for the session. Come back the next day.',
+      };
   }
 }
 
@@ -297,6 +303,41 @@ export function HindsightReportCard() {
               </ul>
             </div>
           ) : null}
+
+          {data.report.holdTime
+            ? (() => {
+                const ht = data.report.holdTime!;
+                const fmt = (m: number) =>
+                  m >= 90 ? `${(m / 60).toFixed(1)}h` : `${Math.round(m)} min`;
+                return (
+                  <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-app)] p-3'>
+                    <div className='text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]'>
+                      Hold-time pattern
+                    </div>
+                    <p className='mt-1 text-sm leading-relaxed text-[var(--text-secondary)]'>
+                      You hold losers{' '}
+                      <span className='font-semibold text-[var(--text-primary)]'>
+                        {ht.ratio.toFixed(1)}x longer
+                      </span>{' '}
+                      than winners ({fmt(ht.loserMedianMin)} vs{' '}
+                      {fmt(ht.winnerMedianMin)}). Classic loss aversion, hoping
+                      losers come back instead of cutting them.{' '}
+                      <span className='font-semibold text-[var(--loss)]'>
+                        {money(ht.slowLossTotal, data.currency, false)}
+                      </span>{' '}
+                      is sitting in {ht.slowCount}{' '}
+                      {ht.slowCount === 1 ? 'loss' : 'losses'} you held past your
+                      winning pace.{' '}
+                      <span className='text-[var(--text-muted)]'>
+                        Fix: cut a loser as fast as you would bank a winner. (We
+                        can flag the pattern but not price the saving, that would
+                        need tick-by-tick data we do not store.)
+                      </span>
+                    </p>
+                  </div>
+                );
+              })()
+            : null}
 
           <p className='border-t border-[var(--border-default)] pt-3 text-xs text-[var(--text-muted)]'>
             How this works: we recalculate your P&L with the flagged trades

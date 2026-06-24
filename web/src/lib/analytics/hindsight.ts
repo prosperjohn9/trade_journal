@@ -13,7 +13,13 @@ export type HindsightTrade = {
   emotion_tag: string | null;
 };
 
-export type LeakKind = 'revenge' | 'oversized' | 'session' | 'weekday' | 'emotion';
+export type LeakKind =
+  | 'revenge'
+  | 'oversized'
+  | 'session'
+  | 'weekday'
+  | 'emotion'
+  | 'cold_streak';
 
 export type LeakFinding = {
   kind: LeakKind;
@@ -29,11 +35,24 @@ export type LeakFinding = {
   lowSample: boolean;
 };
 
+// Hold-time asymmetry (loss aversion). A DIAGNOSTIC, not a counterfactual: with
+// no intra-trade prices we can't honestly say "cutting early would have saved
+// $X", so we report the ratio and the real money currently sitting in losers you
+// held longer than your winners.
+export type HoldTimeSignal = {
+  winnerMedianMin: number;
+  loserMedianMin: number;
+  ratio: number; // loser median / winner median
+  slowLossTotal: number; // total $ lost on losers held past the winner median
+  slowCount: number;
+};
+
 export type HindsightReport = {
   totalTrades: number;
   actualPnl: number;
   findings: LeakFinding[]; // sorted by cost, largest first
   biggest: LeakFinding | null;
+  holdTime: HoldTimeSignal | null;
 };
 
 export const REVENGE_WINDOW_MS = 60 * 60 * 1000; // entered within 1h of a loss
@@ -201,12 +220,77 @@ export function computeHindsightReport(input: HindsightTrade[]): HindsightReport
     });
   }
 
+  // 6) Cold-streak / tilt: trades opened while on a run of 2+ losses. Distinct
+  //    from revenge (time-proximity) -- this is "kept trading while cold".
+  //    Counterfactual: without these tilt trades, like revenge.
+  const coldStreak: HindsightTrade[] = [];
+  let lossRun = 0;
+  for (const t of trades) {
+    if (lossRun >= 2) coldStreak.push(t);
+    if (t.outcome === 'LOSS') lossRun += 1;
+    else if (t.outcome === 'WIN') lossRun = 0;
+    // BREAKEVEN neither extends nor resets the run.
+  }
+  const coldPnl = coldStreak.reduce((s, t) => s + t.pnl, 0);
+  if (coldStreak.length >= 2 && coldPnl < 0) {
+    const coldWins = coldStreak.filter((t) => t.outcome === 'WIN').length;
+    const coldWinPct = Math.round((coldWins / coldStreak.length) * 100);
+    const allWins = trades.filter((t) => t.outcome === 'WIN').length;
+    const baseWinPct = trades.length
+      ? Math.round((allWins / trades.length) * 100)
+      : 0;
+    findings.push({
+      kind: 'cold_streak',
+      label: 'Trading on tilt',
+      detail: `Trades opened after two or more losses in a row (won ${coldWinPct}% vs ${baseWinPct}% overall)`,
+      tradeCount: coldStreak.length,
+      cost: -coldPnl,
+      counterfactualPnl: actualPnl - coldPnl,
+      lowSample: coldStreak.length < 5,
+    });
+  }
+
   findings.sort((a, b) => b.cost - a.cost);
+
+  // Hold-time asymmetry: diagnostic (see HoldTimeSignal).
+  const holdMin = (t: HindsightTrade): number | null => {
+    if (!t.closed_at) return null;
+    const ms =
+      new Date(t.closed_at).getTime() - new Date(t.opened_at).getTime();
+    return ms > 0 ? ms / 60000 : null;
+  };
+  const winHolds = trades
+    .filter((t) => t.outcome === 'WIN')
+    .map(holdMin)
+    .filter((m): m is number => m != null);
+  const lossHolds = trades
+    .filter((t) => t.outcome === 'LOSS')
+    .map(holdMin)
+    .filter((m): m is number => m != null);
+  let holdTime: HoldTimeSignal | null = null;
+  if (winHolds.length >= 5 && lossHolds.length >= 5) {
+    const wMed = median(winHolds) ?? 0;
+    const lMed = median(lossHolds) ?? 0;
+    if (wMed > 0 && lMed / wMed >= 1.3) {
+      const slowLosers = trades.filter((t) => {
+        const m = holdMin(t);
+        return t.outcome === 'LOSS' && m != null && m > wMed;
+      });
+      holdTime = {
+        winnerMedianMin: wMed,
+        loserMedianMin: lMed,
+        ratio: lMed / wMed,
+        slowLossTotal: -slowLosers.reduce((s, t) => s + t.pnl, 0),
+        slowCount: slowLosers.length,
+      };
+    }
+  }
 
   return {
     totalTrades: trades.length,
     actualPnl,
     findings,
     biggest: findings[0] ?? null,
+    holdTime,
   };
 }

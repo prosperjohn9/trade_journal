@@ -21,6 +21,7 @@ const VALID_KINDS: RuleKind[] = [
   'session',
   'weekday',
   'emotion',
+  'cold_streak',
 ];
 
 type Row = {

@@ -52,6 +52,15 @@ function scanBreaches(
   const subject = rule.subject?.trim().toLowerCase() ?? null;
   const breaches: Breach[] = [];
 
+  // Consecutive losses ending just before each index, for the cold_streak rule.
+  const lossRunBefore: number[] = [];
+  let run = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    lossRunBefore[i] = run;
+    if (sorted[i].outcome === 'LOSS') run += 1;
+    else if (sorted[i].outcome === 'WIN') run = 0;
+  }
+
   for (let i = 0; i < sorted.length; i++) {
     const t = sorted[i];
     const prev = i > 0 ? sorted[i - 1] : null;
@@ -98,6 +107,13 @@ function scanBreaches(
       }
       case 'emotion': {
         if (subject && t.emotion_tag?.trim().toLowerCase() === subject) {
+          breach = true;
+          impact = t.pnl;
+        }
+        break;
+      }
+      case 'cold_streak': {
+        if (lossRunBefore[i] >= 2) {
           breach = true;
           impact = t.pnl;
         }
@@ -175,5 +191,7 @@ export function ruleStatement(kind: RuleKind, subject?: string | null): string {
       return `Take ${subject ?? ''}s off from trading.`.replace('  ', ' ');
     case 'emotion':
       return `Do not trade while feeling "${subject ?? ''}".`;
+    case 'cold_streak':
+      return 'After two losses in a row, stop trading for the session.';
   }
 }
