@@ -299,8 +299,16 @@ export function useAccounts() {
             : a,
         ),
       );
+      const becameProp =
+        editing.account_type !== 'Challenge' &&
+        editing.account_type !== 'Funded' &&
+        (accountType === 'Challenge' || accountType === 'Funded');
+      const editedId = editing.id;
       setEditing(null);
       await reload();
+      // An account just RE-TYPED into Challenge/Funded (e.g. a cTrader account the
+      // user marks as a prop challenge) -> walk straight into rules setup.
+      if (becameProp) setAutoOpenPropRules(editedId);
     } catch (e: unknown) {
       setEditMsg(getErr(e, 'Failed to update account'));
     } finally {
