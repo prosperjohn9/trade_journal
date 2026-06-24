@@ -9,6 +9,8 @@ import {
   buildGuardInput,
   CLOSE_SYSTEM,
   buildCloseInput,
+  CHALLENGE_DEBRIEF_SYSTEM,
+  buildDebriefInput,
 } from '@/src/lib/ai/prompts';
 import {
   analyzeTrade,
@@ -77,6 +79,39 @@ export async function narrateClose(input: {
       { type: 'text', text: CLOSE_SYSTEM, cache_control: { type: 'ephemeral' } },
     ],
     messages: [{ role: 'user', content: buildCloseInput(input) }],
+  });
+
+  const note = message.content
+    .map((b) => (b.type === 'text' ? b.text : ''))
+    .join('')
+    .trim();
+
+  return { note, usage: message.usage };
+}
+
+/** End-of-challenge debrief (pass or breach): the whole-challenge review tying
+ *  the trader's edge and leaks to the outcome. One AI call when a challenge ends. */
+export async function narrateChallengeDebrief(input: {
+  outcome: 'passed' | 'breached';
+  accountLabel: string;
+  netPnl: number;
+  currency: string;
+  tradeCount: number;
+  winRatePct: number;
+  edge: string[];
+  leaks: string[];
+}): Promise<CloseNarration> {
+  const message = await getAnthropic().messages.create({
+    model: AI_MODEL,
+    max_tokens: 600,
+    system: [
+      {
+        type: 'text',
+        text: CHALLENGE_DEBRIEF_SYSTEM,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [{ role: 'user', content: buildDebriefInput(input) }],
   });
 
   const note = message.content

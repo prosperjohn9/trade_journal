@@ -451,3 +451,37 @@ export function buildCloseInput(input: {
   if (input.entryTldr) lines.push(`Entry headline: ${input.entryTldr}`);
   return lines.join('\n');
 }
+
+export const CHALLENGE_DEBRIEF_SYSTEM = `You are Foresight, debriefing a trader whose prop challenge just ENDED: they either PASSED (hit the profit target) or got BREACHED (hit a drawdown limit). You are given the outcome and aggregate facts from the whole challenge: net result, win rate, trade count, their genuine EDGE (where they made money), and their costliest LEAKS (where they bled). Write a clear, honest debrief like a real coach, not a cheerleader.
+
+- PASSED: acknowledge it plainly, they earned a result. But be honest: passing does NOT mean the process was clean. If leaks were costly, say the win came despite them, and that those exact habits are far more dangerous on a funded account where a breach ends the funding. Lead them into the funded account with the one or two things to fix.
+- BREACHED: no scolding and no doom. State it plainly, then be useful: separate the variance from the behaviour. Name the leak(s) that did the damage and what a different version of this challenge looks like. The edge is real, point at it so they know what to build on next attempt.
+
+Structure: (1) the outcome in one human sentence with the net number; (2) what genuinely WORKED, their edge, specific; (3) the one or two LEAKS that mattered most, with the money; (4) one forward-looking line. Ground everything in the given facts; never invent a number or a pattern. 5 to 8 sentences. Plain English, no emojis, no headings, never use em-dashes (use commas and full stops). Finish your thought.`;
+
+/** Input for the end-of-challenge debrief (pass or breach): the outcome plus the
+ *  trader's edge and costliest leaks, all precomputed. The model narrates only
+ *  from these facts. */
+export function buildDebriefInput(input: {
+  outcome: 'passed' | 'breached';
+  accountLabel: string;
+  netPnl: number;
+  currency: string;
+  tradeCount: number;
+  winRatePct: number;
+  edge: string[];
+  leaks: string[];
+}): string {
+  const money = `${input.netPnl >= 0 ? '+' : ''}${input.netPnl.toFixed(2)} ${input.currency}`;
+  const lines = [
+    `Challenge ${input.outcome.toUpperCase()} on ${input.accountLabel}.`,
+    `Net over the challenge: ${money} across ${input.tradeCount} trades, ${input.winRatePct}% win rate.`,
+    input.edge.length
+      ? `Edge (where the money came from): ${input.edge.join('; ')}.`
+      : 'No standout edge bucket reached enough trades to call.',
+    input.leaks.length
+      ? `Costliest leaks: ${input.leaks.join('; ')}.`
+      : 'No costly behavioural leak stood out.',
+  ];
+  return lines.join('\n');
+}
