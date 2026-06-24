@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseWithToken, getToken } from '@/src/lib/supabase/server';
+import {
+  autoTagsForTrades,
+  type AutoTagTrade,
+} from '@/src/lib/analytics/autoTags';
 
 const TRADE_VIEW_SELECT = `
   id, opened_at,
@@ -44,8 +48,16 @@ export async function GET(
   const startingBalance = account?.starting_balance ?? null;
 
   // Run all independent lookups in parallel
-  const [accountTagsRes, beforeSignRes, afterSignRes, itemsRes, cumulativePnlData, siblingsRes] =
-    await Promise.all([
+  const [
+    accountTagsRes,
+    beforeSignRes,
+    afterSignRes,
+    itemsRes,
+    cumulativePnlData,
+    siblingsRes,
+    acctTradesRes,
+    tzRes,
+  ] = await Promise.all([
       // Get account tags from the view (main query joins to accounts, not accounts_with_tags)
       trade.account_id && account
         ? sb.from('accounts_with_tags').select('tags').eq('id', trade.account_id).eq('user_id', user.id).single()
@@ -82,6 +94,18 @@ export async function GET(
             .eq('trade_group_id', trade.trade_group_id)
             .order('opened_at', { ascending: true })
         : Promise.resolve(null),
+
+      // Account trade sequence for auto-tags (lightweight columns only)
+      trade.account_id
+        ? sb
+            .from('trades')
+            .select('id, opened_at, closed_at, outcome, instrument, volume')
+            .eq('account_id', trade.account_id)
+            .order('opened_at', { ascending: true })
+        : Promise.resolve(null),
+
+      // Trader timezone so the Tilt streak resets on the right calendar day
+      sb.from('profiles').select('timezone').eq('id', user.id).maybeSingle(),
     ]);
 
   // Merge tags onto the account object
@@ -138,8 +162,20 @@ export async function GET(
       ? siblingsRes.data
       : [];
 
+  // Auto-tags for this trade, computed over the account's sequence so the
+  // behavioural ones see context. Matches the Hindsight leak definitions.
+  const acctTrades =
+    acctTradesRes && 'data' in acctTradesRes && Array.isArray(acctTradesRes.data)
+      ? (acctTradesRes.data as AutoTagTrade[])
+      : [];
+  const tz =
+    tzRes && 'data' in tzRes && tzRes.data
+      ? ((tzRes.data as { timezone?: string | null }).timezone ?? 'UTC')
+      : 'UTC';
+  const autoTags = autoTagsForTrades(acctTrades, tz).get(String(tradeId)) ?? [];
+
   return NextResponse.json(
-    { trade: enrichedTrade, beforeUrl, afterUrl, items, checks, equityBefore, siblings },
+    { trade: enrichedTrade, beforeUrl, afterUrl, items, checks, equityBefore, siblings, autoTags },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }

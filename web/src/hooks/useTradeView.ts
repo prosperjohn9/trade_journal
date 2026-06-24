@@ -112,6 +112,7 @@ export function useTradeView() {
   const afterUrl = data?.afterUrl ?? '';
   const equityBefore = data?.equityBefore ?? null;
   const siblings = (data?.siblings ?? []) as TradeSibling[];
+  const autoTags = useMemo(() => data?.autoTags ?? [], [data]);
 
   const isReviewed = !!trade?.reviewed_at;
 
@@ -165,6 +166,7 @@ export function useTradeView() {
     afterUrl,
     equityBefore,
     siblings,
+    autoTags,
 
     isReviewed,
     grossPnl,

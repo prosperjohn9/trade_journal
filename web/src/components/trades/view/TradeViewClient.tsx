@@ -534,6 +534,13 @@ export function TradeViewClient() {
                     text={formatAccountTagLabel(tag)}
                   />
                 ))}
+                {s.autoTags.map((tag, index) => (
+                  <MetaBadge
+                    key={`auto-tag-${index}-${tag.label}`}
+                    text={tag.label}
+                    tone={tag.kind === 'behavior' ? 'var(--loss)' : undefined}
+                  />
+                ))}
               </div>
 
               <div className='grid grid-cols-2 gap-3 sm:grid-cols-4'>
