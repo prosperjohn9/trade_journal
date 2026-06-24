@@ -74,27 +74,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, skipped: 'no-connection' });
   }
 
-  // A guarded account is already deployed, so the worker seeing a close means the
-  // closed trade can land in the journal NOW rather than waiting for the daily
-  // cron. syncConnection won't undeploy a guard_enabled account, so this is safe
-  // and adds no hosting cost. It also runs the breach/passed check, so a finishing
-  // challenge auto-disconnects in real time. Best-effort; the cron still backstops.
-  try {
-    await syncConnection(
-      sb,
-      {
-        id: c.id,
-        account_id: c.account_id,
-        metaapi_account_id: c.metaapi_account_id,
-        region: c.region,
-        guard_enabled: c.guard_enabled,
-      },
-      c.user_id,
-    );
-  } catch {
-    // ignore; the daily cron will still pick up this trade
-  }
-
   // The read we logged at entry (still open = outcome null). No read means we
   // never analyzed this trade; nothing to close.
   const { data: readRow } = await sb
@@ -121,22 +100,62 @@ export async function POST(request: Request) {
   // Realized P&L = sum of profit + commission + swap across this position's
   // deals over a recent window (the closing deal lands within minutes).
   let pnl = 0;
+  let closeFound = false;
   try {
     const region = c.region ?? DEFAULT_MT_REGION;
-    const deals = await fetchHistoricalDeals({
-      metaApiAccountId: c.metaapi_account_id,
-      region,
-      from: new Date(Date.now() - 30 * 60_000),
-      to: new Date(Date.now() + 60_000),
-    });
-    for (const d of deals) {
-      if (d.positionId !== positionId) continue;
-      pnl += Number(d.profit ?? 0) + Number(d.commission ?? 0) + Number(d.swap ?? 0);
+    const OUT_ENTRIES = new Set([
+      'DEAL_ENTRY_OUT',
+      'DEAL_ENTRY_OUT_BY',
+      'DEAL_ENTRY_INOUT',
+    ]);
+    // The worker reports the close the instant the position vanishes, but the
+    // closing deal can take a few seconds to land in MetaApi's history. Poll
+    // until the closing (OUT) deal for this position appears, so we never report
+    // a hit-TP trade as "+0.00 flat". ~18s max, well within the function budget.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const deals = await fetchHistoricalDeals({
+        metaApiAccountId: c.metaapi_account_id,
+        region,
+        from: new Date(Date.now() - 60 * 60_000),
+        to: new Date(Date.now() + 60_000),
+      });
+      const mine = deals.filter((d) => d.positionId === positionId);
+      if (mine.some((d) => OUT_ENTRIES.has(d.entryType ?? ''))) {
+        pnl = mine.reduce(
+          (s, d) =>
+            s +
+            Number(d.profit ?? 0) +
+            Number(d.commission ?? 0) +
+            Number(d.swap ?? 0),
+          0,
+        );
+        closeFound = true;
+        break;
+      }
+      if (attempt < 5) await new Promise((r) => setTimeout(r, 3000));
     }
   } catch {
-    // If the deal feed is briefly unavailable we still record the close, just
-    // without a P&L figure.
-    pnl = 0;
+    // Deal feed briefly unavailable; fall through with closeFound = false.
+  }
+
+  // Don't claim a breakeven we didn't actually measure: if the closing deal
+  // never landed, say the result is still syncing rather than "+0.00 flat".
+  if (!closeFound) {
+    const owner = c.user_id;
+    const { data: prof } = await sb
+      .from('profiles')
+      .select('telegram_chat_id')
+      .eq('id', owner)
+      .maybeSingle();
+    const chat = (prof as { telegram_chat_id?: string | null } | null)
+      ?.telegram_chat_id;
+    if (chat) {
+      await sendTelegram(
+        chat,
+        `${read.symbol} ${read.side} closed. Final P&L is still settling at the broker; it will appear in your journal shortly.`,
+      ).catch(() => {});
+    }
+    return NextResponse.json({ ok: true, pending: true });
   }
 
   const outcome =
@@ -224,5 +243,40 @@ export async function POST(request: Request) {
     await sendTelegram(chatId, `${head}\n\n${note}`);
   }
 
-  return NextResponse.json({ ok: true, outcome, pnl });
+  // Journal the closed trade now (real-time freshness for guarded accounts) and
+  // run the prop terminal-state check. Done AFTER the close-the-loop on purpose:
+  // a passed/breached account has its MetaApi account removed here, which would
+  // otherwise break the deal fetch above. syncConnection never undeploys a
+  // guard_enabled account, so this stays free.
+  let passed = false;
+  try {
+    const res = await syncConnection(
+      sb,
+      {
+        id: c.id,
+        account_id: c.account_id,
+        metaapi_account_id: c.metaapi_account_id,
+        region: c.region,
+        guard_enabled: c.guard_enabled,
+      },
+      c.user_id,
+    );
+    passed = res?.passed === true;
+  } catch {
+    // ignore; the daily cron backstops the journal + the terminal check
+  }
+
+  // Passed the challenge on this trade: send a proper congratulations, not just a
+  // close line, and be honest about whether this trade earned it or got lucky.
+  if (passed && chatId) {
+    const congrats =
+      `Challenge passed. ${read.symbol} ${read.side} closed it out at ${signed(pnl)} ${currency}, and the account hit its profit target.\n\n` +
+      (flags.length === 0
+        ? 'Clean execution on the trade that did it, carry that same discipline onto the funded account.'
+        : `It got the result, but this trade carried real flags (${flagList}). Passing on a flagged trade is how a risky habit sneaks onto a funded account, so judge it by the process, not the pass.`) +
+      `\n\nYour prop firm issues a fresh funded login when you pass. Connect it here to keep Foresight running, and see your full breakdown: https://tradershindsight.com/foresight`;
+    await sendTelegram(chatId, congrats).catch(() => {});
+  }
+
+  return NextResponse.json({ ok: true, outcome, pnl, passed });
 }
