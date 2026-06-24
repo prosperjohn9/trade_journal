@@ -10,6 +10,7 @@ import {
   sessionOf,
   WEEKDAYS,
   median,
+  dayKey,
   type HindsightTrade,
   type LeakKind,
 } from './hindsight';
@@ -45,6 +46,7 @@ function scanBreaches(
   rule: CommitmentRule,
   trades: HindsightTrade[],
   med: number | null,
+  tz: string,
 ): Breach[] {
   const sorted = [...trades].sort((a, b) =>
     a.opened_at < b.opened_at ? -1 : 1,
@@ -53,12 +55,18 @@ function scanBreaches(
   const breaches: Breach[] = [];
 
   // Consecutive losses ending just before each index, for the cold_streak rule.
+  // The streak resets at a new day (trader's timezone): committing to "stop for
+  // the session after 2 losses" must NOT count a loss the next day as a breach.
   const lossRunBefore: number[] = [];
   let run = 0;
+  let prevDay: string | null = null;
   for (let i = 0; i < sorted.length; i++) {
+    const day = dayKey(sorted[i].opened_at, tz);
+    if (prevDay !== null && day !== prevDay) run = 0;
     lossRunBefore[i] = run;
     if (sorted[i].outcome === 'LOSS') run += 1;
     else if (sorted[i].outcome === 'WIN') run = 0;
+    prevDay = day;
   }
 
   for (let i = 0; i < sorted.length; i++) {
@@ -130,9 +138,10 @@ export function computeRuleProgress(
   rule: CommitmentRule,
   trades: HindsightTrade[],
   now: number = Date.now(),
+  tz = 'UTC',
 ): RuleProgress {
   const med = median(trades.map((t) => t.volume ?? 0).filter((v) => v > 0));
-  const breaches = scanBreaches(rule, trades, med);
+  const breaches = scanBreaches(rule, trades, med, tz);
   const commitMs = new Date(rule.committedAt).getTime();
 
   const baseline = breaches.filter((b) => b.at < commitMs);

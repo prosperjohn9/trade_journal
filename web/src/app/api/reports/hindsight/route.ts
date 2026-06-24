@@ -71,7 +71,11 @@ export async function GET(request: Request) {
 
   const [{ data: recentRaw }, { data: profile }] = await Promise.all([
     sb.from('trades').select(TRADE_SELECT).gte('opened_at', since),
-    sb.from('profiles').select('base_currency').eq('id', user.id).maybeSingle(),
+    sb
+      .from('profiles')
+      .select('base_currency, timezone')
+      .eq('id', user.id)
+      .maybeSingle(),
   ]);
 
   let rows = (recentRaw ?? []) as Row[];
@@ -95,8 +99,14 @@ export async function GET(request: Request) {
   const currency =
     ((profile as { base_currency?: string | null } | null)?.base_currency ??
       'USD') as string;
+  const tz =
+    ((profile as { timezone?: string | null } | null)?.timezone ??
+      'UTC') as string;
   const fx = await buildPnlNormalizer(sb, user.id, currency);
-  const report = computeHindsightReport(rows.map((r) => toHindsightTrade(r, fx)));
+  const report = computeHindsightReport(
+    rows.map((r) => toHindsightTrade(r, fx)),
+    tz,
+  );
 
   return NextResponse.json({ insufficient: false, period, currency, report });
 }

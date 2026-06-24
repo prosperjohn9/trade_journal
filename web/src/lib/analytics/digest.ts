@@ -39,14 +39,14 @@ const EMPTY: WeeklyDigest = {
 /** Build the weekly digest from the user's last-7-days trades. */
 export function buildWeeklyDigest(
   trades: HindsightTrade[],
-  opts: { currency: string; appUrl: string },
+  opts: { currency: string; appUrl: string; timezone?: string },
 ): WeeklyDigest {
   const closed = trades.filter((t) => t.closed_at);
   const n = closed.length;
   if (n < MIN_TRADES) return EMPTY;
 
   const ccy = opts.currency;
-  const report = computeHindsightReport(trades);
+  const report = computeHindsightReport(trades, opts.timezone ?? 'UTC');
   const net = report.actualPnl;
   const wins = closed.filter((t) => t.outcome === 'WIN').length;
   const winRate = Math.round((wins / n) * 100);

@@ -79,13 +79,20 @@ export async function GET(request: Request) {
         .eq('status', 'active')
         .order('committed_at', { ascending: false }),
       sb.from('trades').select(TRADE_SELECT),
-      sb.from('profiles').select('base_currency').eq('id', user.id).maybeSingle(),
+      sb
+        .from('profiles')
+        .select('base_currency, timezone')
+        .eq('id', user.id)
+        .maybeSingle(),
     ]);
 
   const trades = ((tradesRaw ?? []) as Row[]).map(toHindsightTrade);
   const currency =
     ((profile as { base_currency?: string | null } | null)?.base_currency ??
       'USD') as string;
+  const tz =
+    ((profile as { timezone?: string | null } | null)?.timezone ??
+      'UTC') as string;
 
   const rules = ((rulesRaw ?? []) as RuleRow[]).map((r) => ({
     id: r.id,
@@ -96,6 +103,8 @@ export async function GET(request: Request) {
     progress: computeRuleProgress(
       { kind: r.kind, subject: r.subject, committedAt: r.committed_at },
       trades,
+      Date.now(),
+      tz,
     ),
   }));
 

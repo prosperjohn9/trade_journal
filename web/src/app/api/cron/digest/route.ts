@@ -89,7 +89,7 @@ export async function POST(request: Request) {
 
   const { data: profs } = await admin
     .from('profiles')
-    .select('id, base_currency, telegram_chat_id, weekly_digest_enabled')
+    .select('id, base_currency, timezone, telegram_chat_id, weekly_digest_enabled')
     .in('id', [...entitled]);
 
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
@@ -100,6 +100,7 @@ export async function POST(request: Request) {
   for (const p of (profs ?? []) as Array<{
     id: string;
     base_currency: string | null;
+    timezone: string | null;
     telegram_chat_id: string | null;
     weekly_digest_enabled: boolean | null;
   }>) {
@@ -118,7 +119,11 @@ export async function POST(request: Request) {
     const fx = await buildPnlNormalizer(admin, p.id, p.base_currency ?? 'USD');
     const digest = buildWeeklyDigest(
       (rows as Row[]).map((r) => toTrade(r, fx)),
-      { currency: p.base_currency ?? 'USD', appUrl: APP_ORIGIN },
+      {
+        currency: p.base_currency ?? 'USD',
+        appUrl: APP_ORIGIN,
+        timezone: p.timezone ?? 'UTC',
+      },
     );
     if (!digest.hasContent) continue;
 

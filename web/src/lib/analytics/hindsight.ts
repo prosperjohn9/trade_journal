@@ -107,7 +107,25 @@ function groupCost(
   return worst;
 }
 
-export function computeHindsightReport(input: HindsightTrade[]): HindsightReport {
+// Calendar day in the trader's own timezone (YYYY-MM-DD), so "a new day resets
+// the tilt streak" matches what the trader experiences, not UTC midnight.
+export function dayKey(iso: string, tz: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(iso));
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+export function computeHindsightReport(
+  input: HindsightTrade[],
+  tz = 'UTC',
+): HindsightReport {
   const trades = [...input].sort((a, b) =>
     a.opened_at < b.opened_at ? -1 : 1,
   );
@@ -220,16 +238,21 @@ export function computeHindsightReport(input: HindsightTrade[]): HindsightReport
     });
   }
 
-  // 6) Cold-streak / tilt: trades opened while on a run of 2+ losses. Distinct
-  //    from revenge (time-proximity) -- this is "kept trading while cold".
-  //    Counterfactual: without these tilt trades, like revenge.
+  // 6) Cold-streak / tilt: trades opened while on a run of 2+ losses WITHIN THE
+  //    SAME DAY. The streak resets at a new day (in the trader's timezone), so
+  //    trading the next morning is never counted as tilt. Distinct from revenge
+  //    (time-proximity); counterfactual is "without these tilt trades".
   const coldStreak: HindsightTrade[] = [];
   let lossRun = 0;
+  let prevDay: string | null = null;
   for (const t of trades) {
+    const day = dayKey(t.opened_at, tz);
+    if (prevDay !== null && day !== prevDay) lossRun = 0; // new day = fresh start
     if (lossRun >= 2) coldStreak.push(t);
     if (t.outcome === 'LOSS') lossRun += 1;
     else if (t.outcome === 'WIN') lossRun = 0;
     // BREAKEVEN neither extends nor resets the run.
+    prevDay = day;
   }
   const coldPnl = coldStreak.reduce((s, t) => s + t.pnl, 0);
   if (coldStreak.length >= 2 && coldPnl < 0) {
@@ -242,7 +265,7 @@ export function computeHindsightReport(input: HindsightTrade[]): HindsightReport
     findings.push({
       kind: 'cold_streak',
       label: 'Trading on tilt',
-      detail: `Trades opened after two or more losses in a row (won ${coldWinPct}% vs ${baseWinPct}% overall)`,
+      detail: `Trades opened the same day after two or more losses in a row (won ${coldWinPct}% vs ${baseWinPct}% overall)`,
       tradeCount: coldStreak.length,
       cost: -coldPnl,
       counterfactualPnl: actualPnl - coldPnl,
