@@ -13,7 +13,7 @@ import {
   tfLabel,
   type Tf,
 } from '@/src/lib/analytics/timeframes';
-import { median, sessionOf, WEEKDAYS } from '@/src/lib/analytics/hindsight';
+import { median, sessionOf, WEEKDAYS, dayKey } from '@/src/lib/analytics/hindsight';
 import { ruleStatement, type RuleKind } from '@/src/lib/analytics/commitment';
 import {
   computePropStatus,
@@ -325,7 +325,7 @@ export async function POST(request: Request) {
     ] = await Promise.all([
       sb
         .from('profiles')
-        .select('risk_per_trade_percent')
+        .select('risk_per_trade_percent, timezone')
         .eq('id', userId)
         .maybeSingle(),
       sb
@@ -396,6 +396,21 @@ export async function POST(request: Request) {
       .map((t) => (typeof t.volume === 'number' ? t.volume : null))
       .filter((v): v is number => v != null && v > 0);
     const medianVolumeLots = vols.length >= 4 ? median(vols) : null;
+
+    // On a 2+ loss run today (trader's local day)? -> a committed cold_streak
+    // rule is broken by opening now. Resets each day.
+    const profTz =
+      (profile as { timezone?: string | null } | null)?.timezone ?? 'UTC';
+    const todayKey = dayKey(new Date().toISOString(), profTz);
+    const lossRunToday = rows
+      .filter((t) => t.closed_at && dayKey(t.closed_at, profTz) === todayKey)
+      .sort((a, b) => ((a.closed_at ?? '') < (b.closed_at ?? '') ? -1 : 1))
+      .reduce(
+        (run, t) =>
+          t.outcome === 'LOSS' ? run + 1 : t.outcome === 'WIN' ? 0 : run,
+        0,
+      );
+    const onColdStreakToday = lossRunToday >= 2;
 
     // Their record on this exact pair.
     const pairRows = rows.filter(
@@ -483,6 +498,7 @@ export async function POST(request: Request) {
       else if (r.kind === 'session') hit = !!r.subject && currentSession === r.subject;
       else if (r.kind === 'weekday')
         hit = !!r.subject && WEEKDAYS[new Date().getUTCDay()] === r.subject;
+      else if (r.kind === 'cold_streak') hit = onColdStreakToday;
       if (hit)
         committedRuleHits.push(r.label || ruleStatement(r.kind as RuleKind, r.subject));
     }

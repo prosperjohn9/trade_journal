@@ -5,7 +5,7 @@
 // risk to the stop) is broker-specific and supplied by the caller.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { median, sessionOf, WEEKDAYS } from '@/src/lib/analytics/hindsight';
+import { median, sessionOf, WEEKDAYS, dayKey } from '@/src/lib/analytics/hindsight';
 import { ruleStatement, type RuleKind } from '@/src/lib/analytics/commitment';
 import { computePropStatus, type PropRules } from '@/src/lib/analytics/propFirm';
 import {
@@ -85,7 +85,7 @@ export async function buildBehavioralGuardContext(
   ] = await Promise.all([
     sb
       .from('profiles')
-      .select('risk_per_trade_percent')
+      .select('risk_per_trade_percent, timezone')
       .eq('id', input.userId)
       .maybeSingle(),
     sb
@@ -146,6 +146,21 @@ export async function buildBehavioralGuardContext(
     .map((t) => (typeof t.volume === 'number' ? t.volume : null))
     .filter((v): v is number => v != null && v > 0);
   const medianVolumeLots = vols.length >= 4 ? median(vols) : null;
+
+  // On a 2+ loss run TODAY (their local day)? Opening another trade now would
+  // break a committed cold_streak rule. The run resets each day, so yesterday's
+  // losses never count -- same day-awareness as the leak + tracker.
+  const tz = (profile as { timezone?: string | null } | null)?.timezone ?? 'UTC';
+  const todayKey = dayKey(new Date().toISOString(), tz);
+  const todayClosed = rows
+    .filter((t) => t.closed_at && dayKey(t.closed_at, tz) === todayKey)
+    .sort((a, b) => ((a.closed_at ?? '') < (b.closed_at ?? '') ? -1 : 1));
+  let lossRunToday = 0;
+  for (const t of todayClosed) {
+    if (t.outcome === 'LOSS') lossRunToday += 1;
+    else if (t.outcome === 'WIN') lossRunToday = 0;
+  }
+  const onColdStreakToday = lossRunToday >= 2;
 
   // Their record on this exact pair.
   const pairRows = rows.filter(
@@ -234,6 +249,7 @@ export async function buildBehavioralGuardContext(
       hit = !!r.subject && currentSession === r.subject;
     else if (r.kind === 'weekday')
       hit = !!r.subject && WEEKDAYS[new Date().getUTCDay()] === r.subject;
+    else if (r.kind === 'cold_streak') hit = onColdStreakToday;
     if (hit)
       committedRuleHits.push(
         r.label || ruleStatement(r.kind as RuleKind, r.subject),
