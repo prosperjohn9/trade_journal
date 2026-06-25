@@ -44,15 +44,15 @@ export function MarketingNav() {
             className='hidden rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] sm:inline-flex'>
             Pricing
           </Link>
+          <ThemeToggle />
           <Link
             href='/auth'
             className='hidden rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] sm:inline-flex'>
             Sign in
           </Link>
-          <ThemeToggle />
           <Link
             href='/auth?mode=signup'
-            className='rounded-lg bg-[var(--accent-cta)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90'>
+            className='whitespace-nowrap rounded-lg bg-[var(--accent-cta)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90'>
             Get started
           </Link>
         </div>

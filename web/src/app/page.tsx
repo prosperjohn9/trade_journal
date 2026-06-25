@@ -32,76 +32,127 @@ export default function LandingPage() {
 function Hero() {
   return (
     <section className='relative overflow-hidden border-b border-[var(--border-default)]'>
+      <GridBackdrop />
       <div
         aria-hidden
-        className='absolute left-1/2 top-[-80px] -z-0 h-[560px] w-[1040px] -translate-x-1/2 opacity-[0.18]'
+        className='pointer-events-none absolute right-[-160px] top-[-160px] -z-0 h-[560px] w-[680px] opacity-[0.16]'
         style={{
           background:
             'radial-gradient(closest-side, var(--accent) 0%, transparent 70%)',
         }}
       />
-      <div className='relative mx-auto max-w-5xl px-6 py-20 text-center sm:py-28'>
-        <p className='mb-4 inline-flex items-center gap-2 rounded-full border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-medium uppercase tracking-[0.14em] text-[var(--text-secondary)]'>
-          <span className='inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]' />
-          For forex &amp; prop-firm traders
-        </p>
-        <h1 className='mx-auto max-w-3xl text-4xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-6xl'>
-          See what your habits cost you.{' '}
-          <span className='bg-gradient-to-r from-[var(--accent)] to-[var(--text-primary)] bg-clip-text text-transparent'>
-            In money.
-          </span>
-        </h1>
-        <p className='mx-auto mt-5 max-w-2xl text-base text-[var(--text-secondary)] sm:text-lg'>
-          The Trader&apos;s Hindsight reads your synced trades, finds the one
-          habit quietly draining your account, and shows you in dollars what it
-          cost. Then it helps you stop, and proves what you saved.
-        </p>
-        <div className='mt-9 flex flex-wrap items-center justify-center gap-3'>
-          <Link
-            href='/auth?mode=signup'
-            className='rounded-lg bg-[var(--accent-cta)] px-6 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90'>
-            Start free
-          </Link>
-          <a
-            href='#how-it-works'
-            className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-5 py-3 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-subtle)]'>
-            See how it works
-          </a>
+      <div className='relative mx-auto grid max-w-6xl items-center gap-12 px-6 py-16 sm:py-20 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 lg:py-28'>
+        {/* Copy */}
+        <div className='text-center lg:text-left'>
+          <p className='mb-5 inline-flex items-center gap-2 rounded-full border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-medium uppercase tracking-[0.14em] text-[var(--text-secondary)]'>
+            <span className='inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]' />
+            For forex &amp; prop-firm traders
+          </p>
+          <h1 className='text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--text-primary)] sm:text-5xl lg:text-[3.4rem]'>
+            See what your habits cost you.{' '}
+            <span className='bg-gradient-to-r from-[var(--accent)] to-[var(--text-primary)] bg-clip-text text-transparent'>
+              In money.
+            </span>
+          </h1>
+          <p className='mx-auto mt-5 max-w-xl text-base leading-relaxed text-[var(--text-secondary)] sm:text-lg lg:mx-0'>
+            The Trader&apos;s Hindsight reads your trades, finds the one habit
+            quietly draining your account, and shows you in dollars what it
+            cost. Then it helps you stop, and proves what you saved.
+          </p>
+          <div className='mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start'>
+            <Link
+              href='/auth?mode=signup'
+              className='rounded-lg bg-[var(--accent-cta)] px-6 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90'>
+              Start free
+            </Link>
+            <a
+              href='#how-it-works'
+              className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-5 py-3 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-subtle)]'>
+              See how it works
+            </a>
+          </div>
+          <p className='mt-5 text-xs text-[var(--text-muted)]'>
+            Start free. cTrader auto-sync and file import included. Cancel
+            anytime.
+          </p>
         </div>
-        <p className='mt-5 text-xs text-[var(--text-muted)]'>
-          Free statement import. cTrader auto-sync free. Cancel anytime.
-        </p>
 
-        <ReceiptCard />
+        {/* Product visual */}
+        <div className='relative mx-auto w-full max-w-md lg:mx-0'>
+          <div
+            aria-hidden
+            className='absolute -inset-6 -z-0 rounded-[2rem] opacity-40 blur-3xl'
+            style={{
+              background:
+                'radial-gradient(closest-side, var(--accent) 0%, transparent 75%)',
+            }}
+          />
+          <ReceiptCard />
+        </div>
       </div>
     </section>
+  );
+}
+
+// Faint dotted grid that fades out toward the bottom, for hero texture.
+function GridBackdrop() {
+  return (
+    <div
+      aria-hidden
+      className='pointer-events-none absolute inset-0 -z-0 opacity-50'
+      style={{
+        backgroundImage:
+          'radial-gradient(var(--border-default) 1px, transparent 1px)',
+        backgroundSize: '26px 26px',
+        WebkitMaskImage:
+          'linear-gradient(to bottom, black 0%, transparent 75%)',
+        maskImage: 'linear-gradient(to bottom, black 0%, transparent 75%)',
+      }}
+    />
   );
 }
 
 // The shareable Hindsight card, the product's core "aha".
 function ReceiptCard() {
   return (
-    <div className='mx-auto mt-14 max-w-md rounded-2xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-8 text-left shadow-xl'>
-      <div className='flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]'>
-        <span className='inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]' />
-        The Trader&apos;s Hindsight
+    <div className='relative rounded-2xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-7 text-left shadow-2xl'>
+      <div className='flex items-center justify-between'>
+        <div className='flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]'>
+          <span className='inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]' />
+          The Trader&apos;s Hindsight
+        </div>
+        <span className='rounded-full border border-[var(--border-default)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]'>
+          Hindsight report
+        </span>
       </div>
-      <div className='mt-6 text-center'>
-        <div className='text-lg font-medium text-[var(--text-secondary)]'>
+      <div className='mt-7 text-center'>
+        <div className='text-base font-medium text-[var(--text-secondary)]'>
           Trading on Thursdays
         </div>
-        <div className='mt-2 text-6xl font-extrabold text-[var(--loss)]'>
+        <div className='mt-1 text-[3.5rem] font-extrabold leading-none tracking-tight text-[var(--loss)]'>
           -$1,687
         </div>
-        <div className='mt-2 text-sm text-[var(--text-muted)]'>
+        <div className='mt-3 text-sm text-[var(--text-muted)]'>
           is what this one habit cost me in the last 30 days.
         </div>
       </div>
-      <div className='mt-6 border-t border-[var(--border-default)] pt-4 text-center text-sm text-[var(--text-secondary)]'>
-        My P&amp;L:{' '}
-        <span className='font-semibold text-[var(--loss)]'>-$1,437</span>
-        {'  →  '}Without this habit:{' '}
-        <span className='font-semibold text-[var(--profit)]'>+$250</span>
+      <div className='mt-6 grid grid-cols-2 gap-3'>
+        <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2.5 text-center'>
+          <div className='text-[11px] uppercase tracking-wide text-[var(--text-muted)]'>
+            My P&amp;L
+          </div>
+          <div className='mt-0.5 text-lg font-bold text-[var(--loss)]'>
+            -$1,437
+          </div>
+        </div>
+        <div className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2.5 text-center'>
+          <div className='text-[11px] uppercase tracking-wide text-[var(--text-muted)]'>
+            Without it
+          </div>
+          <div className='mt-0.5 text-lg font-bold text-[var(--profit)]'>
+            +$250
+          </div>
+        </div>
       </div>
       <p className='mt-4 text-center text-[11px] text-[var(--text-muted)]'>
         Illustrative. Your report is built from your own trades.
@@ -122,11 +173,11 @@ function BrokersStrip() {
   ];
   return (
     <section className='border-b border-[var(--border-default)] bg-[var(--bg-subtle)]'>
-      <div className='mx-auto max-w-5xl px-6 py-8'>
-        <p className='text-center text-xs font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]'>
-          Auto-sync MetaTrader &amp; cTrader. Import from anywhere.
+      <div className='mx-auto flex max-w-5xl flex-col items-center gap-4 px-6 py-7 sm:flex-row sm:justify-between'>
+        <p className='text-xs font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]'>
+          Auto-sync &amp; import from
         </p>
-        <div className='mt-4 flex flex-wrap items-center justify-center gap-x-8 gap-y-3'>
+        <div className='flex flex-wrap items-center justify-center gap-x-7 gap-y-2'>
           {brokers.map((b) => (
             <span
               key={b}
@@ -144,30 +195,32 @@ function BrokersStrip() {
 
 function ProblemStrip() {
   const stats = [
-    { big: '$4,270', small: 'average spend on challenge fees before payout' },
+    { big: '$4,270', small: 'average spent on challenge fees before a payout' },
     { big: '~1 in 14', small: 'traders pass a prop evaluation' },
     { big: '71%', small: 'of first-phase failures are a daily-drawdown breach' },
   ];
   return (
     <section className='border-b border-[var(--border-default)]'>
       <div className='mx-auto max-w-5xl px-6 py-16'>
-        <div className='grid gap-6 sm:grid-cols-3'>
+        <p className='mx-auto max-w-2xl text-center text-lg font-medium leading-snug text-[var(--text-primary)] sm:text-xl'>
+          Most blown accounts are not a strategy problem. They are a habit you
+          cannot see, revenge trading, sizing up after a loss, a session that
+          bleeds you.
+        </p>
+        <div className='mt-12 grid gap-6 sm:grid-cols-3'>
           {stats.map((s) => (
-            <div key={s.big} className='text-center'>
+            <div
+              key={s.big}
+              className='rounded-2xl border border-[var(--border-default)] bg-[var(--bg-surface)] px-5 py-6 text-center'>
               <div className='text-3xl font-bold text-[var(--text-primary)] sm:text-4xl'>
                 {s.big}
               </div>
-              <div className='mx-auto mt-2 max-w-[14rem] text-sm text-[var(--text-muted)]'>
+              <div className='mx-auto mt-2 max-w-[15rem] text-sm text-[var(--text-muted)]'>
                 {s.small}
               </div>
             </div>
           ))}
         </div>
-        <p className='mx-auto mt-10 max-w-2xl text-center text-sm text-[var(--text-secondary)] sm:text-base'>
-          Most blown accounts are not a strategy problem. They are a habit you
-          cannot see, revenge trading, sizing up after a loss, a session that
-          bleeds you. We make that habit visible, and put a price on it.
-        </p>
       </div>
     </section>
   );
@@ -179,8 +232,8 @@ function ProblemStrip() {
 // visitor sees it, not just reads about it.
 function Pillars() {
   return (
-    <section className='border-b border-[var(--border-default)]'>
-      <div className='mx-auto max-w-6xl space-y-20 px-6 py-20 sm:py-24'>
+    <section className='border-b border-[var(--border-default)] bg-[var(--bg-subtle)]'>
+      <div className='mx-auto max-w-6xl space-y-16 px-6 py-16 sm:py-20'>
         <PillarRow
           eyebrow='Hindsight · Diagnose'
           title='The one habit costing you the most, priced in dollars.'
@@ -219,12 +272,12 @@ function PillarRow({
   reverse?: boolean;
 }) {
   return (
-    <div className='grid items-center gap-10 lg:grid-cols-2'>
+    <div className='grid items-center gap-8 lg:grid-cols-2 lg:gap-14'>
       <div className={reverse ? 'lg:order-2' : ''}>
         <p className='text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent)]'>
           {eyebrow}
         </p>
-        <h3 className='mt-3 text-2xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-3xl'>
+        <h3 className='mt-3 text-2xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-[1.75rem]'>
           {title}
         </h3>
         <p className='mt-4 text-base leading-relaxed text-[var(--text-secondary)]'>
@@ -285,16 +338,16 @@ function ForesightCard() {
         Risk 1.8% · 2.1R to target
       </div>
       <ul className='mt-4 space-y-2 text-sm'>
-        <li className='flex items-start gap-2 text-[var(--text-secondary)]'>
-          <span className='mt-0.5 text-[var(--loss)]'>⚠</span>
+        <li className='flex items-start gap-2.5 text-[var(--text-secondary)]'>
+          <Dot tone='loss' />
           18 minutes to red-folder USD news
         </li>
-        <li className='flex items-start gap-2 text-[var(--text-secondary)]'>
-          <span className='mt-0.5 text-[var(--loss)]'>⚠</span>
+        <li className='flex items-start gap-2.5 text-[var(--text-secondary)]'>
+          <Dot tone='loss' />
           3rd trade today after two losses (tilt)
         </li>
-        <li className='flex items-start gap-2 text-[var(--text-secondary)]'>
-          <span className='mt-0.5 text-[var(--profit)]'>✓</span>
+        <li className='flex items-start gap-2.5 text-[var(--text-secondary)]'>
+          <Dot tone='profit' />
           Aligned with your 4H downtrend
         </li>
       </ul>
@@ -303,6 +356,18 @@ function ForesightCard() {
         print pass or size down.
       </p>
     </div>
+  );
+}
+
+function Dot({ tone }: { tone: 'loss' | 'profit' }) {
+  return (
+    <span
+      aria-hidden
+      className='mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full'
+      style={{
+        backgroundColor: tone === 'loss' ? 'var(--loss)' : 'var(--profit)',
+      }}
+    />
   );
 }
 
@@ -352,7 +417,7 @@ function HowItWorks() {
     {
       n: '01',
       title: 'Connect or import',
-      body: 'Auto-sync cTrader free, sync one MetaTrader account, or import an MT5 report or CSV from any platform. No manual entry.',
+      body: 'Auto-sync cTrader free, sync one MetaTrader account, or import a report from any platform. New trades flow in on their own.',
     },
     {
       n: '02',
@@ -374,8 +439,8 @@ function HowItWorks() {
   return (
     <section
       id='how-it-works'
-      className='border-b border-[var(--border-default)] bg-[var(--bg-subtle)]'>
-      <div className='mx-auto max-w-5xl px-6 py-20 sm:py-24'>
+      className='border-b border-[var(--border-default)]'>
+      <div className='mx-auto max-w-5xl px-6 py-16 sm:py-20'>
         <div className='text-center'>
           <p className='text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent)]'>
             How it works
@@ -477,8 +542,8 @@ function Features() {
   ];
 
   return (
-    <section className='border-b border-[var(--border-default)]'>
-      <div className='mx-auto max-w-6xl px-6 py-20 sm:py-24'>
+    <section className='border-b border-[var(--border-default)] bg-[var(--bg-subtle)]'>
+      <div className='mx-auto max-w-6xl px-6 py-16 sm:py-20'>
         <div className='text-center'>
           <p className='text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent)]'>
             What you get
@@ -514,8 +579,8 @@ function Features() {
 
 function PhilosophyStrip() {
   return (
-    <section className='border-b border-[var(--border-default)] bg-[var(--bg-subtle)]'>
-      <div className='mx-auto max-w-3xl px-6 py-20 text-center sm:py-24'>
+    <section className='border-b border-[var(--border-default)]'>
+      <div className='mx-auto max-w-3xl px-6 py-16 text-center sm:py-20'>
         <p className='text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent)]'>
           Why we built this
         </p>
@@ -536,40 +601,38 @@ function PhilosophyStrip() {
 
 function FinalCta() {
   return (
-    <section className='border-b border-[var(--border-default)]'>
-      <div className='relative mx-auto max-w-4xl px-6 py-20 text-center sm:py-24'>
-        <div
-          aria-hidden
-          className='absolute inset-0 -z-0 opacity-[0.15]'
-          style={{
-            background:
-              'radial-gradient(closest-side, var(--accent) 0%, transparent 70%)',
-          }}
-        />
-        <div className='relative'>
-          <h2 className='text-3xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-5xl'>
-            Find the leak before it blows{' '}
-            <span className='bg-gradient-to-r from-[var(--accent)] to-[var(--text-primary)] bg-clip-text text-transparent'>
-              another challenge.
-            </span>
-          </h2>
-          <p className='mx-auto mt-4 max-w-xl text-sm text-[var(--text-secondary)] sm:text-base'>
-            One blown challenge costs around $530. Finding the habit behind it
-            costs $12 a month. Start free, import your trades, and see your
-            first Hindsight Report today.
-          </p>
-          <div className='mt-8 flex flex-wrap items-center justify-center gap-3'>
-            <Link
-              href='/auth?mode=signup'
-              className='rounded-lg bg-[var(--accent-cta)] px-6 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90'>
-              Start free
-            </Link>
-            <Link
-              href='/pricing'
-              className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-5 py-3 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-subtle)]'>
-              See pricing
-            </Link>
-          </div>
+    <section className='relative overflow-hidden border-b border-[var(--border-default)]'>
+      <div
+        aria-hidden
+        className='pointer-events-none absolute left-1/2 top-1/2 -z-0 h-[420px] w-[820px] -translate-x-1/2 -translate-y-1/2 opacity-[0.14]'
+        style={{
+          background:
+            'radial-gradient(closest-side, var(--accent) 0%, transparent 70%)',
+        }}
+      />
+      <div className='relative mx-auto max-w-3xl px-6 py-16 text-center sm:py-20'>
+        <h2 className='text-3xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-[2.75rem] sm:leading-[1.1]'>
+          Find the leak before it blows{' '}
+          <span className='bg-gradient-to-r from-[var(--accent)] to-[var(--text-primary)] bg-clip-text text-transparent'>
+            another challenge.
+          </span>
+        </h2>
+        <p className='mx-auto mt-4 max-w-xl text-sm text-[var(--text-secondary)] sm:text-base'>
+          A blown 100K challenge runs $500 or more, and most traders pay it more
+          than once. Finding the habit behind the breach costs $12 a month.
+          Start free and see your first Hindsight Report today.
+        </p>
+        <div className='mt-8 flex flex-wrap items-center justify-center gap-3'>
+          <Link
+            href='/auth?mode=signup'
+            className='rounded-lg bg-[var(--accent-cta)] px-6 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90'>
+            Start free
+          </Link>
+          <Link
+            href='/pricing'
+            className='rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-5 py-3 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-subtle)]'>
+            See pricing
+          </Link>
         </div>
       </div>
     </section>
