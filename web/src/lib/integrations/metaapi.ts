@@ -362,7 +362,13 @@ export async function fetchTickSize(
   return body ? num(body.tickSize as number | undefined) : null;
 }
 
-export type LiveCandle = { o: number; h: number; l: number; c: number };
+export type LiveCandle = {
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v?: number;
+};
 
 export type CandleResult = { candles: LiveCandle[]; status: string };
 
@@ -405,6 +411,7 @@ export async function fetchCandles(
         h: Number(k.high ?? 0),
         l: Number(k.low ?? 0),
         c: Number(k.close ?? 0),
+        v: Number(k.tickVolume ?? k.volume ?? 0), // tick volume (FX proxy)
       }))
       .filter((k) => k.h > 0 && k.l > 0);
     return { candles, status: candles.length ? 'ok' : 'empty' };

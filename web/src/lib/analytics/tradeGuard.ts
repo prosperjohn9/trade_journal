@@ -18,15 +18,20 @@ import {
   OVERSIZE_FACTOR,
 } from '@/src/lib/analytics/hindsight';
 import {
-  detectLevels,
-  detectOrderBlocks,
-  detectFvgs,
+  readStructure,
   type StructZone,
 } from '@/src/lib/analytics/structure';
 
 export type GuardSide = 'BUY' | 'SELL';
 
-export type GuardCandle = { o: number; h: number; l: number; c: number };
+export type GuardCandle = {
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  /** Tick volume (the FX proxy for activity); optional, absent on some sources. */
+  v?: number;
+};
 
 export type GuardNews = {
   /** Rule-based status when a prop news rule is set; 'clear' otherwise. */
@@ -138,25 +143,44 @@ export function trendOf(c: GuardCandle[]): 'up' | 'down' | 'flat' {
   return 'flat';
 }
 
-/** Structure read: order blocks, fair-value gaps and swing levels between price
- *  and the target (and at the stop), scored by FRESHNESS. A fresh opposing zone
- *  or untested level is a real obstacle; a level tested 3+ times is weakening and
- *  downgraded to a "speed bump", not a wall. A fresh ALIGNED zone at the entry is
- *  surfaced as a positive (a quality location). Tolerances are in ATR units. */
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const quality = (s: number) =>
+  s >= 0.75 ? 'strong' : s >= 0.5 ? 'solid' : 'minor';
+
+/** Human name for a zone by source + side. */
+function zoneName(z: StructZone): string {
+  if (z.source === 'breaker')
+    return `${z.kind === 'supply' ? 'bearish' : 'bullish'} breaker block`;
+  if (z.source === 'fvg') return `${z.kind} imbalance (fair-value gap)`;
+  return `${z.kind} order block`;
+}
+
+/** Rejection + volume tail, e.g. " (already rejected once, formed on 2.3x volume)". */
+function zoneTail(z: StructZone): string {
+  const bits: string[] = [];
+  if (z.rejected) bits.push('already rejected once');
+  if (z.volSpike >= 1.5) bits.push(`formed on ${z.volSpike.toFixed(1)}x volume`);
+  return bits.length ? ` (${bits.join(', ')})` : '';
+}
+
+/** Structure read: order blocks, breaker blocks, fair-value gaps and swing levels
+ *  (S/R, double tops/bottoms, liquidity pools) between price and the target, and
+ *  at the stop. Scored by FRESHNESS, REJECTION and VOLUME, never by touch count:
+ *  a fresh, rejected, high-volume zone is the real obstacle; a level tested 3+
+ *  times is a liquidity pool that usually breaks (a sweep), not a wall. A fresh
+ *  ALIGNED zone at the entry is surfaced as a positive. Tolerances in ATR units. */
 function levelSignals(ctx: GuardContext, candles: GuardCandle[]): GuardSignal[] {
   const out: GuardSignal[] = [];
   const a = atr(candles);
   if (!a || a <= 0) return out;
-  const reach = a * 1.5; // "near enough to matter"
+  const reach = a * 1.5;
   const isBuy = ctx.side === 'BUY';
   const dir = isBuy ? 'long' : 'short';
+  const { levels, zones } = readStructure(candles, a);
 
-  const levels = detectLevels(candles, a);
-  const zones = [...detectOrderBlocks(candles, a), ...detectFvgs(candles, a)];
-
-  const opposingKind = isBuy ? 'supply' : 'demand'; // blocks the way to target
-  const aligningKind = isBuy ? 'demand' : 'supply'; // backs the entry
-  const zoneLabel = (z: StructZone) => `${fmt(z.bottom)}-${fmt(z.top)}`;
+  const opp = isBuy ? 'supply' : 'demand'; // blocks the way to the target
+  const align = isBuy ? 'demand' : 'supply'; // backs the entry
+  const fmtZone = (z: StructZone) => `${fmt(z.bottom)}-${fmt(z.top)}`;
   const zoneDist = (z: StructZone) =>
     isBuy ? z.bottom - ctx.entry : ctx.entry - z.top;
   const zoneInFront = (z: StructZone) =>
@@ -165,38 +189,38 @@ function levelSignals(ctx: GuardContext, candles: GuardCandle[]): GuardSignal[] 
       ? z.bottom > ctx.entry && z.bottom < ctx.takeProfit
       : z.top < ctx.entry && z.top > ctx.takeProfit);
 
-  // 1. Entry quality: entry sitting in a FRESH aligned zone is a good location.
+  // 1. Entry quality: a fresh aligned zone at/around the entry is a good spot.
   const entryZone = zones
     .filter(
       (z) =>
-        z.kind === aligningKind &&
+        z.kind === align &&
         !z.mitigated &&
         ctx.entry >= z.bottom - a * 0.3 &&
         ctx.entry <= z.top + a * 0.3,
     )
-    .sort((x, y) => y.origin - x.origin)[0];
+    .sort((x, y) => y.strength - x.strength)[0];
   if (entryZone) {
     out.push({
       id: 'entry-zone',
       severity: 'info',
-      title: `Entry at a fresh ${aligningKind} zone`,
-      detail: `Your entry sits in a fresh ${aligningKind} zone (${zoneLabel(entryZone)}) that price has not returned to since it formed, a high-quality location for a ${dir}.`,
+      title: `Entry at a fresh ${align} zone`,
+      detail: `Your entry sits in a ${quality(entryZone.strength)} fresh ${zoneName(entryZone)} (${fmtZone(entryZone)})${zoneTail(entryZone)}, a quality location for a ${dir}.`,
     });
   }
 
-  // 2/3. Structure between price and the target, by freshness.
+  // 2/3. Structure between price and the target.
   let coveredTp = false;
   if (ctx.takeProfit != null) {
     const freshZone = zones
       .filter(
         (z) =>
-          z.kind === opposingKind &&
+          z.kind === opp &&
           !z.mitigated &&
           zoneInFront(z) &&
           zoneDist(z) > 0 &&
           zoneDist(z) <= reach,
       )
-      .sort((x, y) => zoneDist(x) - zoneDist(y))[0];
+      .sort((x, y) => y.strength - x.strength)[0];
 
     const oppSide = isBuy ? 'high' : 'low';
     const inFront = levels.filter(
@@ -209,36 +233,50 @@ function levelSignals(ctx: GuardContext, candles: GuardCandle[]): GuardSignal[] 
     );
     const byNear = (x: { price: number }, y: { price: number }) =>
       Math.abs(x.price - ctx.entry) - Math.abs(y.price - ctx.entry);
-    const freshLevel = inFront.filter((l) => l.touches <= 2).sort(byNear)[0];
-    const tiredLevel = inFront.filter((l) => l.touches >= 3).sort(byNear)[0];
+    const freshLevel = inFront
+      .filter((l) => l.pattern !== 'liquidity')
+      .sort((x, y) => y.strength - x.strength || byNear(x, y))[0];
+    const liqLevel = inFront
+      .filter((l) => l.pattern === 'liquidity')
+      .sort(byNear)[0];
 
     if (freshZone) {
       coveredTp = true;
       out.push({
         id: 'tp-zone',
         severity: 'caution',
-        title: 'Fresh zone in front of your target',
-        detail: `A fresh ${opposingKind} zone (${zoneLabel(freshZone)}) sits between price and your target. Fresh zones are where price reacts hardest, so expect a stall or reversal there before your target.`,
+        title: `Fresh ${zoneName(freshZone)} in front of your target`,
+        detail: `A ${quality(freshZone.strength)} fresh ${zoneName(freshZone)} (${fmtZone(freshZone)}) sits between price and your target${zoneTail(freshZone)}. Fresh zones react hardest, so expect a stall or reversal there before your target.`,
       });
     } else if (freshLevel) {
       coveredTp = true;
-      const touchTxt =
+      const label =
+        freshLevel.pattern === 'double'
+          ? `double ${isBuy ? 'top' : 'bottom'}`
+          : isBuy
+            ? 'resistance'
+            : 'support';
+      const vtail =
+        freshLevel.volSpike >= 1.5
+          ? ` on ${freshLevel.volSpike.toFixed(1)}x volume`
+          : '';
+      const held =
         freshLevel.touches === 1
-          ? 'fresh (one clean rejection, not retested)'
-          : 'only lightly tested';
+          ? `fresh (one clean rejection${vtail})`
+          : `still respected${vtail}`;
       out.push({
         id: 'tp-level',
         severity: 'caution',
-        title: 'Untested level in front of your target',
-        detail: `A ${isBuy ? 'resistance' : 'support'} around ${fmt(freshLevel.price)} sits in your path and is ${touchTxt}. Fresh levels react hardest, so expect a reaction before your target.`,
+        title: `${cap(label)} in front of your target`,
+        detail: `A ${label} around ${fmt(freshLevel.price)} sits in your path and is ${held}. Fresh levels react hardest, so expect a reaction before your target.`,
       });
-    } else if (tiredLevel) {
+    } else if (liqLevel) {
       coveredTp = true;
       out.push({
-        id: 'tp-tired',
+        id: 'tp-liquidity',
         severity: 'info',
-        title: 'Weak level in front of your target',
-        detail: `A ${isBuy ? 'resistance' : 'support'} around ${fmt(tiredLevel.price)} sits in your path but has been tested ${tiredLevel.touches} times. Repeatedly tested levels weaken and tend to break, so this is more a speed bump than a wall, often a continuation cue rather than an obstacle.`,
+        title: 'Liquidity in front of your target',
+        detail: `Equal ${isBuy ? 'highs' : 'lows'} around ${fmt(liqLevel.price)} (tested ${liqLevel.touches} times) sit in your path. Repeatedly tested levels weaken and usually break, often price runs there to sweep the resting stops rather than reversing, so treat it as a speed bump, not a wall.`,
       });
     }
   }
@@ -249,26 +287,31 @@ function levelSignals(ctx: GuardContext, candles: GuardCandle[]): GuardSignal[] 
       id: 'tp-clear',
       severity: 'info',
       title: 'Clear path to target',
-      detail: `No fresh ${isBuy ? 'resistance' : 'support'} sits between price and your target on the structure I read.`,
+      detail: `No fresh ${isBuy ? 'resistance' : 'support'} or zone sits between price and your target on the structure I read.`,
     });
   }
 
-  // 4. Stop parked just past a swing extreme (a wick / stop-run zone).
+  // 4. Stop: sitting under a liquidity pool (a sweep magnet) or past a swing.
   if (ctx.stopLoss != null) {
-    const extSide = isBuy ? 'low' : 'high';
-    const ext = levels
-      .filter(
-        (l) =>
-          l.side === extSide &&
-          Math.abs(l.price - ctx.stopLoss!) <= reach &&
-          (isBuy ? ctx.stopLoss! <= l.price : ctx.stopLoss! >= l.price),
-      )
-      .sort(
-        (x, y) =>
-          Math.abs(x.price - ctx.stopLoss!) -
-          Math.abs(y.price - ctx.stopLoss!),
-      )[0];
-    if (ext) {
+    const supSide = isBuy ? 'low' : 'high';
+    const near = levels.filter(
+      (l) =>
+        l.side === supSide &&
+        Math.abs(l.price - ctx.stopLoss!) <= reach &&
+        (isBuy ? ctx.stopLoss! <= l.price : ctx.stopLoss! >= l.price),
+    );
+    const byNearStop = (x: { price: number }, y: { price: number }) =>
+      Math.abs(x.price - ctx.stopLoss!) - Math.abs(y.price - ctx.stopLoss!);
+    const liq = near.filter((l) => l.pattern === 'liquidity').sort(byNearStop)[0];
+    const ext = near.sort(byNearStop)[0];
+    if (liq) {
+      out.push({
+        id: 'sl-liquidity',
+        severity: 'caution',
+        title: 'Stop sits under a liquidity pool',
+        detail: `Your stop at ${fmt(ctx.stopLoss)} sits just past equal ${isBuy ? 'lows' : 'highs'} near ${fmt(liq.price)} where stops pool, a classic place for a sweep. A spike can clip it before price continues, so a little more room helps.`,
+      });
+    } else if (ext) {
       out.push({
         id: 'sl-raid',
         severity: 'caution',

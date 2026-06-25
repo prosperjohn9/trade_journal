@@ -360,7 +360,7 @@ export class CtraderSession {
     fromMs: number,
     toMs: number,
     count = 120,
-  ): Promise<{ o: number; h: number; l: number; c: number }[]> {
+  ): Promise<{ o: number; h: number; l: number; c: number; v: number }[]> {
     const bytes = await this.request(
       'ProtoOAGetTrendbarsReq',
       PT.GET_TRENDBARS_REQ,
@@ -380,16 +380,17 @@ export class CtraderSession {
         deltaOpen?: unknown;
         deltaHigh?: unknown;
         deltaClose?: unknown;
+        volume?: unknown;
       }>;
     };
-    const out: { o: number; h: number; l: number; c: number }[] = [];
+    const out: { o: number; h: number; l: number; c: number; v: number }[] = [];
     for (const t of res.trendbar ?? []) {
       const low = toNum(t.low);
       const o = (low + toNum(t.deltaOpen)) / 1e5;
       const h = (low + toNum(t.deltaHigh)) / 1e5;
       const c = (low + toNum(t.deltaClose)) / 1e5;
       const l = low / 1e5;
-      if (h > 0 && l > 0) out.push({ o, h, l, c });
+      if (h > 0 && l > 0) out.push({ o, h, l, c, v: toNum(t.volume) });
     }
     return out;
   }
