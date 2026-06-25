@@ -39,12 +39,12 @@ export function MarketingNav() {
           <span>The Trader&apos;s Hindsight</span>
         </Link>
         <div className='flex items-center gap-2'>
+          <ThemeToggle />
           <Link
             href='/pricing'
             className='hidden rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] sm:inline-flex'>
             Pricing
           </Link>
-          <ThemeToggle />
           <Link
             href='/auth'
             className='hidden rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] sm:inline-flex'>
