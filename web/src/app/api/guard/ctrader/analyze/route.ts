@@ -3,6 +3,8 @@ import { createServiceClient } from '@/src/lib/supabase/admin';
 import { AI_MODEL, isAiConfigured } from '@/src/lib/ai/client';
 import { logUsage } from '@/src/lib/ai/usage';
 import { narrateGuard } from '@/src/lib/ai/guard';
+import { loadCalibration } from '@/src/lib/ai/guardCalibration';
+import { gradeRead } from '@/src/lib/analytics/calibration';
 import {
   flagHeadline,
   type GuardContext,
@@ -196,9 +198,12 @@ export async function POST(request: Request) {
       session: behavioral.session,
     };
 
+    ctx.calibration = await loadCalibration(sb, userId);
+
     const { signals, summary, usage } = await narrateGuard(ctx);
     await logUsage(sb, userId, 'guard', AI_MODEL, usage);
-    const tldr = flagHeadline(signals);
+    const { grade } = gradeRead(signals, ctx.calibration);
+    const tldr = `Grade ${grade}. ${flagHeadline(signals)}`;
 
     // Log the read so the trader can review it and the worker can close the loop.
     void sb

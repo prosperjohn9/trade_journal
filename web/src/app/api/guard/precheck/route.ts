@@ -4,6 +4,8 @@ import { getServerEntitlements } from '@/src/lib/billing/server';
 import { AI_MODEL, isAiConfigured } from '@/src/lib/ai/client';
 import { isOverDailyCap, logUsage, monthlyUsageCount } from '@/src/lib/ai/usage';
 import { narrateGuard } from '@/src/lib/ai/guard';
+import { loadCalibration } from '@/src/lib/ai/guardCalibration';
+import { gradeRead } from '@/src/lib/analytics/calibration';
 import {
   flagHeadline,
   type GuardContext,
@@ -300,11 +302,16 @@ export async function POST(request: Request) {
       session: behavioral.session,
     };
 
+    ctx.calibration = await loadCalibration(sb, user.id);
+
     const { signals, summary, usage } = await narrateGuard(ctx);
     await logUsage(sb, user.id, 'guard', AI_MODEL, usage);
 
+    const { grade } = gradeRead(signals, ctx.calibration);
+
     return NextResponse.json({
-      tldr: flagHeadline(signals),
+      tldr: `Grade ${grade}. ${flagHeadline(signals)}`,
+      grade,
       signals,
       summary,
       model: AI_MODEL,

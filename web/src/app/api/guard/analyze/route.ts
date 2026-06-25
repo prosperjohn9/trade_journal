@@ -6,6 +6,8 @@ import { getServerEntitlements } from '@/src/lib/billing/server';
 import { AI_MODEL, isAiConfigured } from '@/src/lib/ai/client';
 import { isOverDailyCap, logUsage, monthlyUsageCount } from '@/src/lib/ai/usage';
 import { narrateGuard } from '@/src/lib/ai/guard';
+import { loadCalibration } from '@/src/lib/ai/guardCalibration';
+import { gradeRead } from '@/src/lib/analytics/calibration';
 import { flagHeadline, type GuardContext } from '@/src/lib/analytics/tradeGuard';
 import {
   analysisTimeframes,
@@ -639,10 +641,14 @@ export async function POST(request: Request) {
       session,
     };
 
+    // Personalise with the trader's own per-signal record, then grade the read.
+    ctx.calibration = await loadCalibration(sb, userId);
+
     const { signals, summary, usage } = await narrateGuard(ctx);
     await logUsage(sb, userId, 'guard', AI_MODEL, usage);
 
-    const tldr = flagHeadline(signals);
+    const { grade } = gradeRead(signals, ctx.calibration);
+    const tldr = `Grade ${grade}. ${flagHeadline(signals)}`;
 
     // Log the read (best-effort) so the trader can review it and the worker can
     // close the loop on outcome later.

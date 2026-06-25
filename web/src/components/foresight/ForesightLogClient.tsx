@@ -4,6 +4,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/src/lib/supabase/client';
 import { apiFetch } from '@/src/lib/api/fetcher';
+import {
+  computeCalibration,
+  rowsToCalReads,
+  MIN_SAMPLES,
+  type RawReadRow,
+  type SignalStat,
+} from '@/src/lib/analytics/calibration';
 
 type Usage = {
   used: number;
@@ -63,6 +70,7 @@ export function ForesightLogClient() {
   >(new Map());
   const [usage, setUsage] = useState<Usage | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [calibStats, setCalibStats] = useState<SignalStat[]>([]);
 
   function toggleFlags(id: string) {
     setExpanded((prev) => {
@@ -90,18 +98,33 @@ export function ForesightLogClient() {
         router.replace('/auth');
         return;
       }
-      const [{ data: readRows }, { data: acctRows }] = await Promise.all([
-        supabase
-          .from('foresight_reads')
-          .select(
-            'id, account_id, symbol, side, volume, warnings, cautions, tldr, summary, signals, outcome, outcome_note, closed_pnl, created_at',
-          )
-          .order('created_at', { ascending: false })
-          .limit(100),
-        supabase.from('accounts').select('id, name, base_currency'),
-      ]);
+      const [{ data: readRows }, { data: acctRows }, { data: calibRows }] =
+        await Promise.all([
+          supabase
+            .from('foresight_reads')
+            .select(
+              'id, account_id, symbol, side, volume, warnings, cautions, tldr, summary, signals, outcome, outcome_note, closed_pnl, created_at',
+            )
+            .order('created_at', { ascending: false })
+            .limit(100),
+          supabase.from('accounts').select('id, name, base_currency'),
+          // Full resolved history for the scorecard (lightweight columns).
+          supabase
+            .from('foresight_reads')
+            .select('signals, outcome, closed_pnl')
+            .not('outcome', 'is', null)
+            .limit(2000),
+        ]);
       if (cancelled) return;
       setReads((readRows ?? []) as ReadRow[]);
+      const calMap = computeCalibration(
+        rowsToCalReads((calibRows ?? []) as RawReadRow[]),
+      );
+      setCalibStats(
+        [...calMap.values()]
+          .filter((s) => s.total >= MIN_SAMPLES)
+          .sort((a, b) => a.netPnl - b.netPnl),
+      );
       const map = new Map<string, { name: string; currency: string }>();
       for (const a of (acctRows ?? []) as Array<{
         id: string;
@@ -177,6 +200,79 @@ export function ForesightLogClient() {
                   : 'cTrader Foresight is free, capped monthly. MetaTrader Foresight is unlimited.'}
             </p>
           </div>
+        ) : null}
+
+        {!loading && calibStats.length > 0 ? (
+          <section className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
+            <h2 className='text-lg font-semibold text-[var(--text-primary)]'>
+              Your flag scorecard
+            </h2>
+            <p className='mt-1 text-sm text-[var(--text-secondary)]'>
+              How each Foresight flag has actually played out for you, across
+              your resolved trades. The ones costing you most come first.
+            </p>
+            <div className='mt-4 overflow-x-auto'>
+              <table className='w-full text-sm'>
+                <thead>
+                  <tr className='text-left text-xs uppercase tracking-wide text-[var(--text-muted)]'>
+                    <th className='py-1.5 pr-3 font-medium'>Flag</th>
+                    <th className='px-3 py-1.5 font-medium'>Record</th>
+                    <th className='px-3 py-1.5 font-medium'>Win rate</th>
+                    <th className='py-1.5 pl-3 text-right font-medium'>Net</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {calibStats.map((s) => {
+                    const wr = s.winRatePct;
+                    const wrColor =
+                      wr == null
+                        ? 'var(--text-muted)'
+                        : wr < 40
+                          ? 'var(--loss)'
+                          : wr >= 60
+                            ? 'var(--profit)'
+                            : 'var(--text-secondary)';
+                    const netColor =
+                      s.netPnl < 0
+                        ? 'var(--loss)'
+                        : s.netPnl > 0
+                          ? 'var(--profit)'
+                          : 'var(--text-secondary)';
+                    return (
+                      <tr
+                        key={s.key}
+                        className='border-t border-[var(--border-default)]'>
+                        <td className='py-2 pr-3 capitalize text-[var(--text-primary)]'>
+                          {s.label}
+                        </td>
+                        <td className='px-3 py-2 text-[var(--text-secondary)]'>
+                          {s.wins}-{s.losses}
+                          {s.breakeven ? ` (${s.breakeven} BE)` : ''}
+                        </td>
+                        <td
+                          className='px-3 py-2 font-medium'
+                          style={{ color: wrColor }}>
+                          {wr == null ? '—' : `${wr}%`}
+                        </td>
+                        <td
+                          className='py-2 pl-3 text-right font-semibold'
+                          style={{ color: netColor }}>
+                          {s.netPnl >= 0 ? '+' : '-'}
+                          {Math.abs(Math.round(s.netPnl)).toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className='mt-3 text-[11px] text-[var(--text-muted)]'>
+              Built from flags that fired on at least {MIN_SAMPLES} resolved
+              trades. Net is aggregate across accounts. A low win rate or red net
+              is a flag worth respecting; Foresight now quotes your record on each
+              live read.
+            </p>
+          </section>
         ) : null}
 
         {loading ? (

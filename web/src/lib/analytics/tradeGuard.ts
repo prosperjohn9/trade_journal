@@ -21,6 +21,11 @@ import {
   readStructure,
   type StructZone,
 } from '@/src/lib/analytics/structure';
+import {
+  calibKey,
+  calibrationTail,
+  type SignalStat,
+} from '@/src/lib/analytics/calibration';
 
 export type GuardSide = 'BUY' | 'SELL';
 
@@ -98,6 +103,9 @@ export type GuardContext = {
   pairStats: { trades: number; winRatePct: number } | null;
   /** The current session and whether it is historically their worst. */
   session: { current: string; isWorst: boolean } | null;
+  /** The trader's per-signal record (calibration), keyed by calibKey. When set,
+   *  each fired flag gets its "your record when this fires" tail. */
+  calibration?: Map<string, SignalStat> | null;
 };
 
 export type GuardSeverity = 'info' | 'caution' | 'warning';
@@ -653,6 +661,15 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
         ? `You are trading the ${ctx.session.current} session, historically your worst by P&L.`
         : `You are trading the ${ctx.session.current} session.`,
     });
+  }
+
+  // Personal calibration: append the trader's own record to each fired flag.
+  if (ctx.calibration) {
+    const fmtMoney = (n: number) => money(n, ctx.currency);
+    for (const s of out) {
+      const tail = calibrationTail(ctx.calibration.get(calibKey(s)), fmtMoney);
+      if (tail) s.detail += tail;
+    }
   }
 
   // Worst-first, but stable within a severity so the read flows (trend, R:R,
