@@ -1,9 +1,10 @@
-# Sync + AI cost model (FINAL, locked 2026-06-06)
+# Sync + AI cost model
 
-The economics behind the paid tiers. All MetaApi rates below are **confirmed from
-the account's own billing page** (plan: paid, generation **cloud-g2**). All
-Anthropic rates are the published 2026 prices for the model the app uses
-(`claude-opus-4-8`).
+Provenance: unit costs locked **2026-06-06** (confirmed from the MetaApi account's
+own billing page, plan: paid, generation **cloud-g2**). Tiers and the AI cost
+figure **refreshed 2026-06-25** to the current locked model (Pro $12 / Elite $18 /
+Master $28, MetaTrader **1 / 1 / 2**). This supersedes the old $18/$28/$48 ·
+2/4/8-account model and the old $0.035-0.05 AI estimate.
 
 ## Confirmed unit costs
 
@@ -13,94 +14,116 @@ Anthropic rates are the published 2026 prices for the model the app uses
 | Deployed hosting | $0.0126 / account / hour | only while deployed |
 | **Per deployment** | **$0.0756** | **6-hour minimum billed on every deploy** |
 | Undeployed hosting | $0.00105 / account / hour = **$0.756 / account / month** | account exists but stopped |
-| **Raw history (MetaApi API)** | **$0 / account / hour** | what we will use instead of MetaStats |
+| **Raw history (MetaApi API)** | **$0 / account / hour** | what we use instead of MetaStats |
 | MetaStats API | $0.001575 / account / hour | **dropped** (cost + billing uncertainty) |
-| Adding an account | $2.10 / account, once | deduped monthly; amortizes to ~$0.18/mo |
+| Adding an account | $2.10 / account, once | deduped monthly, amortizes to ~$0.18/mo |
 
-**The governing fact:** you are billed a **6-hour minimum every time you deploy**.
-So cost is driven purely by the number of deploys, not their length:
+**The governing fact:** you are billed a **6-hour minimum every time you deploy**,
+so cost is driven by the number of deploys, not their length:
 
-> MetaApi cost / account / month = (deploys per day x 30 x $0.0756) + $0.756 undeployed
+> MetaApi / account / month = (deploys/day x 30 x $0.0756) + $0.756 undeployed
 
-- 1 deploy/day  = $2.27 + $0.756 = **$3.02 / account / month**
+- 1 deploy/day (our daily auto-sync) = $2.27 + $0.756 = **$3.02 / account / month**
 - 2 deploys/day = $4.54 + $0.756 = **$5.30 / account / month**
+- always-deployed 24/7 (Foresight guardrail) = $0.0126 x 730 = **~$9.20 / month**
 
-Deploying more often than ~4x/day costs more than just leaving it deployed 24/7
-($9.07/mo), so we never sync more than once or twice a day.
+Deploying more than ~4x/day costs more than leaving it deployed 24/7, so auto-sync
+is once daily and the manual-refresh button (each one a real $0.0756 deploy) covers
+"I want it now".
 
 ### Anthropic (claude-opus-4-8, $5 / $25 per 1M tokens in/out)
-Output caps in code: trade review 1200, insights 1500, chat 1024 tokens.
-System prompts are cached (90% off on repeat). Blended cost per AI action:
-- typical output: **~$0.035 / action**
-- max output: **~$0.05 / action** (used for the worst-case table below)
+Output caps in code: trade review 1200, insights 1500, chat 1024 tokens. System
+prompts are cached (90% off on repeat).
 
-"1 AI action" = one generation: one trade review, OR one insight refresh, OR one
-chat reply. Reading an already-generated result is free.
+**Measured cost per AI action** (2026-06-25, from 79 logged `ai_usage` calls, cost
+computed from token counts at $5/$25 in/out, $0.50 cache-read, $6.25 cache-write):
 
-## Key decision: drop MetaStats, pair raw deals ourselves
+| Feature | avg | worst (p95/max) |
+|---|---|---|
+| insights | $0.021 | $0.023 |
+| guard (Foresight read) | $0.017 | $0.023 |
+| trade_review | $0.013 | $0.014 |
+| chat | $0.007 | $0.013 |
+| **all** | **$0.015** | **$0.023** |
+
+This is the real distribution and **supersedes the old $0.035-0.05 estimate** (which
+assumed near-max output every call) and the earlier 31-call $0.011 sample. The
+worst-case table below uses **$0.023/action**.
+
+"1 AI action" = one generation (one trade review, one insight refresh, or one chat
+reply). Reading an already-generated result is free.
+
+## Why we pair raw deals (drop MetaStats)
 MetaStats is convenient (pre-paired trades) but costs $0.001575/hr/account with an
-unclear billing window (continuous vs deployed-only). At 8 accounts that swing is
-~$9/month and can push Master into a loss. The **raw MetaApi history API is free**,
-so we fetch raw deals and pair them into round-trip trades in our own code. This
-removes the cost AND the uncertainty. Build cost: a sync rewrite (handle partial
-fills / hedged positions when pairing by position id).
+unclear billing window. The **raw MetaApi history API is free**, so we fetch raw
+deals and pair them into round-trip trades in our own code (`buildFromDeals`,
+position-id pairing). Removes the cost and the billing uncertainty.
 
-## Final tiers (LOCKED)
-Auto-sync is **once daily for every tier** (6-hour deploy billing makes anything
-faster uneconomical; the manual refresh button covers "I want it now"). Tiers
-differ by **account count + AI quota + manual-refresh allowance**. AI stays Opus.
+## Tiers (LOCKED 2026-06-25)
+Auto-sync is **once daily** for every tier. Tiers differ on four axes: MetaTrader
+accounts, AI quota, manual-refresh allowance, and free cTrader Foresight reads.
+cTrader auto-sync, file import, and manual accounts are unlimited on every tier
+(all ~$0 marginal cost, and our positioning wedge). AI stays Opus.
 
-| | Pro $18 | Elite $28 | Master $48 |
+| | Pro $12 | Elite $18 | Master $28 |
 |---|---|---|---|
-| Included synced accounts | 2 | 4 | 8 |
+| Included **MetaTrader** accounts | 1 | 1 | **2** |
+| cTrader auto-sync | unlimited, free | unlimited, free | unlimited, free |
+| File import | unlimited, free | unlimited, free | unlimited, free |
+| Manual accounts | unlimited | unlimited | unlimited |
 | Auto-sync | 1x / day | 1x / day | 1x / day |
-| Manual refreshes (per account) | 14 / mo | 28 / mo | 48 / mo |
+| Manual refreshes | 14 / mo | 28 / mo | 48 / mo |
 | AI actions (Opus) | 40 | 100 | 200 |
-| Extra synced account (PAYG) | **$6 / mo** (cost ~$3) |
+| Free cTrader Foresight reads | 80 / mo | 200 / mo | 600 / mo |
 
-Annual = monthly x 10 (2 months free): Pro $180, Elite $280, Master $480.
+Annual = monthly x 10 (2 months free): Pro $120, Elite $180, Master $280.
 
-## Worst-case P&L (every account synced daily + full manual + AI maxed at top output)
-Payment fee assumed ~4.5% (Flutterwave card).
+**Add-ons (per account / month):** extra MetaTrader auto-sync **$6** (cost ~$3),
+MetaTrader Foresight / Live Guard **$18** (always-deployed MetaApi ~$9.20). cTrader
+Foresight is free (Spotware streaming has no per-account fee).
 
-| Tier | Deploys/mo | MetaApi | AI | Fee | Total cost | Revenue | Profit | Margin |
-|---|---|---|---|---|---|---|---|---|
-| Pro | 75 | $7.18 | $2.00 | $0.81 | $9.99 | $18 | **$8.01** | **45%** |
-| Elite | 150 | $14.36 | $5.00 | $1.26 | $20.62 | $28 | **$7.38** | **26%** |
-| Master | 290 | $27.97 | $10.00 | $2.16 | $40.13 | $48 | **$7.87** | **16%** |
+**MetaTrader is the only real per-user cost driver** (~$3/account/mo), so it is the
+premium lever. Rejected alternatives: **1/2/4** (Master falls to 20% worst-case /
+38% typical, would need ~$49 to hold the current margin); capping cTrader sync /
+file imports / manual accounts (all ~$0 cost, and file import is the trial-conversion
+tool, capping it walls a new user off from their own data).
 
-MetaApi = deploys x $0.0756 + accounts x $0.756. This is the **floor**. Typical
-usage (not every account active daily, manual rarely maxed, AI ~half used, output
-below cap) lands roughly **Pro ~65% / Elite ~50% / Master ~40%**.
+## Worst-case P&L
+Every bundled MetaTrader account synced daily + manual refreshes maxed + AI quota
+maxed at top output ($0.023/action) + card fee 4.5% (Flutterwave). This is the
+**floor**; almost no subscriber hits it.
 
-### Flags to revisit
-- **Annual Master**: 2 months free (x10) makes the worst case roughly break-even.
-  Consider x11 (1 month free) for Master, or accept it (annual users commit; typical
-  usage carries margin).
-- **PAYG extra account**: raise `EXTRA_SYNC_PRICE_MONTHLY` 4 -> 6 (each extra
-  account costs ~$3/mo; $4 was only ~24% margin).
+| Tier | MT | Deploys/mo | MetaApi | AI | Fee | Total cost | Revenue | **Profit** | Margin |
+|---|---|---|---|---|---|---|---|---|---|
+| Pro | 1 | 44 | $4.26 | $0.92 | $0.54 | $5.72 | $12 | **$6.28** | 52% |
+| Elite | 1 | 58 | $5.32 | $2.30 | $0.81 | $8.43 | $18 | **$9.57** | 53% |
+| Master | 2 | 108 | $10.04 | $4.60 | $1.26 | $15.90 | $28 | **$12.10** | 43% |
 
-## Two hard cost guards (build these into enforcement)
-1. **Auto-sync only accounts with recent activity** (e.g. user logged in / viewed the
-   account in the last N days). Never pay to deploy an idle account.
-2. **Meter manual refreshes** against the monthly allowance. Each manual refresh is a
-   real $0.0756 deploy.
+MetaApi = deploys x $0.0756 + accounts x $0.756 + accounts x $0.18 (add-account
+amortized). Deploys = accounts x 30 (daily) + manual-refresh allowance.
 
-## Build plan (tomorrow)
-1. **Deploy-on-demand** in the sync path: deploy -> poll until synchronized -> fetch
-   raw history -> undeploy. One deploy per refresh. Respect the 60s serverless limit
-   (if a deploy is slow, return and let the next cron tick finish it).
-2. **Rewrite the fetch** from MetaStats (`fetchHistoricalTrades`) to raw MetaApi deal
-   history + our own position-pairing. Keep `mapTradeToRow` output shape.
-3. **Cron**: per-tier daily due-check (replace the 4h/2h/1h interval logic), skip
-   idle accounts, deploy-on-demand each due account.
-4. **Plan catalog** (`plans.ts`): accounts 2/4/8, `syncIntervalHours` 24 all tiers,
-   AI 40/100/200, add `manualRefreshesPerMonth` 15/30/50, PAYG -> $6.
-5. **AI quota enforcement**: count actions in the current billing month, block over
-   quota with a styled upgrade prompt (the daily cap of 50 stays as a backstop).
-6. **Manual-refresh metering**: per-account monthly counter, enforced in the manual
-   sync route.
-7. **Pricing/billing copy**: replace "sync every 4h/2h/1h" with "daily auto-sync +
-   N on-demand refreshes". Update account counts.
-8. **Enforcement UX polish**: styled upgrade prompts when a gate (sync off, account
-   limit, AI quota, manual-refresh cap) is hit.
+- **Typical** (half AI/refreshes used, output below cap): ~Pro 62% / Elite 68% /
+  Master 61%.
+- **Crypto** (NOWPayments 0.5% instead of card 4.5%): adds ~$0.48 / $0.72 / $1.12
+  back per subscriber. Crypto is currently the only live processor, so real margins
+  are above the table.
+- **Annual** (x10): the thinner case, still positive, ~$4.4 / $6.7 / $7.6 profit
+  per month-equivalent.
+
+## Fixed overhead ("running the business")
+~$9 / month at launch (Railway Foresight worker ~$8 + domain ~$1; Vercel, Supabase,
+Resend on free tiers) scaling to ~$54 / month on paid tiers (Vercel Pro $20 +
+Supabase Pro $25 + Railway $8 + domain $1). Spread across all subscribers it is
+trivial: 3-5 paying subs cover it, and past ~100 subs it is under $0.55/sub. It does
+not change the per-tier math, the per-account variable cost does.
+
+## Two cost guards (built into enforcement)
+1. **Auto-sync only recently-active accounts** (idle accounts back off to weekly).
+   Never pay to deploy a dormant account. (`sync.ts` cron due-check.)
+2. **Meter manual refreshes** against the monthly allowance (`mt_refreshes` table).
+   Each manual refresh is a real $0.0756 deploy.
+
+Plus `enforceSyncCaps()` each cron tick: if a user's synced-account entitlement drops
+below their connected MetaTrader count (downgrade / add-on lapse / sub expiry), keep
+the oldest `limit` accounts and suspend the rest (remove the MetaApi account, state
+`over_limit`) so we never pay for accounts above the cap.
