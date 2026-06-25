@@ -522,7 +522,7 @@ function Features() {
     {
       icon: '🔌',
       title: 'Auto-sync and free import',
-      body: 'cTrader sync free, one MetaTrader account included, plus free import from MT5, cTrader, TradeLocker, DXtrade, and MatchTrader.',
+      body: 'cTrader sync free, a MetaTrader account included (two on Master), plus free import from MT5, cTrader, TradeLocker, DXtrade, and MatchTrader.',
     },
     {
       icon: '🏆',

@@ -42,19 +42,25 @@ function syncLabel(hours: number): string {
 }
 
 const COMMON_FEATURES = [
-  'Broker auto-sync (MT4 / MT5)',
   'Behavioral-leak AI insights',
-  'Prop-firm challenge tracking',
+  'Auto-tagged trades',
+  'Prop challenge & funded tracking',
   'Advanced analytics (R-multiple, sessions)',
   'Unlimited manual accounts',
 ];
 
 function planHighlights(p: PlanDef): string[] {
+  const mt =
+    p.syncedAccounts === 1
+      ? '1 MetaTrader account included'
+      : `${p.syncedAccounts} MetaTrader accounts included`;
   return [
-    'Unlimited cTrader auto-sync, free',
-    `${p.syncedAccounts} MetaTrader account included`,
-    `Daily auto-sync + ${p.manualRefreshesPerMonth} manual refreshes`,
+    mt,
     `${p.aiActionsPerMonth} AI actions / month`,
+    `Daily auto-sync + ${p.manualRefreshesPerMonth} manual refreshes`,
+    `${p.foresightReadsPerMonth} cTrader Foresight reads / month`,
+    'Unlimited cTrader auto-sync, free',
+    'Unlimited file import (MT5, cTrader, more)',
   ];
 }
 

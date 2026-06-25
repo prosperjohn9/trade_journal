@@ -3,13 +3,15 @@
 // only tracks which plan a user is on and its status.
 //
 // Final model (USD): Pro $12/mo, Elite $18/mo, Master $28/mo. Annual is two
-// months free (monthly x 10). Each tier includes 1 free MetaTrader auto-sync
-// account, unlimited cTrader auto-sync (free API, $0 cost to us), unlimited
-// file import, and the cTrader guardrail. Extra MetaTrader sync accounts and
-// the MetaTrader guardrail (Live Guard) are paid per-account add-ons. Auto-sync
-// is once daily (MetaApi's 6-hour deploy billing makes anything faster
-// uneconomical). Tiers differ by AI quota and manual-refresh allowance. See
-// docs/sync-cost-model.md.
+// months free (monthly x 10). Pro and Elite include 1 free MetaTrader auto-sync
+// account; Master includes 2 (the MetaTrader account is the only real per-user
+// cost driver, ~$3/account/mo, so it is the premium lever). All tiers get
+// unlimited cTrader auto-sync (free API, $0 cost to us), unlimited file import,
+// and the cTrader guardrail. Extra MetaTrader sync accounts and the MetaTrader
+// guardrail (Live Guard) are paid per-account add-ons. Auto-sync is once daily
+// (MetaApi's 6-hour deploy billing makes anything faster uneconomical). Tiers
+// differ by MetaTrader accounts, AI quota, manual-refresh allowance, and free
+// cTrader Foresight reads. See docs/sync-cost-model.md.
 
 export type PlanId = 'pro' | 'elite' | 'master';
 export type BillingCycle = 'monthly' | 'yearly';
@@ -57,12 +59,12 @@ export const PLANS: Record<PlanId, PlanDef> = {
     name: 'Master',
     priceMonthly: 28,
     priceYearly: 280,
-    syncedAccounts: 1,
+    syncedAccounts: 2,
     syncIntervalHours: 24,
     manualRefreshesPerMonth: 48,
     aiActionsPerMonth: 200,
     foresightReadsPerMonth: 600,
-    blurb: 'For full-time traders who want maximum AI and refreshes.',
+    blurb: 'For full-time traders: 2 MetaTrader accounts and maximum AI.',
   },
 };
 

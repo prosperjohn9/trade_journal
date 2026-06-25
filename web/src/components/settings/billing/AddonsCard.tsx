@@ -35,7 +35,7 @@ const ADDONS: Array<{
   {
     kind: 'mt_sync',
     title: 'Extra MetaTrader auto-sync',
-    desc: 'Sync more than the one MetaTrader account your plan includes.',
+    desc: 'Sync more MetaTrader accounts than your plan includes.',
     unit: EXTRA_SYNC_PRICE_MONTHLY,
     noun: 'account',
   },
@@ -238,7 +238,7 @@ export function AddonsCard({ entitled }: { entitled: boolean }) {
     <section className='rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-5'>
       <h2 className='text-lg font-semibold'>Add-ons</h2>
       <p className='mt-1 text-xs text-[var(--text-muted)]'>
-        Your plan includes 1 MetaTrader account and unlimited free cTrader sync.
+        Your plan includes MetaTrader auto-sync and unlimited free cTrader sync.
         Add more, or turn on real-time Foresight, here.
       </p>
 
