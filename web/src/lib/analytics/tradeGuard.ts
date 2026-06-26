@@ -22,6 +22,12 @@ import {
   type StructZone,
 } from '@/src/lib/analytics/structure';
 import {
+  marketStructure,
+  invalidationSwing,
+  biasLabel,
+  type Structure,
+} from '@/src/lib/analytics/marketStructure';
+import {
   calibKey,
   calibrationTail,
   type SignalStat,
@@ -180,7 +186,11 @@ function zoneTail(z: StructZone): string {
  *  a fresh, rejected, high-volume zone is the real obstacle; a level tested 3+
  *  times is a liquidity pool that usually breaks (a sweep), not a wall. A fresh
  *  ALIGNED zone at the entry is surfaced as a positive. Tolerances in ATR units. */
-function levelSignals(ctx: GuardContext, candles: GuardCandle[]): GuardSignal[] {
+function levelSignals(
+  ctx: GuardContext,
+  candles: GuardCandle[],
+  struct: Structure | null,
+): GuardSignal[] {
   const out: GuardSignal[] = [];
   const a = atr(candles);
   if (!a || a <= 0) return out;
@@ -188,6 +198,14 @@ function levelSignals(ctx: GuardContext, candles: GuardCandle[]): GuardSignal[] 
   const isBuy = ctx.side === 'BUY';
   const dir = isBuy ? 'long' : 'short';
   const { levels, zones } = readStructure(candles, a);
+
+  // A swing level only matters if it coincides with a SIGNIFICANT market-structure
+  // swing (a real high/low), not just any fractal. Falls open when structure is
+  // unavailable so we never go silent on a missing read.
+  const sigSwings = struct?.swings.filter((s) => s.significant) ?? [];
+  const nearSig = (price: number, side: 'high' | 'low') =>
+    !struct ||
+    sigSwings.some((s) => s.kind === side && Math.abs(s.price - price) <= a * 0.6);
 
   const opp = isBuy ? 'supply' : 'demand'; // blocks the way to the target
   const align = isBuy ? 'demand' : 'supply'; // backs the entry
@@ -240,7 +258,8 @@ function levelSignals(ctx: GuardContext, candles: GuardCandle[]): GuardSignal[] 
         (isBuy
           ? l.price > ctx.entry && l.price < ctx.takeProfit!
           : l.price < ctx.entry && l.price > ctx.takeProfit!) &&
-        Math.abs(l.price - ctx.entry) <= reach,
+        Math.abs(l.price - ctx.entry) <= reach &&
+        nearSig(l.price, oppSide), // only real structural levels, not noise
     );
     const byNear = (x: { price: number }, y: { price: number }) =>
       Math.abs(x.price - ctx.entry) - Math.abs(y.price - ctx.entry);
@@ -302,48 +321,75 @@ function levelSignals(ctx: GuardContext, candles: GuardCandle[]): GuardSignal[] 
     });
   }
 
-  // 4. Stop: parked in the THIN wick zone JUST past a swing (the stop-hunt spot),
-  //    not merely somewhere beyond structure. A stop with real room past the swing
-  //    is a good stop and should stay quiet; only one a normal wick can reach flags.
+  // 4. Stop vs the trade's INVALIDATION, the significant swing the idea depends on.
+  //    Is the stop protecting the idea (good), too tight inside it (gets hit by
+  //    noise before the idea is wrong), or wider than the idea needs? Falls back to
+  //    the thin wick-zone read when there is no clear structural invalidation.
   if (ctx.stopLoss != null) {
-    const supSide = isBuy ? 'low' : 'high';
-    // How far the stop sits PAST the swing, in the loss direction (negative if it
-    // sits short of the swing, i.e. the swing is beyond the stop).
-    const beyond = (l: { price: number }) =>
-      isBuy ? l.price - ctx.stopLoss! : ctx.stopLoss! - l.price;
-    const swingBand = a * 0.5; // a plain swing: just the wick zone right past it
-    const liqBand = a * 0.8; // a liquidity pool draws a sweep from a touch further
-    const inHuntZone = (l: { price: number }, band: number) => {
-      const d = beyond(l);
-      return d >= 0 && d <= band; // just past the swing, not well clear of it
-    };
-    const byBeyond = (x: { price: number }, y: { price: number }) =>
-      beyond(x) - beyond(y); // closest-past first
-    const liq = levels
-      .filter(
-        (l) =>
-          l.side === supSide &&
-          l.pattern === 'liquidity' &&
-          inHuntZone(l, liqBand),
-      )
-      .sort(byBeyond)[0];
-    const ext = levels
-      .filter((l) => l.side === supSide && inHuntZone(l, swingBand))
-      .sort(byBeyond)[0];
-    if (liq) {
-      out.push({
-        id: 'sl-liquidity',
-        severity: 'caution',
-        title: 'Stop sits under a liquidity pool',
-        detail: `Your stop at ${fmt(ctx.stopLoss)} sits just past equal ${isBuy ? 'lows' : 'highs'} near ${fmt(liq.price)} where stops pool, a classic place for a sweep. A spike can clip it before price continues, so a little more room helps.`,
-      });
-    } else if (ext) {
-      out.push({
-        id: 'sl-raid',
-        severity: 'caution',
-        title: 'Stop sits where price wicks',
-        detail: `Your stop at ${fmt(ctx.stopLoss)} is just past a recent swing ${isBuy ? 'low' : 'high'} near ${fmt(ext.price)}, a spot price often wicks through to grab stops before continuing. A little more room dodges the wick.`,
-      });
+    const inv = struct ? invalidationSwing(struct, ctx.side, ctx.entry) : null;
+    if (inv) {
+      const beyond = isBuy ? inv.price - ctx.stopLoss : ctx.stopLoss - inv.price;
+      const swingWord = isBuy ? 'low' : 'high';
+      const past = isBuy ? 'below' : 'above';
+      const inside = isBuy ? 'above' : 'below';
+      if (beyond < -a * 0.1) {
+        out.push({
+          id: 'sl-tight',
+          severity: 'caution',
+          title: 'Stop sits inside your structure',
+          detail: `Your stop at ${fmt(ctx.stopLoss)} sits ${inside} the swing ${swingWord} at ${fmt(inv.price)} your idea is built on, so a normal pullback to that level stops you out before the trade is even invalidated. The stop belongs just ${past} ${fmt(inv.price)}.`,
+        });
+      } else if (beyond <= a * 1.2) {
+        out.push({
+          id: 'sl-protects',
+          severity: 'info',
+          title: 'Stop protects the idea',
+          detail: `Your stop at ${fmt(ctx.stopLoss)} sits just ${past} the swing ${swingWord} at ${fmt(inv.price)} that invalidates this trade, the right place: the idea is only wrong if that level breaks.`,
+        });
+      } else {
+        out.push({
+          id: 'sl-wide',
+          severity: 'info',
+          title: 'Stop is wider than the idea needs',
+          detail: `Your stop at ${fmt(ctx.stopLoss)} sits well ${past} the swing ${swingWord} at ${fmt(inv.price)} that actually invalidates this trade. Tucking it just ${past} ${fmt(inv.price)} would risk less for the same idea.`,
+        });
+      }
+    } else {
+      const supSide = isBuy ? 'low' : 'high';
+      const beyond = (l: { price: number }) =>
+        isBuy ? l.price - ctx.stopLoss! : ctx.stopLoss! - l.price;
+      const inHuntZone = (l: { price: number }, band: number) => {
+        const d = beyond(l);
+        return d >= 0 && d <= band;
+      };
+      const byBeyond = (x: { price: number }, y: { price: number }) =>
+        beyond(x) - beyond(y);
+      const liq = levels
+        .filter(
+          (l) =>
+            l.side === supSide &&
+            l.pattern === 'liquidity' &&
+            inHuntZone(l, a * 0.8),
+        )
+        .sort(byBeyond)[0];
+      const ext = levels
+        .filter((l) => l.side === supSide && inHuntZone(l, a * 0.5))
+        .sort(byBeyond)[0];
+      if (liq) {
+        out.push({
+          id: 'sl-liquidity',
+          severity: 'caution',
+          title: 'Stop sits under a liquidity pool',
+          detail: `Your stop at ${fmt(ctx.stopLoss)} sits just past equal ${isBuy ? 'lows' : 'highs'} near ${fmt(liq.price)} where stops pool, a classic place for a sweep. A spike can clip it before price continues, so a little more room helps.`,
+        });
+      } else if (ext) {
+        out.push({
+          id: 'sl-raid',
+          severity: 'caution',
+          title: 'Stop sits where price wicks',
+          detail: `Your stop at ${fmt(ctx.stopLoss)} is just past a recent swing ${isBuy ? 'low' : 'high'} near ${fmt(ext.price)}, a spot price often wicks through to grab stops before continuing. A little more room dodges the wick.`,
+        });
+      }
     }
   }
 
@@ -605,8 +651,19 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
     }
   }
 
-  // 4. Structure / stop-run zones (primary timeframe; always gives a read).
-  if (primary) out.push(...levelSignals(ctx, primary.candles));
+  // 4. Structure / stop-run zones (primary timeframe; always gives a read). The
+  //    market-structure read (significant swings via break-of-structure) drives
+  //    the level + invalidation logic, so flags mean the swings traders respect.
+  const struct = primary ? marketStructure(primary.candles, atr(primary.candles) ?? 0) : null;
+  if (struct && struct.rangeHigh && struct.rangeLow) {
+    out.push({
+      id: 'structure',
+      severity: 'info',
+      title: `Range ${fmt(struct.rangeLow.price)} to ${fmt(struct.rangeHigh.price)}`,
+      detail: `On the ${primary!.tf} I read a swing high at ${fmt(struct.rangeHigh.price)} and a swing low at ${fmt(struct.rangeLow.price)} (the structural turns, confirmed by a break of structure), so the current read shows ${biasLabel(struct.bias)}.`,
+    });
+  }
+  if (primary) out.push(...levelSignals(ctx, primary.candles, struct));
   // 4a. Higher-timeframe confluence (does a bigger timeframe back or block this?).
   if (ctx.timeframes.length > 1) out.push(...htfStructureSignals(ctx));
 
@@ -827,6 +884,8 @@ export function bestFix(
   if (sev('rr') === 'warning' || sev('rr') === 'caution')
     return 'Extend your target or tighten your stop to get the reward-to-risk above 1 before taking this.';
 
+  if (has('sl-tight'))
+    return 'Move your stop just beyond the swing your idea depends on; where it is now, a normal pullback stops you out before the trade is even wrong.';
   if (has('sl-liquidity'))
     return 'Move your stop beyond the equal highs or lows it sits under; a sweep can clip it where it is.';
   if (has('sl-raid'))
