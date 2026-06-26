@@ -7,8 +7,9 @@ import { apiFetch } from '@/src/lib/api/fetcher';
 import {
   computeCalibration,
   rowsToCalReads,
+  statNetSum,
   MIN_SAMPLES,
-  type RawReadRow,
+  CONFIDENT_SAMPLES,
   type SignalStat,
 } from '@/src/lib/analytics/calibration';
 
@@ -56,8 +57,11 @@ const SEV_DOT: Record<string, string> = {
 };
 
 function money(n: number, currency: string): string {
-  const v = Math.round(n * 100) / 100;
-  return `${v >= 0 ? '+' : ''}${v.toFixed(2)} ${currency}`;
+  const v = Math.abs(n).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${n >= 0 ? '+' : '-'}${v} ${currency}`;
 }
 
 export function ForesightLogClient() {
@@ -111,20 +115,12 @@ export function ForesightLogClient() {
           // Full resolved history for the scorecard (lightweight columns).
           supabase
             .from('foresight_reads')
-            .select('signals, outcome, closed_pnl')
+            .select('signals, outcome, closed_pnl, account_id')
             .not('outcome', 'is', null)
             .limit(2000),
         ]);
       if (cancelled) return;
       setReads((readRows ?? []) as ReadRow[]);
-      const calMap = computeCalibration(
-        rowsToCalReads((calibRows ?? []) as RawReadRow[]),
-      );
-      setCalibStats(
-        [...calMap.values()]
-          .filter((s) => s.total >= MIN_SAMPLES)
-          .sort((a, b) => a.netPnl - b.netPnl),
-      );
       const map = new Map<string, { name: string; currency: string }>();
       for (const a of (acctRows ?? []) as Array<{
         id: string;
@@ -134,6 +130,24 @@ export function ForesightLogClient() {
         map.set(a.id, { name: a.name, currency: a.base_currency ?? 'USD' });
       }
       setAccounts(map);
+      // Attach each read's account currency so net P&L stays per-currency.
+      const calRows = ((calibRows ?? []) as Array<{
+        signals: unknown;
+        outcome: unknown;
+        closed_pnl: unknown;
+        account_id: string | null;
+      }>).map((r) => ({
+        signals: r.signals,
+        outcome: r.outcome,
+        closed_pnl: r.closed_pnl,
+        currency: r.account_id ? map.get(r.account_id)?.currency : undefined,
+      }));
+      const calMap = computeCalibration(rowsToCalReads(calRows));
+      setCalibStats(
+        [...calMap.values()]
+          .filter((s) => s.total >= MIN_SAMPLES)
+          .sort((a, b) => statNetSum(a) - statNetSum(b)),
+      );
       setLoading(false);
       // The free cTrader read allowance, for the usage meter. Best-effort.
       apiFetch<Usage>('/api/guard/ctrader/usage')
@@ -224,18 +238,20 @@ export function ForesightLogClient() {
                 <tbody>
                   {calibStats.map((s) => {
                     const wr = s.winRatePct;
+                    const early = s.decided < CONFIDENT_SAMPLES;
                     const wrColor =
-                      wr == null
+                      wr == null || early
                         ? 'var(--text-muted)'
                         : wr < 40
                           ? 'var(--loss)'
                           : wr >= 60
                             ? 'var(--profit)'
                             : 'var(--text-secondary)';
+                    const netTotal = statNetSum(s);
                     const netColor =
-                      s.netPnl < 0
+                      netTotal < 0
                         ? 'var(--loss)'
-                        : s.netPnl > 0
+                        : netTotal > 0
                           ? 'var(--profit)'
                           : 'var(--text-secondary)';
                     return (
@@ -253,12 +269,20 @@ export function ForesightLogClient() {
                           className='px-3 py-2 font-medium'
                           style={{ color: wrColor }}>
                           {wr == null ? '—' : `${wr}% win`}
+                          {early ? (
+                            <span className='ml-1 text-[10px] font-normal text-[var(--text-muted)]'>
+                              early
+                            </span>
+                          ) : null}
                         </td>
                         <td
                           className='py-2 pl-3 text-right font-semibold'
                           style={{ color: netColor }}>
-                          {s.netPnl >= 0 ? '+$' : '-$'}
-                          {Math.abs(Math.round(s.netPnl)).toLocaleString()}
+                          {Object.keys(s.netByCurrency).length === 0
+                            ? '—'
+                            : Object.entries(s.netByCurrency)
+                                .map(([c, n]) => money(n, c))
+                                .join(' · ')}
                         </td>
                       </tr>
                     );

@@ -740,7 +740,11 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
   if (ctx.calibration) {
     const fmtMoney = (n: number) => money(n, ctx.currency);
     for (const s of out) {
-      const tail = calibrationTail(ctx.calibration.get(calibKey(s)), fmtMoney);
+      const tail = calibrationTail(
+        ctx.calibration.get(calibKey(s)),
+        fmtMoney,
+        ctx.currency,
+      );
       if (tail) s.detail += tail;
     }
   }
