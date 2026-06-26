@@ -34,6 +34,7 @@ export async function fetchCtraderTimeframes(
   accountId: string,
   symbol: string,
   analyzedTf: Tf | null,
+  executedTf: Tf | null = null,
 ): Promise<CtraderMarketRead> {
   const { data: connRow } = await sb
     .from('ctrader_connections')
@@ -122,7 +123,7 @@ export async function fetchCtraderTimeframes(
       // leave null; trend + structure + R:R still work without it
     }
 
-    const tfs = ctraderTimeframes(analyzedTf);
+    const tfs = ctraderTimeframes(analyzedTf, executedTf);
     const now = Date.now();
     const out: GuardTimeframe[] = [];
     for (const t of tfs) {

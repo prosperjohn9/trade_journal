@@ -321,78 +321,125 @@ function levelSignals(
     });
   }
 
-  // 4. Stop vs the trade's INVALIDATION, the significant swing the idea depends on.
-  //    Is the stop protecting the idea (good), too tight inside it (gets hit by
-  //    noise before the idea is wrong), or wider than the idea needs? Falls back to
-  //    the thin wick-zone read when there is no clear structural invalidation.
-  if (ctx.stopLoss != null) {
-    const inv = struct ? invalidationSwing(struct, ctx.side, ctx.entry) : null;
-    if (inv) {
-      const beyond = isBuy ? inv.price - ctx.stopLoss : ctx.stopLoss - inv.price;
-      const swingWord = isBuy ? 'low' : 'high';
-      const past = isBuy ? 'below' : 'above';
-      const inside = isBuy ? 'above' : 'below';
-      if (beyond < -a * 0.1) {
-        out.push({
-          id: 'sl-tight',
-          severity: 'caution',
-          title: 'Stop sits inside your structure',
-          detail: `Your stop at ${fmt(ctx.stopLoss)} sits ${inside} the swing ${swingWord} at ${fmt(inv.price)} your idea is built on, so a normal pullback to that level stops you out before the trade is even invalidated. The stop belongs just ${past} ${fmt(inv.price)}.`,
-        });
-      } else if (beyond <= a * 1.2) {
-        out.push({
-          id: 'sl-protects',
-          severity: 'info',
-          title: 'Stop protects the idea',
-          detail: `Your stop at ${fmt(ctx.stopLoss)} sits just ${past} the swing ${swingWord} at ${fmt(inv.price)} that invalidates this trade, the right place: the idea is only wrong if that level breaks.`,
-        });
-      } else {
-        out.push({
-          id: 'sl-wide',
-          severity: 'info',
-          title: 'Stop is wider than the idea needs',
-          detail: `Your stop at ${fmt(ctx.stopLoss)} sits well ${past} the swing ${swingWord} at ${fmt(inv.price)} that actually invalidates this trade. Tucking it just ${past} ${fmt(inv.price)} would risk less for the same idea.`,
-        });
-      }
-    } else {
-      const supSide = isBuy ? 'low' : 'high';
-      const beyond = (l: { price: number }) =>
-        isBuy ? l.price - ctx.stopLoss! : ctx.stopLoss! - l.price;
-      const inHuntZone = (l: { price: number }, band: number) => {
-        const d = beyond(l);
-        return d >= 0 && d <= band;
-      };
-      const byBeyond = (x: { price: number }, y: { price: number }) =>
-        beyond(x) - beyond(y);
-      const liq = levels
-        .filter(
-          (l) =>
-            l.side === supSide &&
-            l.pattern === 'liquidity' &&
-            inHuntZone(l, a * 0.8),
-        )
-        .sort(byBeyond)[0];
-      const ext = levels
-        .filter((l) => l.side === supSide && inHuntZone(l, a * 0.5))
-        .sort(byBeyond)[0];
-      if (liq) {
-        out.push({
-          id: 'sl-liquidity',
-          severity: 'caution',
-          title: 'Stop sits under a liquidity pool',
-          detail: `Your stop at ${fmt(ctx.stopLoss)} sits just past equal ${isBuy ? 'lows' : 'highs'} near ${fmt(liq.price)} where stops pool, a classic place for a sweep. A spike can clip it before price continues, so a little more room helps.`,
-        });
-      } else if (ext) {
-        out.push({
-          id: 'sl-raid',
-          severity: 'caution',
-          title: 'Stop sits where price wicks',
-          detail: `Your stop at ${fmt(ctx.stopLoss)} is just past a recent swing ${isBuy ? 'low' : 'high'} near ${fmt(ext.price)}, a spot price often wicks through to grab stops before continuing. A little more room dodges the wick.`,
-        });
-      }
-    }
-  }
+  // (The stop / invalidation read lives in stopSignals, run on the execution
+  // timeframe by analyzeTrade.)
 
+  return out;
+}
+
+/** Range context: the analyzed-timeframe swing high/low (with the last break of
+ *  structure and the bias), plus the execution-timeframe swing high/low when that
+ *  is a separate frame. One signal, so the trader sees the structure both reads. */
+function structureContext(
+  analyzedFrame: GuardTimeframe,
+  analyzedStruct: Structure | null,
+  execFrame: GuardTimeframe | null,
+  execStruct: Structure | null,
+): GuardSignal[] {
+  if (!analyzedStruct || !analyzedStruct.rangeHigh || !analyzedStruct.rangeLow)
+    return [];
+  const aH = analyzedStruct.rangeHigh.price;
+  const aL = analyzedStruct.rangeLow.price;
+  const lastBos = [...analyzedStruct.swings]
+    .reverse()
+    .find((s) => s.significant && (s.bos === 'HH' || s.bos === 'LL'));
+  const bosNote = lastBos
+    ? lastBos.bos === 'HH'
+      ? ' Price last broke structure to the upside.'
+      : ' Price last broke structure to the downside.'
+    : '';
+  const execNote =
+    execFrame && execStruct && execStruct.rangeHigh && execStruct.rangeLow
+      ? ` On the ${execFrame.tf} (execution) the swing high is ${fmt(execStruct.rangeHigh.price)} and the swing low ${fmt(execStruct.rangeLow.price)}.`
+      : '';
+  return [
+    {
+      id: 'structure',
+      severity: 'info',
+      title: `Range ${fmt(aL)} to ${fmt(aH)}`,
+      detail: `On the ${analyzedFrame.tf} (analyzed) the swing high is ${fmt(aH)} and the swing low ${fmt(aL)}, the structural turns confirmed by a break of structure, so the read is ${biasLabel(analyzedStruct.bias)}.${bosNote}${execNote}`,
+    },
+  ];
+}
+
+/** Stop vs the trade's INVALIDATION, the significant swing the idea depends on,
+ *  read on whichever frame the stop lives on (execution if available). Protecting
+ *  the idea (good), too tight inside it, or wider than needed. Falls back to the
+ *  thin wick-zone read when there is no clear structural invalidation. */
+function stopSignals(
+  ctx: GuardContext,
+  struct: Structure | null,
+  candles: GuardCandle[],
+): GuardSignal[] {
+  const out: GuardSignal[] = [];
+  if (ctx.stopLoss == null) return out;
+  const a = atr(candles);
+  if (!a || a <= 0) return out;
+  const isBuy = ctx.side === 'BUY';
+  const inv = struct ? invalidationSwing(struct, ctx.side, ctx.entry) : null;
+  if (inv) {
+    const beyond = isBuy ? inv.price - ctx.stopLoss : ctx.stopLoss - inv.price;
+    const swingWord = isBuy ? 'low' : 'high';
+    const past = isBuy ? 'below' : 'above';
+    const inside = isBuy ? 'above' : 'below';
+    if (beyond < -a * 0.1) {
+      out.push({
+        id: 'sl-tight',
+        severity: 'caution',
+        title: 'Stop sits inside your structure',
+        detail: `Your stop at ${fmt(ctx.stopLoss)} sits ${inside} the swing ${swingWord} at ${fmt(inv.price)} your idea is built on, so a normal pullback to that level stops you out before the trade is even invalidated. The stop belongs just ${past} ${fmt(inv.price)}.`,
+      });
+    } else if (beyond <= a * 1.2) {
+      out.push({
+        id: 'sl-protects',
+        severity: 'info',
+        title: 'Stop protects the idea',
+        detail: `Your stop at ${fmt(ctx.stopLoss)} sits just ${past} the swing ${swingWord} at ${fmt(inv.price)} that invalidates this trade, the right place: the idea is only wrong if that level breaks.`,
+      });
+    } else {
+      out.push({
+        id: 'sl-wide',
+        severity: 'info',
+        title: 'Stop is wider than the idea needs',
+        detail: `Your stop at ${fmt(ctx.stopLoss)} sits well ${past} the swing ${swingWord} at ${fmt(inv.price)} that actually invalidates this trade. Tucking it just ${past} ${fmt(inv.price)} would risk less for the same idea.`,
+      });
+    }
+    return out;
+  }
+  // Fallback: no clear structural invalidation, use the thin wick-zone read.
+  const { levels } = readStructure(candles, a);
+  const supSide = isBuy ? 'low' : 'high';
+  const beyond = (l: { price: number }) =>
+    isBuy ? l.price - ctx.stopLoss! : ctx.stopLoss! - l.price;
+  const inHuntZone = (l: { price: number }, band: number) => {
+    const d = beyond(l);
+    return d >= 0 && d <= band;
+  };
+  const byBeyond = (x: { price: number }, y: { price: number }) =>
+    beyond(x) - beyond(y);
+  const liq = levels
+    .filter(
+      (l) => l.side === supSide && l.pattern === 'liquidity' && inHuntZone(l, a * 0.8),
+    )
+    .sort(byBeyond)[0];
+  const ext = levels
+    .filter((l) => l.side === supSide && inHuntZone(l, a * 0.5))
+    .sort(byBeyond)[0];
+  if (liq) {
+    out.push({
+      id: 'sl-liquidity',
+      severity: 'caution',
+      title: 'Stop sits under a liquidity pool',
+      detail: `Your stop at ${fmt(ctx.stopLoss)} sits just past equal ${isBuy ? 'lows' : 'highs'} near ${fmt(liq.price)} where stops pool, a classic place for a sweep. A spike can clip it before price continues, so a little more room helps.`,
+    });
+  } else if (ext) {
+    out.push({
+      id: 'sl-raid',
+      severity: 'caution',
+      title: 'Stop sits where price wicks',
+      detail: `Your stop at ${fmt(ctx.stopLoss)} is just past a recent swing ${isBuy ? 'low' : 'high'} near ${fmt(ext.price)}, a spot price often wicks through to grab stops before continuing. A little more room dodges the wick.`,
+    });
+  }
   return out;
 }
 
@@ -503,6 +550,20 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
   const dir = ctx.side === 'BUY' ? 'long' : 'short';
   const primary =
     ctx.timeframes.find((t) => t.candles.length >= 6) ?? ctx.timeframes[0];
+  // The analyzed timeframe carries structure + levels; the execution timeframe
+  // (where the entry and stop actually live) carries the invalidation read. Match
+  // by label; fall back to the primary frame when not separately available.
+  const analyzedFrame =
+    ctx.timeframes.find(
+      (t) => t.tf === ctx.analyzedTf && t.candles.length >= 6,
+    ) ?? primary;
+  const execFrame =
+    ctx.executedTf && ctx.executedTf !== ctx.analyzedTf
+      ? (ctx.timeframes.find(
+          (t) => t.tf === ctx.executedTf && t.candles.length >= 6,
+        ) ?? null)
+      : null;
+  const invFrame = execFrame ?? analyzedFrame;
 
   // 1. Trend across timeframes (ALWAYS, with the timeframes I read).
   const reads = ctx.timeframes
@@ -587,9 +648,10 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
     });
   }
 
-  // 3b. Stop sizing vs current volatility (ATR).
-  if (primary && ctx.stopLoss != null && ctx.pipSize && ctx.pipSize > 0) {
-    const a = atr(primary.candles);
+  // 3b. Stop sizing vs current volatility (ATR), on the execution timeframe where
+  //     the stop actually lives.
+  if (invFrame && ctx.stopLoss != null && ctx.pipSize && ctx.pipSize > 0) {
+    const a = atr(invFrame.candles);
     if (a && a > 0) {
       const ratio = Math.abs(ctx.entry - ctx.stopLoss) / a;
       const stopPips = Math.round(Math.abs(ctx.entry - ctx.stopLoss) / ctx.pipSize);
@@ -598,12 +660,12 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
       out.push({
         id: 'atr',
         severity: tight ? 'caution' : 'info',
-        title: `Stop is ${ratio.toFixed(1)}x the ${primary.tf} ATR`,
+        title: `Stop is ${ratio.toFixed(1)}x the ${invFrame.tf} ATR`,
         detail: tight
-          ? `Your ${stopPips} pip stop is only ${ratio.toFixed(1)}x the ${primary.tf} ATR (${atrPips} pips), tight relative to how the pair is moving, so normal noise could clip it.`
+          ? `Your ${stopPips} pip stop is only ${ratio.toFixed(1)}x the ${invFrame.tf} ATR (${atrPips} pips), tight relative to how the pair is moving, so normal noise could clip it.`
           : ratio < 1
-            ? `Your ${stopPips} pip stop is ${ratio.toFixed(1)}x the ${primary.tf} ATR (${atrPips} pips), so an average swing could still reach it.`
-            : `Your ${stopPips} pip stop is ${ratio.toFixed(1)}x the ${primary.tf} ATR (${atrPips} pips), comfortably outside typical noise.`,
+            ? `Your ${stopPips} pip stop is ${ratio.toFixed(1)}x the ${invFrame.tf} ATR (${atrPips} pips), so an average swing could still reach it.`
+            : `Your ${stopPips} pip stop is ${ratio.toFixed(1)}x the ${invFrame.tf} ATR (${atrPips} pips), comfortably outside typical noise.`,
       });
     }
   }
@@ -651,20 +713,28 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
     }
   }
 
-  // 4. Structure / stop-run zones (primary timeframe; always gives a read). The
-  //    market-structure read (significant swings via break-of-structure) drives
-  //    the level + invalidation logic, so flags mean the swings traders respect.
-  const struct = primary ? marketStructure(primary.candles, atr(primary.candles) ?? 0) : null;
-  if (struct && struct.rangeHigh && struct.rangeLow) {
-    out.push({
-      id: 'structure',
-      severity: 'info',
-      title: `Range ${fmt(struct.rangeLow.price)} to ${fmt(struct.rangeHigh.price)}`,
-      detail: `On the ${primary!.tf} I read a swing high at ${fmt(struct.rangeHigh.price)} and a swing low at ${fmt(struct.rangeLow.price)} (the structural turns, confirmed by a break of structure), so the current read shows ${biasLabel(struct.bias)}.`,
-    });
-  }
-  if (primary) out.push(...levelSignals(ctx, primary.candles, struct));
-  // 4a. Higher-timeframe confluence (does a bigger timeframe back or block this?).
+  // 4. Structure. Market-structure swings (significant turns via break of
+  //    structure) are read on the ANALYZED timeframe (levels + range context) and
+  //    the EXECUTION timeframe (where the entry + stop live, used for invalidation).
+  const analyzedStruct = analyzedFrame
+    ? marketStructure(analyzedFrame.candles, atr(analyzedFrame.candles) ?? 0)
+    : null;
+  const execStruct = execFrame
+    ? marketStructure(execFrame.candles, atr(execFrame.candles) ?? 0)
+    : null;
+  if (analyzedFrame)
+    out.push(
+      ...structureContext(analyzedFrame, analyzedStruct, execFrame, execStruct),
+    );
+  if (analyzedFrame)
+    out.push(...levelSignals(ctx, analyzedFrame.candles, analyzedStruct));
+  // 4a. Stop vs the trade's invalidation, on the execution timeframe (or analyzed
+  //     if no separate execution frame).
+  if (invFrame)
+    out.push(
+      ...stopSignals(ctx, execStruct ?? analyzedStruct, invFrame.candles),
+    );
+  // 4b. Higher-timeframe confluence (does a bigger timeframe back or block this?).
   if (ctx.timeframes.length > 1) out.push(...htfStructureSignals(ctx));
 
   // 4b. Round-number proximity for the stop or target.

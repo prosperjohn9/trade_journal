@@ -289,7 +289,7 @@ export async function POST(request: Request) {
     // Market + account context (each best-effort). The timeframes to read come
     // from what the trader analyzed on (plus a higher context), or the
     // day-trader default (1H + 4H).
-    const tfs = analysisTimeframes(analyzedTf);
+    const tfs = analysisTimeframes(analyzedTf, executedTf);
     const [price, tickSize, info] = await Promise.all([
       fetchSymbolPrice(conn.metaapi_account_id, region, pos.symbol),
       fetchTickSize(conn.metaapi_account_id, region, pos.symbol),

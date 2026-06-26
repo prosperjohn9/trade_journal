@@ -34,12 +34,24 @@ const HIGHER: Record<Tf, Tf[]> = {
 
 export type AnalysisTf = { tf: string; code: string };
 
-/** The timeframes to read for a trade. `analyzed` null => day-trader default. */
-export function analysisTimeframes(analyzed?: Tf | null): AnalysisTf[] {
-  const chain: Tf[] = analyzed ? [analyzed, ...HIGHER[analyzed]] : ['1h', '4h'];
+/** The chain to read for a trade: the execution timeframe (where the entry and
+ *  stop live), the analyzed timeframe, and its higher timeframe(s) for context.
+ *  `analyzed` null => day-trader default. */
+function tfChain(analyzed?: Tf | null, executed?: Tf | null): Tf[] {
+  const chain: Tf[] = [];
+  if (executed) chain.push(executed);
+  if (analyzed) chain.push(analyzed, ...HIGHER[analyzed]);
+  else if (!executed) chain.push('1h', '4h');
+  return chain;
+}
+
+export function analysisTimeframes(
+  analyzed?: Tf | null,
+  executed?: Tf | null,
+): AnalysisTf[] {
   const seen = new Set<Tf>();
   const out: AnalysisTf[] = [];
-  for (const t of chain) {
+  for (const t of tfChain(analyzed, executed)) {
     if (seen.has(t)) continue;
     seen.add(t);
     out.push({ tf: LABEL[t], code: META[t] });
@@ -60,11 +72,13 @@ export type CtraderTf = { label: string; period: number };
 
 /** Same chain as analysisTimeframes, but as cTrader trendbar periods, so the
  *  worker fetches the trader's real timeframes over the Open API socket. */
-export function ctraderTimeframes(analyzed?: Tf | null): CtraderTf[] {
-  const chain: Tf[] = analyzed ? [analyzed, ...HIGHER[analyzed]] : ['1h', '4h'];
+export function ctraderTimeframes(
+  analyzed?: Tf | null,
+  executed?: Tf | null,
+): CtraderTf[] {
   const seen = new Set<Tf>();
   const out: CtraderTf[] = [];
-  for (const t of chain) {
+  for (const t of tfChain(analyzed, executed)) {
     if (seen.has(t)) continue;
     seen.add(t);
     out.push({ label: LABEL[t], period: CTRADER_PERIOD[t] });

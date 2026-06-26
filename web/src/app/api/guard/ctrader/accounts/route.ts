@@ -32,6 +32,7 @@ type Conn = {
   user_id: string;
   created_at: string | null;
   guard_analyzed_tf: string | null;
+  guard_executed_tf: string | null;
 };
 
 export async function GET(request: Request) {
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
   const { data, error } = await sb
     .from('ctrader_connections')
     .select(
-      'id, account_id, ctid_trader_account_id, environment, state, user_id, created_at, guard_analyzed_tf',
+      'id, account_id, ctid_trader_account_id, environment, state, user_id, created_at, guard_analyzed_tf, guard_executed_tf',
     )
     .eq('guard_enabled', true)
     .order('created_at', { ascending: true });
@@ -121,6 +122,7 @@ export async function GET(request: Request) {
       // cTrader trendbar periods, so the worker reads what they read.
       timeframes: ctraderTimeframes(
         isTf(c.guard_analyzed_tf) ? c.guard_analyzed_tf : null,
+        isTf(c.guard_executed_tf) ? c.guard_executed_tf : null,
       ),
     }));
 

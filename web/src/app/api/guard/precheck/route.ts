@@ -200,6 +200,7 @@ export async function POST(request: Request) {
         accountId,
         symbol,
         analyzedTf,
+        executedTf,
       );
       if (ct.timeframes.length) {
         timeframes = ct.timeframes;
@@ -230,7 +231,7 @@ export async function POST(request: Request) {
           }
         }
         if (live) {
-          const tfs = analysisTimeframes(analyzedTf);
+          const tfs = analysisTimeframes(analyzedTf, executedTf);
           const [tickSize, candleResults] = await Promise.all([
             fetchTickSize(conn.metaapi_account_id, region, symbol),
             Promise.all(
