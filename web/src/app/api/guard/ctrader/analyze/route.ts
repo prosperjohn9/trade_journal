@@ -6,6 +6,7 @@ import { narrateGuard } from '@/src/lib/ai/guard';
 import { loadCalibration } from '@/src/lib/ai/guardCalibration';
 import { gradeRead } from '@/src/lib/analytics/calibration';
 import {
+  bestFix,
   flagHeadline,
   type GuardContext,
   type GuardSide,
@@ -204,6 +205,7 @@ export async function POST(request: Request) {
     await logUsage(sb, userId, 'guard', AI_MODEL, usage);
     const { grade } = gradeRead(signals, ctx.calibration);
     const tldr = `Grade ${grade}. ${flagHeadline(signals)}`;
+    const suggestion = bestFix(signals, ctx);
 
     // Log the read so the trader can review it and the worker can close the loop.
     void sb
@@ -247,10 +249,21 @@ export async function POST(request: Request) {
       const head = `Foresight: ${symbol} ${side} ${volume} lots`;
       const link =
         'See this and past reads: https://tradershindsight.com/foresight';
-      await sendTelegram(chatId, `${head}\n\n${lead}${tldr}\n\n${summary}\n\n${link}`);
+      const fix = suggestion ? `\n\nTry this: ${suggestion}` : '';
+      await sendTelegram(
+        chatId,
+        `${head}\n\n${lead}${tldr}\n\n${summary}${fix}\n\n${link}`,
+      );
     }
 
-    return NextResponse.json({ ok: true, tldr, signals, summary, model: AI_MODEL });
+    return NextResponse.json({
+      ok: true,
+      tldr,
+      suggestion,
+      signals,
+      summary,
+      model: AI_MODEL,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Foresight failed.';
     return NextResponse.json({ error: msg }, { status: 502 });

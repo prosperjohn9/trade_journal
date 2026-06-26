@@ -158,18 +158,22 @@ export function computeCalibration(reads: CalRead[]): Map<string, SignalStat> {
   return m;
 }
 
-/** Short tail appended to a fired signal's detail, e.g.
- *  " Your record when this fires: 4-13 (24%), -$2,140." Empty when too few. */
+/** Plain-English tail appended to a fired signal's detail, e.g. " Your record
+ *  when this fires: 4 wins to 13 losses, a 24% win rate, and you have lost
+ *  $2,140 on those trades." Empty when too few resolved trades. */
 export function calibrationTail(
   stat: SignalStat | undefined,
   money: (n: number) => string,
 ): string {
   if (!stat || stat.total < MIN_SAMPLES || stat.winRatePct == null) return '';
-  const net =
-    stat.netPnl >= 0
-      ? `+${money(stat.netPnl)}`
-      : `-${money(Math.abs(stat.netPnl))}`;
-  return ` Your record when this fires: ${stat.wins}-${stat.losses} (${stat.winRatePct}%), ${net}.`;
+  const wl = `${stat.wins} win${stat.wins === 1 ? '' : 's'} to ${stat.losses} loss${stat.losses === 1 ? '' : 'es'}`;
+  const pnl =
+    stat.netPnl > 0
+      ? `you have made ${money(stat.netPnl)} on those trades`
+      : stat.netPnl < 0
+        ? `you have lost ${money(stat.netPnl)} on those trades`
+        : `you are about flat on those trades`;
+  return ` Your record when this fires: ${wl}, a ${stat.winRatePct}% win rate, and ${pnl}.`;
 }
 
 export type Grade = 'A' | 'B' | 'C' | 'D' | 'F';

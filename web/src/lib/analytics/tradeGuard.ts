@@ -126,7 +126,10 @@ function fmt(n: number): string {
 function money(n: number, ccy: string): string {
   const sym: Record<string, string> = { USD: '$', EUR: '€', GBP: '£' };
   const s = sym[ccy];
-  const v = Math.abs(n).toFixed(2);
+  const v = Math.abs(n).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
   return s ? `${s}${v}` : `${v} ${ccy}`;
 }
 
@@ -332,6 +335,74 @@ function levelSignals(ctx: GuardContext, candles: GuardCandle[]): GuardSignal[] 
   return out;
 }
 
+/** Higher-timeframe structure confluence: the structure read works the primary
+ *  (lowest) timeframe; this looks at the HIGHEST timeframe available and flags
+ *  when the entry lines up with a fresh HTF zone (real confluence, a plus) or
+ *  runs into one (a heavier obstacle than an LTF level). */
+function htfStructureSignals(ctx: GuardContext): GuardSignal[] {
+  const out: GuardSignal[] = [];
+  const primaryTf = ctx.timeframes.find((t) => t.candles.length >= 6);
+  // Timeframes are primary-first (e.g. 15m then 4H), so the highest is last.
+  const htf = [...ctx.timeframes]
+    .reverse()
+    .find((t) => t.candles.length >= 12);
+  if (!htf || !primaryTf || htf.tf === primaryTf.tf) return out;
+  const a = atr(htf.candles);
+  if (!a || a <= 0) return out;
+  const reach = a * 1.5;
+  const isBuy = ctx.side === 'BUY';
+  const { zones } = readStructure(htf.candles, a);
+  const align = isBuy ? 'demand' : 'supply';
+  const opp = isBuy ? 'supply' : 'demand';
+
+  // Entry inside a fresh aligned HTF zone is genuine confluence.
+  const aligned = zones
+    .filter(
+      (z) =>
+        z.kind === align &&
+        !z.mitigated &&
+        ctx.entry >= z.bottom - a * 0.3 &&
+        ctx.entry <= z.top + a * 0.3,
+    )
+    .sort((x, y) => y.strength - x.strength)[0];
+  if (aligned) {
+    out.push({
+      id: 'htf-confluence',
+      severity: 'info',
+      title: `Higher-timeframe confluence (${htf.tf})`,
+      detail: `Your entry lines up with a fresh ${aligned.kind} zone on the ${htf.tf} (${fmt(aligned.bottom)}-${fmt(aligned.top)}), so a higher timeframe backs this entry.`,
+    });
+    return out;
+  }
+
+  // A fresh opposing HTF zone in the path is a heavier obstacle than an LTF one.
+  if (ctx.takeProfit != null) {
+    const against = zones
+      .filter(
+        (z) =>
+          z.kind === opp &&
+          !z.mitigated &&
+          (isBuy
+            ? z.bottom > ctx.entry &&
+              z.bottom < ctx.takeProfit! &&
+              z.bottom - ctx.entry <= reach
+            : z.top < ctx.entry &&
+              z.top > ctx.takeProfit! &&
+              ctx.entry - z.top <= reach),
+      )
+      .sort((x, y) => y.strength - x.strength)[0];
+    if (against) {
+      out.push({
+        id: 'htf-against',
+        severity: 'caution',
+        title: `Against a higher-timeframe zone (${htf.tf})`,
+        detail: `A fresh ${against.kind} zone on the ${htf.tf} (${fmt(against.bottom)}-${fmt(against.top)}) sits in your path. Higher-timeframe zones produce bigger reactions, so expect resistance there before your target.`,
+      });
+    }
+  }
+  return out;
+}
+
 function describeTrend(d: 'up' | 'down' | 'flat'): string {
   return d === 'up' ? 'trending up' : d === 'down' ? 'trending down' : 'ranging';
 }
@@ -521,6 +592,8 @@ export function analyzeTrade(ctx: GuardContext): GuardSignal[] {
 
   // 4. Structure / stop-run zones (primary timeframe; always gives a read).
   if (primary) out.push(...levelSignals(ctx, primary.candles));
+  // 4a. Higher-timeframe confluence (does a bigger timeframe back or block this?).
+  if (ctx.timeframes.length > 1) out.push(...htfStructureSignals(ctx));
 
   // 4b. Round-number proximity for the stop or target.
   if (ctx.pipSize && ctx.pipSize > 0) {
@@ -694,4 +767,63 @@ export function flagHeadline(signals: GuardSignal[]): string {
   const titles = unique.slice(0, 6);
   const more = unique.length - titles.length;
   return `${titles.join(', ')}${more > 0 ? `, and ${more} more` : ''}. ${unique.length} flag${unique.length === 1 ? '' : 's'} to weigh.`;
+}
+
+/** One concrete, deterministic fix for the worst issue in the read, so the trader
+ *  gets an action and not just a diagnosis. Null when nothing needs fixing. */
+export function bestFix(
+  signals: GuardSignal[],
+  ctx: GuardContext,
+): string | null {
+  const has = (id: string) => signals.some((s) => s.id === id);
+  const sev = (id: string) => signals.find((s) => s.id === id)?.severity;
+
+  if (has('no-sl'))
+    return 'Set a stop before anything else; one spike can run this past any planned loss.';
+
+  // Risk over the limit: the exact size that brings it back under the cap.
+  if (
+    sev('risk') === 'warning' &&
+    ctx.riskMoney != null &&
+    ctx.riskMoney > 0 &&
+    ctx.balance != null &&
+    ctx.balance > 0 &&
+    ctx.riskRulePct != null &&
+    ctx.volumeLots > 0
+  ) {
+    const targetMoney = ctx.balance * (ctx.riskRulePct / 100) * 0.95;
+    const lots = ctx.volumeLots * (targetMoney / ctx.riskMoney);
+    if (lots > 0 && lots < ctx.volumeLots)
+      return `Cut size to about ${lots.toFixed(2)} lots to bring risk under your ${ctx.riskRulePct}% limit.`;
+  }
+
+  if (has('news') && ctx.news?.ruleState === 'blackout')
+    return ctx.news.nextEvent
+      ? `Wait for ${ctx.news.nextEvent.currency} ${ctx.news.nextEvent.title} (${ctx.news.nextEvent.minutes} min away) to pass, then reassess; entering now risks a news-rule breach.`
+      : 'Wait for the news window to pass; entering now risks a news-rule breach.';
+
+  if (has('revenge') || has('committed'))
+    return 'Step away from the screen; this is the exact pattern that has cost you most.';
+
+  if (sev('rr') === 'warning' || sev('rr') === 'caution')
+    return 'Extend your target or tighten your stop to get the reward-to-risk above 1 before taking this.';
+
+  if (has('sl-liquidity'))
+    return 'Move your stop beyond the equal highs or lows it sits under; a sweep can clip it where it is.';
+  if (has('sl-raid'))
+    return 'Give your stop a few more pips of room to clear the swing it is parked on.';
+
+  if (has('htf-against'))
+    return 'A higher-timeframe zone blocks the path; aim for a target before it, or wait for it to clear.';
+
+  if (sev('trend') === 'caution')
+    return 'This fights the higher timeframe; wait for a with-trend setup or plan a quicker exit.';
+
+  if (has('tp-zone') || has('tp-level'))
+    return 'Set your target before the fresh level in your path, or expect a reaction there first.';
+
+  if (sev('prop-buffer') === 'caution')
+    return 'Size down so a single loss does not eat your daily drawdown room.';
+
+  return null;
 }

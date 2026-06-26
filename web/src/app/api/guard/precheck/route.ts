@@ -7,6 +7,7 @@ import { narrateGuard } from '@/src/lib/ai/guard';
 import { loadCalibration } from '@/src/lib/ai/guardCalibration';
 import { gradeRead } from '@/src/lib/analytics/calibration';
 import {
+  bestFix,
   flagHeadline,
   type GuardContext,
   type GuardSide,
@@ -308,10 +309,12 @@ export async function POST(request: Request) {
     await logUsage(sb, user.id, 'guard', AI_MODEL, usage);
 
     const { grade } = gradeRead(signals, ctx.calibration);
+    const suggestion = bestFix(signals, ctx);
 
     return NextResponse.json({
       tldr: `Grade ${grade}. ${flagHeadline(signals)}`,
       grade,
+      suggestion,
       signals,
       summary,
       model: AI_MODEL,

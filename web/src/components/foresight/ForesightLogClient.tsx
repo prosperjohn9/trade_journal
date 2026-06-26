@@ -246,18 +246,18 @@ export function ForesightLogClient() {
                           {s.label}
                         </td>
                         <td className='px-3 py-2 text-[var(--text-secondary)]'>
-                          {s.wins}-{s.losses}
-                          {s.breakeven ? ` (${s.breakeven} BE)` : ''}
+                          {s.wins}W · {s.losses}L
+                          {s.breakeven ? ` · ${s.breakeven} BE` : ''}
                         </td>
                         <td
                           className='px-3 py-2 font-medium'
                           style={{ color: wrColor }}>
-                          {wr == null ? '—' : `${wr}%`}
+                          {wr == null ? '—' : `${wr}% win`}
                         </td>
                         <td
                           className='py-2 pl-3 text-right font-semibold'
                           style={{ color: netColor }}>
-                          {s.netPnl >= 0 ? '+' : '-'}
+                          {s.netPnl >= 0 ? '+$' : '-$'}
                           {Math.abs(Math.round(s.netPnl)).toLocaleString()}
                         </td>
                       </tr>

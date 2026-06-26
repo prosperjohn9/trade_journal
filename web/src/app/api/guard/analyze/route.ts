@@ -8,7 +8,11 @@ import { isOverDailyCap, logUsage, monthlyUsageCount } from '@/src/lib/ai/usage'
 import { narrateGuard } from '@/src/lib/ai/guard';
 import { loadCalibration } from '@/src/lib/ai/guardCalibration';
 import { gradeRead } from '@/src/lib/analytics/calibration';
-import { flagHeadline, type GuardContext } from '@/src/lib/analytics/tradeGuard';
+import {
+  bestFix,
+  flagHeadline,
+  type GuardContext,
+} from '@/src/lib/analytics/tradeGuard';
 import {
   analysisTimeframes,
   isTf,
@@ -649,6 +653,7 @@ export async function POST(request: Request) {
 
     const { grade } = gradeRead(signals, ctx.calibration);
     const tldr = `Grade ${grade}. ${flagHeadline(signals)}`;
+    const suggestion = bestFix(signals, ctx);
 
     // Log the read (best-effort) so the trader can review it and the worker can
     // close the loop on outcome later.
@@ -696,7 +701,8 @@ export async function POST(request: Request) {
         const head = `Foresight: ${pos.symbol} ${pos.side} ${pos.volume} lots`;
         const link =
           'See this and past reads: https://tradershindsight.com/foresight';
-        const text = `${head}\n\n${lead}${tldr}\n\n${summary}\n\n${link}`;
+        const fix = suggestion ? `\n\nTry this: ${suggestion}` : '';
+        const text = `${head}\n\n${lead}${tldr}\n\n${summary}${fix}\n\n${link}`;
         await sendTelegram(chatId, text);
       }
     }
@@ -712,6 +718,7 @@ export async function POST(request: Request) {
         volume: pos.volume,
       },
       tldr,
+      suggestion,
       signals,
       summary,
       model: AI_MODEL,
