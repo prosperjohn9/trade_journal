@@ -302,19 +302,34 @@ function levelSignals(ctx: GuardContext, candles: GuardCandle[]): GuardSignal[] 
     });
   }
 
-  // 4. Stop: sitting under a liquidity pool (a sweep magnet) or past a swing.
+  // 4. Stop: parked in the THIN wick zone JUST past a swing (the stop-hunt spot),
+  //    not merely somewhere beyond structure. A stop with real room past the swing
+  //    is a good stop and should stay quiet; only one a normal wick can reach flags.
   if (ctx.stopLoss != null) {
     const supSide = isBuy ? 'low' : 'high';
-    const near = levels.filter(
-      (l) =>
-        l.side === supSide &&
-        Math.abs(l.price - ctx.stopLoss!) <= reach &&
-        (isBuy ? ctx.stopLoss! <= l.price : ctx.stopLoss! >= l.price),
-    );
-    const byNearStop = (x: { price: number }, y: { price: number }) =>
-      Math.abs(x.price - ctx.stopLoss!) - Math.abs(y.price - ctx.stopLoss!);
-    const liq = near.filter((l) => l.pattern === 'liquidity').sort(byNearStop)[0];
-    const ext = near.sort(byNearStop)[0];
+    // How far the stop sits PAST the swing, in the loss direction (negative if it
+    // sits short of the swing, i.e. the swing is beyond the stop).
+    const beyond = (l: { price: number }) =>
+      isBuy ? l.price - ctx.stopLoss! : ctx.stopLoss! - l.price;
+    const swingBand = a * 0.5; // a plain swing: just the wick zone right past it
+    const liqBand = a * 0.8; // a liquidity pool draws a sweep from a touch further
+    const inHuntZone = (l: { price: number }, band: number) => {
+      const d = beyond(l);
+      return d >= 0 && d <= band; // just past the swing, not well clear of it
+    };
+    const byBeyond = (x: { price: number }, y: { price: number }) =>
+      beyond(x) - beyond(y); // closest-past first
+    const liq = levels
+      .filter(
+        (l) =>
+          l.side === supSide &&
+          l.pattern === 'liquidity' &&
+          inHuntZone(l, liqBand),
+      )
+      .sort(byBeyond)[0];
+    const ext = levels
+      .filter((l) => l.side === supSide && inHuntZone(l, swingBand))
+      .sort(byBeyond)[0];
     if (liq) {
       out.push({
         id: 'sl-liquidity',
